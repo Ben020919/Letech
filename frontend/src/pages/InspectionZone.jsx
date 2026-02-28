@@ -54,7 +54,7 @@ export default function InspectionZone({ zoneName }) {
     // ================= 2. 多人協作：定時獲取最新進度 =================
     const fetchTaskStatus = async () => {
         try {
-            const res = await fetch(`http://127.0.0.1:8000/api/inspection/task/${apiZoneStr}`);
+            const res = await fetch(`https://letech-pro.onrender.com/api/inspection/task/${apiZoneStr}`);
             const data = await res.json();
             if (data.status === "success" && data.task) {
                 setItems(data.task.items);
@@ -94,7 +94,7 @@ export default function InspectionZone({ zoneName }) {
 
         setLoading(true);
         try {
-            const res = await fetch(`http://127.0.0.1:8000/api/inspection/upload/${apiZoneStr}`, {
+            const res = await fetch(`https://letech-pro.onrender.com/api/inspection/upload/${apiZoneStr}`, {
                 method: "POST", body: formData
             });
             if (!res.ok) throw new Error("上傳失敗");
@@ -106,7 +106,7 @@ export default function InspectionZone({ zoneName }) {
     // ================= 4. 掃碼判定與更新後端 =================
     const updateItemQty = async (itemId, newQty, isScanner = false) => {
         try {
-            const res = await fetch(`http://127.0.0.1:8000/api/inspection/update/${apiZoneStr}`, {
+            const res = await fetch(`https://letech-pro.onrender.com/api/inspection/update/${apiZoneStr}`, {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ item_id: itemId, scanned_qty: newQty })
@@ -221,7 +221,7 @@ export default function InspectionZone({ zoneName }) {
     // ================= 6. 結束任務 =================
     const clearTask = async () => {
         if (window.confirm("確定要結案並清除資料嗎？")) {
-            await fetch(`http://127.0.0.1:8000/api/inspection/clear/${apiZoneStr}`, { method: "POST" });
+            await fetch(`https://letech-pro.onrender.com/api/inspection/clear/${apiZoneStr}`, { method: "POST" });
             fetchTaskStatus();
         }
     };
