@@ -28,7 +28,7 @@ router = APIRouter()
 
 # 🌟 20分鐘後自動毀滅任務
 async def delete_file_later(file_path: str):
-    await asyncio.sleep(1200)
+    await asyncio.sleep(300)
     if os.path.exists(file_path):
         try: os.remove(file_path)
         except: pass
