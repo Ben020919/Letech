@@ -88,6 +88,12 @@ function Dashboard() {
         .stat-card:hover { transform: translateY(-5px); }
         .pulse-dot { width: 10px; height: 10px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        
+        /* 🌟 專為 3PL 自動化卡片設計的「手機版響應式」排版 */
+        @media (max-width: 768px) {
+          .dual-stat-box { flex-direction: column !important; gap: 15px; }
+          .dual-stat-divider { width: 100% !important; height: 1px !important; margin: 0 !important; }
+        }
       `}</style>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '30px', flexWrap: 'wrap', gap: '15px' }}>
@@ -102,31 +108,25 @@ function Dashboard() {
       </div>
 
       <h3 style={{ fontSize: '20px', color: '#334155', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>核心獨立系統</h3>
-      {/* 🌟 修改 gridTemplateColumns 確保手機上不破版 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-        
         <div className="stat-card" style={cardStyle}>
           <div style={iconWrapperStyle('linear-gradient(135deg, #10b981 0%, #059669 100%)')}>📦</div>
           <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '5px' }}>掃碼出庫完成數</div>
           <div style={{ fontSize: '42px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>{stats.outbound.toLocaleString()}</div>
         </div>
-
         <div className="stat-card" style={cardStyle}>
           <div style={iconWrapperStyle('linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)')}>🏷️</div>
           <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '5px' }}>智能標籤列印次數</div>
           <div style={{ fontSize: '42px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>{stats.foodLabel.toLocaleString()}</div>
         </div>
-
         <div className="stat-card" style={cardStyle}>
           <div style={iconWrapperStyle('linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)')}>🔍</div>
           <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '5px' }}>條碼檢索次數</div>
           <div style={{ fontSize: '42px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>{stats.search.toLocaleString()}</div>
         </div>
-
       </div>
 
       <h3 style={{ fontSize: '20px', color: '#334155', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>3PL 自動化引擎 (文件處理)</h3>
-      {/* 🌟 縮小 minmax 的值，讓 iPhone 也能完整顯示並排內部元素 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
         
         {/* Yummy */}
@@ -135,13 +135,14 @@ function Dashboard() {
             <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'), margin: 0 }}>🍔</div>
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Yummy 系統</div>
           </div>
-          <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+          {/* 🌟 加入 dual-stat-box 類別控制 */}
+          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.yummyUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.yummyPrint.toLocaleString()}</div>
             </div>
@@ -154,13 +155,13 @@ function Dashboard() {
             <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #ec4899 0%, #db2777 100%)'), margin: 0 }}>🐻</div>
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Hello Bear 系統</div>
           </div>
-          <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.hellobearUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.hellobearPrint.toLocaleString()}</div>
             </div>
@@ -173,13 +174,13 @@ function Dashboard() {
             <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #06b6d4 0%, #0d9488 100%)'), margin: 0 }}>🛍️</div>
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Anymall 系統</div>
           </div>
-          <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.anymallUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.anymallPrint.toLocaleString()}</div>
             </div>
@@ -192,13 +193,13 @@ function Dashboard() {
             <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)'), margin: 0 }}>🏠</div>
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Homey 系統</div>
           </div>
-          <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.homeyUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
-            <div style={{ flex: 1, minWidth: '45%' }}>
+            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.homeyPrint.toLocaleString()}</div>
             </div>
