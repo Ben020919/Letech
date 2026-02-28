@@ -83,46 +83,117 @@ body { font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; bac
 .bg-red { background-color: #fef2f2; color: #ef4444; }
 .bg-teal { background-color: #f0fdfa; color: #14b8a6; }
 
-/* ================= 手機版專屬響應式優化 (小於 768px 觸發) ================= */
-@media (max-width: 768px) {
-  /* 1. 把左右排版的框架變成上下排版 */
+/* =========================================================
+   📱 手機版與平板版 UI 優化 (Mobile UI Upgrade)
+========================================================= */
+
+/* 隱藏手機版頂部列的預設狀態 */
+.mobile-header {
+  display: none;
+}
+.sidebar-overlay {
+  display: none;
+}
+.desktop-only {
+  display: block;
+}
+
+@media screen and (max-width: 768px) {
+  /* 1. 重新配置整體架構，改成上下佈局 */
   .app-container {
     flex-direction: column !important;
   }
 
-  /* 2. 把側邊欄變成「底部導航列」或「頂部滑動選單」 */
-  .sidebar {
-    width: 100% !important;
-    height: auto !important;
+  /* 2. 手機版頂部高質感導覽列 */
+  .mobile-header {
     display: flex;
-    overflow-x: auto; /* 允許左右滑動選單 */
-    padding: 10px !important;
-    white-space: nowrap;
-    z-index: 100;
+    justify-content: space-between;
+    align-items: center;
+    background: #ffffff;
+    padding: 15px 20px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
   }
-  
-  /* 隱藏 Logo 或 Header 節省空間 */
-  .sidebar-logo, .menu-header {
-    display: none !important;
+  .mobile-logo {
+    font-size: 22px;
+    font-weight: 900;
+    color: #0f172a;
+  }
+  .hamburger-btn {
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    color: #0f172a;
+    cursor: pointer;
   }
 
-  /* 選單項目變成橫向排列的按鈕 */
-  .sidebar-menu {
-    display: flex !important;
-    flex-direction: row !important;
-    gap: 10px;
+  /* 3. 側滑選單特效 (Slide-in Menu) */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -280px; /* 預設隱藏在畫面外 */
+    width: 260px;
+    height: 100vh;
+    z-index: 1001;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+  }
+  .sidebar.open {
+    left: 0; /* 滑入畫面 */
+    box-shadow: 10px 0 30px rgba(0,0,0,0.15);
+  }
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+  }
+  .desktop-only {
+    display: none;
   }
 
-  /* 3. 縮小主要內容區塊的內邊距，把空間留給內容 */
+  /* 4. 內容區域瘦身，適合手機閱讀 */
   .main-content {
-    padding: 15px !important;
+    padding: 0;
+    height: calc(100vh - 60px); /* 扣掉 header 高度 */
   }
-  
   .page-content {
-    padding: 10px !important;
+    padding: 15px !important; /* 縮小手機版留白 */
   }
 
-  /* 4. 讓首頁的大標題字體縮小一點 */
-  h1 { font-size: 24px !important; }
-  h2 { font-size: 20px !important; }
+  /* 5. 優化卡片與排版 (Grid 轉 100% 寬度) */
+  .page-header h2 {
+    font-size: 24px !important;
+  }
+  .page-header p {
+    font-size: 14px !important;
+  }
+  
+  /* 強制所有並排的區塊在手機上變成上下疊加 */
+  div[style*="display: flex"][style*="gap: 20px"] {
+    flex-direction: column !important;
+  }
+  div[style*="flex: 1"], div[style*="flex: 2"], div[style*="flex: 1.5"] {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+
+  /* 6. 表格在手機上的滑動體驗優化 */
+  table {
+    font-size: 13px !important;
+  }
+  th, td {
+    padding: 10px 8px !important;
+  }
+  input[type="text"], input[type="number"], input[type="search"] {
+    font-size: 16px !important; /* 防止 iOS 點擊輸入框時自動放大畫面 */
+    padding: 12px !important;
+  }
 }

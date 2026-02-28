@@ -6,13 +6,15 @@ import InspectionZone from './pages/InspectionZone';
 import './App.css';
 
 
+// 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
   const location = useLocation();
+  const [isOpen, setIsOpen] = useState(false); // 控制手機版選單開關
+
   const menuItems = [
     { path: '/', icon: '📊', label: '數據儀表板' },
     { path: '/home', icon: '🏠', label: '系統首頁' },
     { path: '/scanner', icon: '📷', label: '掃碼出庫系統' },
-    // 🌟 加這行，讓左邊選單出現大門按鈕
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
     { path: '/anymall', icon: '🛍️', label: 'Anymall 3PL' },
@@ -22,21 +24,40 @@ function Sidebar() {
     { path: '/search', icon: '🔍', label: '條碼搜尋系統' },
     { path: '/chat', icon: '💬', label: '查詢不到訂單' },
   ];
+
+  // 當路由改變時，自動關閉手機選單
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
+
   return (
-    <div className="sidebar">
-      <div className="sidebar-logo">📦 Letech<span className="logo-dot">.</span></div>
-      <div className="sidebar-menu">
-        <div className="menu-header">主選單 MAIN MENU</div>
-        {menuItems.map((item) => (
-          <Link key={item.path} to={item.path} className={`menu-item ${location.pathname === item.path ? 'active' : ''}`}>
-            <span className="menu-icon">{item.icon}</span> {item.label}
-          </Link>
-        ))}
+    <>
+      {/* 手機版的頂部導覽列 */}
+      <div className="mobile-header">
+        <div className="mobile-logo">📦 Letech<span className="logo-dot">.</span></div>
+        <button className="hamburger-btn" onClick={() => setIsOpen(!isOpen)}>
+          {isOpen ? '✕' : '☰'}
+        </button>
       </div>
-    </div>
+
+      {/* 手機版的半透明遮罩 */}
+      {isOpen && <div className="sidebar-overlay" onClick={() => setIsOpen(false)}></div>}
+
+      {/* 側邊欄本體 (電腦版常駐，手機版滑出) */}
+      <div className={`sidebar ${isOpen ? 'open' : ''}`}>
+        <div className="sidebar-logo desktop-only">📦 Letech<span className="logo-dot">.</span></div>
+        <div className="sidebar-menu">
+          <div className="menu-header">主選單 MAIN MENU</div>
+          {menuItems.map((item) => (
+            <Link key={item.path} to={item.path} className={`menu-item ${location.pathname === item.path ? 'active' : ''}`}>
+              <span className="menu-icon">{item.icon}</span> {item.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
-
 // ----------------- Dashboard (系統數據儀表板 - 高質感專業版) -----------------
 function Dashboard() {
   const [stats, setStats] = useState({
