@@ -8,7 +8,8 @@ import asyncio
 import uuid
 import base64
 import gc
-from functools import lru_cache
+# 🌟 統一向 master_api 借大腦
+from services.master_api import load_master_db
 
 try:
     from services.stats_api import log_action
@@ -21,7 +22,6 @@ PDF_OUT_DIR = "generated_pdfs"
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
 
-DEFAULT_EXCEL_PATH = os.path.join(DATA_DIR, "data.xlsx")
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
 
 router = APIRouter()
@@ -33,16 +33,6 @@ async def delete_file_later(file_path: str):
         try: os.remove(file_path)
         except: pass
     gc.collect()
-
-@lru_cache(maxsize=1)
-def load_master_db():
-    if not os.path.exists(DEFAULT_EXCEL_PATH): return None
-    try: return pd.read_csv(DEFAULT_EXCEL_PATH, dtype=str, encoding='utf-8-sig')
-    except:
-        try: return pd.read_csv(DEFAULT_EXCEL_PATH, dtype=str, encoding='big5')
-        except:
-            try: return pd.read_excel(DEFAULT_EXCEL_PATH, dtype=str)
-            except: return None
 
 def clean_val(val):
     if pd.isna(val) or str(val).lower() == 'nan': return ""

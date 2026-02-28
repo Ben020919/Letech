@@ -8,9 +8,9 @@ import asyncio
 import base64
 import uuid
 import gc
-from functools import lru_cache
 import barcode
 from barcode.writer import ImageWriter
+# 🌟 統一借大腦，不自己建立 cache
 from services.master_api import load_master_db
 
 try:
@@ -22,7 +22,6 @@ router = APIRouter()
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
-DEFAULT_EXCEL_PATH = os.path.join(DATA_DIR, "data.xlsx")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
@@ -34,16 +33,6 @@ async def delete_file_later(file_path: str):
         try: os.remove(file_path)
         except: pass
     gc.collect()
-
-@lru_cache(maxsize=1)
-def load_master_db():
-    if not os.path.exists(DEFAULT_EXCEL_PATH): return None
-    try: return pd.read_csv(DEFAULT_EXCEL_PATH, dtype=str, encoding='utf-8-sig')
-    except:
-        try: return pd.read_csv(DEFAULT_EXCEL_PATH, dtype=str, encoding='big5')
-        except:
-            try: return pd.read_excel(DEFAULT_EXCEL_PATH, dtype=str)
-            except: return None
 
 def clean_val(val):
     if pd.isna(val) or str(val).lower() == 'nan': return ""

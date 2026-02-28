@@ -5,7 +5,8 @@ import pandas as pd
 import os
 import base64
 import re
-from functools import lru_cache
+# 🌟 統一向 master_api 借大腦
+from services.master_api import load_master_db
 
 # 🌟 匯入打卡系統
 try:
@@ -16,21 +17,10 @@ except ImportError:
 # ================= 補上遺失的路徑定義 =================
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
-DEFAULT_EXCEL_PATH = os.path.join(DATA_DIR, "data.xlsx")
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
 # ======================================================
 
 router = APIRouter()
-
-@lru_cache(maxsize=1)
-def load_master_db():
-    if not os.path.exists(DEFAULT_EXCEL_PATH): return None
-    try: return pd.read_csv(DEFAULT_EXCEL_PATH, dtype=str, encoding='utf-8-sig')
-    except:
-        try: return pd.read_csv(DEFAULT_EXCEL_PATH, dtype=str, encoding='big5')
-        except:
-            try: return pd.read_excel(DEFAULT_EXCEL_PATH, dtype=str)
-            except: return None
 
 def clean_val(val):
     if pd.isna(val) or str(val).lower() == 'nan': return ""
