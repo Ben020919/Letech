@@ -1,15 +1,14 @@
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode'; // 🌟 升級為強大的純底層引擎
 import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, useNavigate, Route, Link, useLocation } from 'react-router-dom';
 import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
 import './App.css';
 
-
 // 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false); // 控制手機版選單開關
+  const [isOpen, setIsOpen] = useState(false); 
 
   const menuItems = [
     { path: '/', icon: '📊', label: '數據儀表板' },
@@ -25,25 +24,19 @@ function Sidebar() {
     { path: '/chat', icon: '💬', label: '查詢不到訂單' },
   ];
 
-  // 當路由改變時，自動關閉手機選單
   useEffect(() => {
     setIsOpen(false);
   }, [location.pathname]);
 
   return (
     <>
-      {/* 手機版的頂部導覽列 */}
       <div className="mobile-header">
         <div className="mobile-logo">📦 Letech<span className="logo-dot">.</span></div>
         <button className="hamburger-btn" onClick={() => setIsOpen(!isOpen)}>
           {isOpen ? '✕' : '☰'}
         </button>
       </div>
-
-      {/* 手機版的半透明遮罩 */}
       {isOpen && <div className="sidebar-overlay" onClick={() => setIsOpen(false)}></div>}
-
-      {/* 側邊欄本體 (電腦版常駐，手機版滑出) */}
       <div className={`sidebar ${isOpen ? 'open' : ''}`}>
         <div className="sidebar-logo desktop-only">📦 Letech<span className="logo-dot">.</span></div>
         <div className="sidebar-menu">
@@ -58,6 +51,7 @@ function Sidebar() {
     </>
   );
 }
+
 // ----------------- Dashboard (系統數據儀表板 - 高質感專業版) -----------------
 function Dashboard() {
   const [stats, setStats] = useState({
@@ -79,14 +73,12 @@ function Dashboard() {
     } catch (err) { console.error("獲取數據失敗", err); }
   };
 
-  // 每 10 秒自動刷新數據，讓儀表板保持即時
   useEffect(() => {
     fetchStats();
     const interval = setInterval(fetchStats, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // 通用的卡片樣式設定
   const cardStyle = { background: '#ffffff', borderRadius: '24px', padding: '25px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', transition: 'transform 0.2s', cursor: 'default' };
   const iconWrapperStyle = (bg) => ({ width: '50px', height: '50px', borderRadius: '14px', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '15px' });
 
@@ -98,7 +90,6 @@ function Dashboard() {
         @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
       `}</style>
 
-      {/* 頂部標題與即時狀態 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '30px', flexWrap: 'wrap', gap: '15px' }}>
         <div>
           <h2 style={{ fontSize: '32px', color: '#0f172a', margin: '0 0 8px 0', fontWeight: '800' }}>📊 營運數據中心</h2>
@@ -110,9 +101,9 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* 區塊 1: 核心系統數據 */}
       <h3 style={{ fontSize: '20px', color: '#334155', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>核心獨立系統</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '40px' }}>
+      {/* 🌟 修改 gridTemplateColumns 確保手機上不破版 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '40px' }}>
         
         <div className="stat-card" style={cardStyle}>
           <div style={iconWrapperStyle('linear-gradient(135deg, #10b981 0%, #059669 100%)')}>📦</div>
@@ -134,9 +125,9 @@ function Dashboard() {
 
       </div>
 
-      {/* 區塊 2: 3PL 自動化處理數據 */}
       <h3 style={{ fontSize: '20px', color: '#334155', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>3PL 自動化引擎 (文件處理)</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+      {/* 🌟 縮小 minmax 的值，讓 iPhone 也能完整顯示並排內部元素 */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
         
         {/* Yummy */}
         <div className="stat-card" style={cardStyle}>
@@ -145,12 +136,12 @@ function Dashboard() {
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Yummy 系統</div>
           </div>
           <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.yummyUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
+            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.yummyPrint.toLocaleString()}</div>
             </div>
@@ -164,12 +155,12 @@ function Dashboard() {
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Hello Bear 系統</div>
           </div>
           <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.hellobearUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
+            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.hellobearPrint.toLocaleString()}</div>
             </div>
@@ -183,12 +174,12 @@ function Dashboard() {
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Anymall 系統</div>
           </div>
           <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.anymallUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
+            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.anymallPrint.toLocaleString()}</div>
             </div>
@@ -202,12 +193,12 @@ function Dashboard() {
             <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Homey 系統</div>
           </div>
           <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.homeyUpload.toLocaleString()}</div>
             </div>
-            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
+            <div style={{ width: '1px', background: '#e2e8f0', margin: '0 10px' }}></div>
+            <div style={{ flex: 1, minWidth: '45%' }}>
               <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
               <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.homeyPrint.toLocaleString()}</div>
             </div>
@@ -218,6 +209,7 @@ function Dashboard() {
     </div>
   );
 }
+
 // ----------------- ScannerPage (掃碼出庫系統 - UI 專業升級版) -----------------
 function ScannerPage() {
   const [orderId, setOrderId] = useState('');
@@ -229,6 +221,7 @@ function ScannerPage() {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   
   const inputRef = useRef(null);
+  const lastCameraScan = useRef(""); // 🌟 防止相機連續掃描重複觸發
 
   useEffect(() => {
     if (inputRef.current && !isCameraOpen) {
@@ -243,41 +236,29 @@ function ScannerPage() {
   };
 
   const playSound = (type) => {
-    // 1. 觸發手機震動 (如果設備支援)
-    if (navigator.vibrate) {
-        navigator.vibrate(type === 'success' ? 100 : [300, 100, 300]);
-    }
-
-    // 2. 觸發真實網頁聲音 (嗶嗶聲)
+    if (navigator.vibrate) navigator.vibrate(type === 'success' ? 100 : [300, 100, 300]);
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
-      
       const audioCtx = new AudioContext();
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
-      
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
-      
       if (type === 'success') {
-        // ✅ 掃描成功：清脆的高音「嗶！」(100毫秒)
         oscillator.type = 'sine';
         oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); // 音量
+        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.1);
       } else {
-        // ❌ 掃描失敗/警告：低沉的「叭叭！」聲 (300毫秒)
         oscillator.type = 'sawtooth';
         oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
         gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.3);
       }
-    } catch (err) {
-      console.error("聲音播放失敗", err);
-    }
+    } catch (err) { console.error("聲音播放失敗", err); }
   };
 
   const submitOrder = async (targetOrderId) => {
@@ -286,27 +267,19 @@ function ScannerPage() {
     try {
       const res = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${targetOrderId.trim()}`);
       if (!res.ok) throw new Error((await res.json()).detail);
-      
       const data = await res.json();
       let t_q = 0, t_s = 0;
       (data.products || []).forEach(p => {
           t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
           (p.products || []).forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
       });
-      
-      if (data.status || (t_q > 0 && t_s >= t_q)) {
-           throw new Error(`🚫 訂單 ${targetOrderId} 已出庫！請勿重複作業。`);
-      }
-      
+      if (data.status || (t_q > 0 && t_s >= t_q)) throw new Error(`🚫 訂單 ${targetOrderId} 已出庫！請勿重複作業。`);
       setOrderData(data);
       setOrderId(targetOrderId.trim());
       setInputVal('');
       playSound('success');
-    } catch (err) {
-      setErrorMsg(err.message);
-      playSound('error');
-      setInputVal('');
-    } finally { setLoading(false); }
+    } catch (err) { setErrorMsg(err.message); playSound('error'); setInputVal(''); } 
+    finally { setLoading(false); }
   };
 
   const submitBarcode = async (barcode) => {
@@ -319,29 +292,22 @@ function ScannerPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_id: orderId, barcode: barcode.trim() })
       });
-      
       if (!res.ok) throw new Error((await res.json()).detail);
-      
       const data = await res.json();
       playSound('success');
-      
       if (data.is_done) {
           setSuccessMsg(`🎉 完美！訂單 ${orderId} 已全數出庫完成。`);
-          setOrderData(null);
-          setOrderId('');
+          setOrderData(null); setOrderId('');
       } else {
           setSuccessMsg(`✅ ${barcode} 掃描成功！`);
           setOrderData(data.order_data);
       }
-    } catch (err) {
-      setErrorMsg(err.message);
-      playSound('error');
-    } finally { setLoading(false); }
+    } catch (err) { setErrorMsg(err.message); playSound('error'); } 
+    finally { setLoading(false); }
   };
 
   const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
-
   const handleReset = async () => {
     if (window.confirm("確定要換單或重置目前進度嗎？")) {
       try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderId}`, { method: 'POST' }); } catch (e) {}
@@ -349,29 +315,45 @@ function ScannerPage() {
     }
   };
 
+  // 🌟 使用更強大的 Html5Qrcode 強制綁定後置鏡頭
   useEffect(() => {
+    let html5QrCode;
     if (isCameraOpen) {
-      const scanner = new Html5QrcodeScanner(
-        "reader", 
-        { fps: 10, qrbox: { width: 250, height: 100 }, aspectRatio: 1.0 }, 
-        false
-      );
+      html5QrCode = new Html5Qrcode("reader");
+      const cameraConfig = { facingMode: "environment" }; 
+      const scanConfig = { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 };
       
-      scanner.render(
+      html5QrCode.start(
+        cameraConfig,
+        scanConfig,
         (decodedText) => {
-          scanner.clear();
+          if (lastCameraScan.current === decodedText) return;
+          lastCameraScan.current = decodedText;
+          setTimeout(() => { lastCameraScan.current = ""; }, 2000);
+          
+          if (html5QrCode && html5QrCode.isScanning) {
+             html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
+          }
           setIsCameraOpen(false);
           playSound('success');
+          
           if (!orderData) submitOrder(decodedText);
           else submitBarcode(decodedText);
         },
         (error) => { }
-      );
-      return () => { scanner.clear().catch(e => console.error("清除相機失敗", e)); };
+      ).catch(err => {
+         console.error("相機啟動失敗", err);
+         alert("無法開啟相機，請確認設備是否有後置鏡頭並給予權限！");
+         setIsCameraOpen(false);
+      });
     }
+    return () => {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
+      }
+    };
   }, [isCameraOpen, orderData]);
 
-  // ================= 第一階段：尚未鎖定訂單 =================
   if (!orderData) {
     return (
       <div className="page-content" onClick={handleFocusLoss}>
@@ -403,13 +385,8 @@ function ScannerPage() {
             </div>
             
             <input 
-                ref={inputRef}
-                type="text" 
-                value={inputVal}
-                onChange={(e) => setInputVal(e.target.value)}
-                onKeyDown={handleOrderKeyDown}
-                placeholder="在此掃描單號..."
-                disabled={loading || isCameraOpen}
+                ref={inputRef} type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={handleOrderKeyDown}
+                placeholder="在此掃描單號..." disabled={loading || isCameraOpen}
                 style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '14px', border: '2px solid #cbd5e1', outline: 'none', fontWeight: 'bold', backgroundColor: (loading || isCameraOpen) ? '#f8fafc' : '#ffffff', color: '#334155', transition: 'border-color 0.2s', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
             />
             {loading && <p style={{ color: '#2563eb', fontWeight: 'bold', marginTop: '15px', fontSize: '15px' }}>⏳ 連線伺服器中...</p>}
@@ -418,7 +395,6 @@ function ScannerPage() {
     );
   }
 
-  // ================= 計算進度 =================
   let totalQty = 0; let totalScanned = 0;
   const products = orderData.products || [];
   products.forEach(p => {
@@ -427,10 +403,8 @@ function ScannerPage() {
   });
   const progressPercent = totalQty === 0 ? 0 : Math.min((totalScanned / totalQty) * 100, 100);
 
-  // ================= 第二階段：已鎖定訂單 =================
   return (
     <div className="page-content" onClick={handleFocusLoss}>
-        {/* 頂部資訊列 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px', background: '#ffffff', padding: '20px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
             <div>
                 <h2 style={{ fontSize: '24px', margin: '0 0 5px 0', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -447,9 +421,7 @@ function ScannerPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '25px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            {/* 左側：專業數據表格 */}
             <div style={{ flex: '1.5', minWidth: '320px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
-                {/* 進度條區塊 */}
                 <div style={{ padding: '20px 25px', borderBottom: '1px solid #f1f5f9' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontWeight: '700', color: '#334155', fontSize: '15px' }}>
                         <span>📦 出庫進度</span>
@@ -460,7 +432,6 @@ function ScannerPage() {
                     </div>
                 </div>
                 
-                {/* 表格區塊 */}
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
                       <thead>
@@ -479,12 +450,10 @@ function ScannerPage() {
                                   <React.Fragment key={idx}>
                                       <tr style={{ borderBottom: '1px solid #f1f5f9', background: isDone ? '#f0fdf4' : '#ffffff', transition: 'background 0.2s' }}>
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
-                                          {/* 🌟 條碼不換行，使用等寬字體 */}
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>{p.quantity}</td>
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: isDone ? '#15803d' : '#2563eb' }}>{p.scanQty}</td>
                                           <td style={{ padding: '16px 20px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                              {/* 🌟 現代化膠囊標籤 */}
                                               <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: isDone ? '#dcfce7' : '#fef3c7', color: isDone ? '#166534' : '#b45309' }}>
                                                   {isDone ? '✅ 已完成' : `缺 ${p.quantity - p.scanQty}`}
                                               </span>
@@ -543,13 +512,8 @@ function ScannerPage() {
                     </div>
 
                     <input 
-                        ref={inputRef}
-                        type="text" 
-                        value={inputVal}
-                        onChange={(e) => setInputVal(e.target.value)}
-                        onKeyDown={handleBarcodeKeyDown}
-                        placeholder="掃描商品條碼..."
-                        disabled={loading || isCameraOpen}
+                        ref={inputRef} type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={handleBarcodeKeyDown}
+                        placeholder="掃描商品條碼..." disabled={loading || isCameraOpen}
                         style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '12px', border: '2px solid #10b981', outline: 'none', fontWeight: 'bold', backgroundColor: (loading || isCameraOpen) ? '#f8fafc' : '#ffffff', color: '#334155', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
                     />
                     <p style={{ color: '#64748b', fontSize: '13px', marginTop: '15px', fontWeight: '500' }}>
@@ -589,9 +553,21 @@ function SearchPage() {
       </div>
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         
-        {/* 左側：搜尋區塊 */}
+        {/* 左側：搜尋區塊 (🌟 加入了清除按鈕) */}
         <div style={{ flex: '1', minWidth: '300px', maxWidth: '700px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋..." style={{ width: '100%', padding: '16px', borderRadius: '10px', border: '2px solid #e2e8f0', fontSize: '16px', outline: 'none', marginBottom: '20px' }} />
+          <div style={{ position: 'relative', width: '100%', marginBottom: '20px' }}>
+             <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋..." 
+                style={{ width: '100%', padding: '16px', paddingRight: '40px', borderRadius: '10px', border: '2px solid #e2e8f0', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} 
+             />
+             {query && (
+               <button 
+                 onClick={() => { setQuery(''); setResults([]); setHasSearched(false); }} 
+                 style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer', padding: '5px' }}>
+                 ✕
+               </button>
+             )}
+          </div>
+
           {loading && <p style={{ color: '#64748b', fontWeight: 'bold' }}>⏳ 檔案檢索中，請稍候...</p>}
           {error && <p style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ {error}</p>}
           {!loading && !error && hasSearched && results.length === 0 && <p style={{ color: '#f59e0b', fontWeight: 'bold' }}>❌ 找不到相符的資料</p>}
@@ -617,7 +593,7 @@ function SearchPage() {
           )}
         </div>
         
-        {/* 右側：插入萬用資料庫上傳面板 (綁定搜尋專屬 API) */}
+        {/* 右側：插入萬用資料庫上傳面板 */}
         <DatabaseUploader 
             title="⚙️ 搜尋專用資料庫"
             infoUrl="https://letech-pro.onrender.com/api/search/info"
@@ -629,14 +605,8 @@ function SearchPage() {
   );
 }
 
-// ================= 共用表格樣式：自動換行 =================
-const tableCellStyle = { 
-  padding: '12px', 
-  minWidth: '250px', 
-  whiteSpace: 'pre-wrap', 
-  wordBreak: 'break-word', 
-  lineHeight: '1.6' 
-};
+// ================= 共用表格樣式 =================
+const tableCellStyle = { padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6' };
 
 function YummyPage() {
   const [file, setFile] = useState(null);
@@ -649,8 +619,6 @@ function YummyPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-
-
       const response = await fetch('https://letech-pro.onrender.com/api/yummy/upload', { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
@@ -665,11 +633,8 @@ function YummyPage() {
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-    // 🌟 【新增】偷偷打 API 告訴後端我列印了
     fetch('https://letech-pro.onrender.com/api/stats/log_print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'Yummy_Print' }) // 如果是 HelloBear 就是 HelloBear_Print
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Yummy_Print' })
     }).catch(e => console.log(e));
 
     const win = window.open('', '_blank', 'width=400,height=400');
@@ -679,12 +644,7 @@ function YummyPage() {
   return (
     <div className="page-content">
       <div className="page-header"><h2>🍔 Yummy 3PL 系統</h2><p>上傳 HKTVmall Yummy Delivery Note 進行解析與列印</p></div>
-
-
-      {/* 🌟 核心修改：用 display: 'flex' 讓上傳 PDF 和上傳 Database 並排 */}
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px' }}>
-          
-          {/* 左側：原本的 PDF 上傳區塊 */}
           <div style={{ flex: '1', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
             <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ marginBottom: '15px' }} /><br />
             <button onClick={handleProcess} disabled={loading} style={{ background: loading ? '#94a3b8' : '#3b82f6', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
@@ -692,14 +652,7 @@ function YummyPage() {
             </button>
             {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
           </div>
-
-          {/* 右側：直接插入我們的萬用資料庫上傳面板 */}
-          <DatabaseUploader 
-            title="⚙️ 3PL 主資料庫"
-            infoUrl="https://letech-pro.onrender.com/api/master/info"
-            uploadUrl="https://letech-pro.onrender.com/api/master/upload"
-          />
-
+          <DatabaseUploader title="⚙️ 3PL 主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
       </div>
       {resultData && (
         <>
@@ -769,19 +722,13 @@ function AnymallPage() {
   };
 
   const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) {
-        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
-    }
+    if (resultData && resultData.download_url) { window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank'); }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-
-    // 🌟 【新增】偷偷打 API 告訴後端我列印了
     fetch('https://letech-pro.onrender.com/api/stats/log_print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'Anymall_Print' }) // 如果是 HelloBear 就是 HelloBear_Print
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Anymall_Print' }) 
     }).catch(e => console.log(e));
 
     const win = window.open('', '_blank', 'width=400,height=400');
@@ -863,19 +810,13 @@ function HelloBearPage() {
   };
 
   const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) {
-        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
-    }
+    if (resultData && resultData.download_url) { window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank'); }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-
-    // 🌟 【新增】偷偷打 API 告訴後端我列印了
     fetch('https://letech-pro.onrender.com/api/stats/log_print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'HelloBear_Print' }) // 如果是 HelloBear 就是 HelloBear_Print
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'HelloBear_Print' }) 
     }).catch(e => console.log(e));
     
     const win = window.open('', '_blank', 'width=400,height=400');
@@ -885,7 +826,6 @@ function HelloBearPage() {
   return (
     <div className="page-content">
       <div className="page-header"><h2>🐻 Hello Bear 3PL 系統</h2><p>上傳 Hello Bear Delivery Note (PDF) 進行極速解析</p></div>
-      {/* 🌟 並排區塊：左側上傳 PDF，右側資料庫 */}
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
           <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
@@ -895,11 +835,7 @@ function HelloBearPage() {
           {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
         </div>
 
-        <DatabaseUploader 
-          title="⚙️ 3PL & 標籤主資料庫"
-          infoUrl="https://letech-pro.onrender.com/api/master/info"
-          uploadUrl="https://letech-pro.onrender.com/api/master/upload"
-        />
+        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
       </div>
       {resultData && (
         <>
@@ -968,19 +904,13 @@ function HomeyPage() {
   };
 
   const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) {
-        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
-    }
+    if (resultData && resultData.download_url) { window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank'); }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-
-    // 🌟 【修正1】打卡通知後端：改成正確的 Homey_Print
     fetch('https://letech-pro.onrender.com/api/stats/log_print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'Homey_Print' }) 
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Homey_Print' }) 
     }).catch(e => console.log(e));
 
     const finalHtml = htmlContent.replace('/* FONT_CSS_PLACEHOLDER */', resultData.font_css || '');
@@ -989,24 +919,14 @@ function HomeyPage() {
     if (win) { 
         win.document.write(finalHtml); 
         win.document.close(); 
-        
-        // 🌟 【修正2】放棄不可靠的 onload，改用 setTimeout 強制觸發列印
-        setTimeout(() => {
-            win.focus(); 
-            win.print(); 
-        }, 0); // 給瀏覽器 0.3 秒的時間畫出條碼圖片
-
-        // 監聽：當使用者印完或按取消後，自動關閉視窗
-        win.onafterprint = function() { 
-            win.close(); 
-        }; 
+        setTimeout(() => { win.focus(); win.print(); }, 0); 
+        win.onafterprint = function() { win.close(); }; 
     }
   };
 
   return (
     <div className="page-content">
       <div className="page-header"><h2>🏠 Homey 3PL 系統</h2><p>上傳 Homey Delivery Note (PDF) 進行極速解析 (支援蟲蟲、食品、Repack 標籤)</p></div>
-      {/* 🌟 並排區塊：左側上傳 PDF，右側資料庫 */}
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
           <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
@@ -1016,11 +936,7 @@ function HomeyPage() {
           {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
         </div>
 
-        <DatabaseUploader 
-          title="⚙️ 3PL & 標籤主資料庫"
-          infoUrl="https://letech-pro.onrender.com/api/master/info"
-          uploadUrl="https://letech-pro.onrender.com/api/master/upload"
-        />
+        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
       </div>
       {resultData && (
         <>
@@ -1044,7 +960,6 @@ function HomeyPage() {
                 <tbody>
                   {resultData.items.map((item, idx) => {
                     const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
-                    // 如果是這四種需要列印的標籤，就把背景變成黃色提醒
                     const isHighlight = ["repack", "sku", "蟲", "food"].some(k => item.label_type.toLowerCase().includes(k));
                     
                     return (
@@ -1082,8 +997,6 @@ function FoodLabelPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
-  
-  // 記錄每個搜尋結果要列印的數量
   const [quantities, setQuantities] = useState({});
 
   const handleSearch = async (e) => {
@@ -1095,8 +1008,6 @@ function FoodLabelPage() {
         if (!response.ok) { const errData = await response.json(); setError(errData.detail || '發生未知錯誤'); setResults([]); return; }
         const data = await response.json(); 
         setResults(data);
-        
-        // 預設列印數量為 1
         const initQtys = {};
         data.forEach(r => { initQtys[r.Product_No] = 1; });
         setQuantities(initQtys);
@@ -1110,21 +1021,14 @@ function FoodLabelPage() {
       const response = await fetch('https://letech-pro.onrender.com/api/food_label/generate_html', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          item: { Product_No: item.Product_No, Barcode: item.Barcode, Name: item.Name },
-          matched_data: item.matched_data,
-          qty: parseInt(qty),
-          status: item.status
-        })
+        body: JSON.stringify({ item: { Product_No: item.Product_No, Barcode: item.Barcode, Name: item.Name }, matched_data: item.matched_data, qty: parseInt(qty), status: item.status })
       });
       if (!response.ok) { throw new Error('無法生成標籤'); }
       const data = await response.json();
       
       const win = window.open('', '_blank', 'width=400,height=400');
       if (win) { win.document.write(data.html); win.document.close(); win.onload = function() { win.focus(); win.onafterprint = function() { win.close(); }; win.print(); }; }
-    } catch (err) {
-      alert("列印失敗：" + err.message);
-    }
+    } catch (err) { alert("列印失敗：" + err.message); }
   };
 
   const getStatusBadge = (status) => {
@@ -1143,21 +1047,16 @@ function FoodLabelPage() {
         <p>輸入 Product No / Barcode / 名稱，搜尋並列印專屬標籤</p>
       </div>
       
-      {/* 🌟 並排區塊：左側搜尋，右側資料庫 */}
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
            <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#0f172a' }}>🔍 搜尋商品</h3>
-           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋... (例如: GAR-113166)" style={{ width: '100%', padding: '16px', borderRadius: '10px', border: '2px solid #e2e8f0', fontSize: '16px', outline: 'none' }} />
+           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋..." style={{ width: '100%', padding: '16px', borderRadius: '10px', border: '2px solid #e2e8f0', fontSize: '16px', outline: 'none' }} />
            {loading && <p style={{ color: '#3b82f6', fontWeight: 'bold', marginTop: '15px' }}>⏳ 資料檢索中，請稍候...</p>}
            {error && <p style={{ color: '#ef4444', fontWeight: 'bold', marginTop: '15px' }}>❌ {error}</p>}
            {!loading && !error && hasSearched && results.length === 0 && <p style={{ color: '#f59e0b', fontWeight: 'bold', marginTop: '15px' }}>❌ 找不到相符的商品資料</p>}
         </div>
 
-        <DatabaseUploader 
-          title="⚙️ 3PL & 標籤主資料庫"
-          infoUrl="https://letech-pro.onrender.com/api/master/info"
-          uploadUrl="https://letech-pro.onrender.com/api/master/upload"
-        />
+        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
       </div>
       
       {error && <p style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ {error}</p>}
@@ -1188,9 +1087,7 @@ function FoodLabelPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <span style={{ fontWeight: 'bold', color: '#475569', fontSize: '14px' }}>數量:</span>
                             <input 
-                                type="number" 
-                                min="1" 
-                                max="1000" 
+                                type="number" min="1" max="1000" 
                                 value={quantities[item.Product_No] || 1} 
                                 onChange={(e) => setQuantities({...quantities, [item.Product_No]: e.target.value})}
                                 style={{ width: '80px', padding: '10px', borderRadius: '8px', border: '2px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', outline: 'none' }} 
@@ -1224,9 +1121,8 @@ function ChatPage() {
   
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
-  const forceScrollRef = useRef(false); // 🌟 新增：用來記住「我是不是剛發送了訊息」
+  const forceScrollRef = useRef(false); 
 
-  // 取得訊息
   const fetchMessages = async () => {
     try {
       const res = await fetch('https://letech-pro.onrender.com/api/chat/messages');
@@ -1237,28 +1133,22 @@ function ChatPage() {
     } catch (err) { console.error("獲取訊息失敗", err); }
   };
 
-  // 每 3 秒自動更新一次
   useEffect(() => {
     fetchMessages();
     const interval = setInterval(fetchMessages, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  // 🌟 核心修正：監聽訊息變化，確保在 DOM「渲染完成後」才計算與捲動
   useEffect(() => {
     if (!scrollContainerRef.current) return;
-    
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-    
-    // 判斷是否在底部 (放寬緩衝到 150px)
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 150;
 
-    // 唯有「自己剛發送訊息」或「本來就停在底部」時，才執行往下滾動
     if (forceScrollRef.current || isAtBottom) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      forceScrollRef.current = false; // 滾完之後，立刻關閉強制標記
+      forceScrollRef.current = false; 
     }
-  }, [messages]); // 只要 messages 一更新，就會執行這裡
+  }, [messages]); 
 
   const compressImage = (file) => {
     return new Promise((resolve) => {
@@ -1280,29 +1170,22 @@ function ChatPage() {
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob(
-            (blob) => {
+          canvas.toBlob((blob) => {
               const newFile = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
               resolve(newFile);
-            }, 'image/jpeg', 0.8
-          );
+            }, 'image/jpeg', 0.8);
         };
       };
     });
   };
 
   const handleSend = async () => {
-    if (!userName.trim()) {
-      alert("⚠️ 請先在左上方輸入您的「名字」！");
-      return;
-    }
+    if (!userName.trim()) { alert("⚠️ 請先在左上方輸入您的「名字」！"); return; }
     if (!inputText.trim() && !selectedImage) return;
 
     setIsSending(true);
     let fileToSend = selectedImage;
-    if (selectedImage) {
-        fileToSend = await compressImage(selectedImage);
-    }
+    if (selectedImage) { fileToSend = await compressImage(selectedImage); }
 
     const formData = new FormData();
     formData.append('user_name', userName);
@@ -1316,8 +1199,7 @@ function ChatPage() {
         setSelectedImage(null);
         const fileInput = document.getElementById('chat-image-upload');
         if (fileInput) fileInput.value = '';
-        
-        forceScrollRef.current = true; // 🌟 標記：我剛發送了新訊息，下次畫面更新請強制置底！
+        forceScrollRef.current = true; 
         fetchMessages(); 
       } else {
         const errData = await res.json();
@@ -1331,18 +1213,13 @@ function ChatPage() {
     if (!window.confirm("確定要撤回這則訊息嗎？")) return;
     try {
       const res = await fetch(`https://letech-pro.onrender.com/api/chat/message/${msgId}`, { method: 'DELETE' });
-      if (res.ok) {
-        fetchMessages();
-      } else {
-        alert("撤回失敗，請稍後再試。");
-      }
-    } catch (err) {
-      alert("連線失敗！");
-    }
+      if (res.ok) { fetchMessages(); } else { alert("撤回失敗，請稍後再試。"); }
+    } catch (err) { alert("連線失敗！"); }
   };
 
+  // 🌟 加入了「!e.nativeEvent.isComposing」防護，用拼音打字按 Enter 再也不會誤傳！
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
@@ -1362,19 +1239,12 @@ function ChatPage() {
 
       <div style={{ marginBottom: '15px' }}>
         <input 
-          type="text" 
-          placeholder="👤 請輸入名字 (必填)" 
-          value={userName} 
-          onChange={(e) => setUserName(e.target.value)} 
+          type="text" placeholder="👤 請輸入名字 (必填)" value={userName} onChange={(e) => setUserName(e.target.value)} 
           style={{ padding: '10px 15px', borderRadius: '8px', border: '2px solid #e2e8f0', outline: 'none', width: '250px', fontSize: '15px', fontWeight: 'bold' }}
         />
       </div>
 
-      {/* 🌟 訊息顯示區，加入 ref={scrollContainerRef} 才能正確監聽捲動高度 */}
-      <div 
-        ref={scrollContainerRef}
-        style={{ flex: 1, background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}
-      >
+      <div ref={scrollContainerRef} style={{ flex: 1, background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}>
         {messages.length === 0 ? (
           <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: 'auto', marginBottom: 'auto' }}>目前沒有訊息</div>
         ) : (
@@ -1392,25 +1262,12 @@ function ChatPage() {
                   <strong style={{ color: '#3b82f6', fontSize: '14px' }}>{msg.user_name}</strong>
                   <span>• {msg.display_time}</span>
                   {canDelete && (
-                    <span 
-                      onClick={() => handleDelete(msg.id)}
-                      style={{ cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', padding: '2px 6px', background: '#fee2e2', borderRadius: '4px' }}
-                      title="1分鐘內可撤回訊息"
-                    >
+                    <span onClick={() => handleDelete(msg.id)} style={{ cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', padding: '2px 6px', background: '#fee2e2', borderRadius: '4px' }} title="1分鐘內可撤回訊息">
                       🗑️ 撤回
                     </span>
                   )}
                 </div>
-                <div style={{ 
-                  background: 'white', 
-                  color: '#0f172a',
-                  padding: '12px 16px', 
-                  borderRadius: '4px 16px 16px 16px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                  maxWidth: '85%',
-                  wordWrap: 'break-word',
-                  border: '1px solid #e2e8f0'
-                }}>
+                <div style={{ background: 'white', color: '#0f172a', padding: '12px 16px', borderRadius: '4px 16px 16px 16px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxWidth: '85%', wordWrap: 'break-word', border: '1px solid #e2e8f0' }}>
                   {msg.message && <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>{msg.message}</div>}
                   {msg.image_url && (
                     <img src={msg.image_url} alt="附件圖片" style={{ maxWidth: '250px', width: '100%', borderRadius: '8px', marginTop: msg.message ? '10px' : '0', cursor: 'pointer', border: '1px solid #e2e8f0' }} onClick={() => window.open(msg.image_url, '_blank')} title="點擊放大圖片" />
@@ -1432,11 +1289,7 @@ function ChatPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           {selectedImage && <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 'bold', marginBottom: '5px' }}>📎 已選擇圖片: {selectedImage.name}</div>}
           <input 
-            type="text" 
-            placeholder="請直接輸入訂單號碼..." 
-            value={inputText} 
-            onChange={(e) => setInputText(e.target.value)} 
-            onKeyDown={handleKeyDown}
+            type="text" placeholder="請直接輸入訂單號碼..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown}
             style={{ width: '100%', padding: '12px', border: 'none', outline: 'none', fontSize: '15px', background: 'transparent' }}
           />
         </div>
@@ -1453,118 +1306,30 @@ function ChatPage() {
 function HomePage() {
   const navigate = useNavigate();
 
-  // 🌟 擴充為 8 個完整系統模組
   const features = [
-    {
-      id: 'scanner',
-      title: '📦 掃碼出庫作業',
-      desc: '支援相機與實體掃描槍，光速讀取條碼並同步至 Letech 伺服器，自動核對出庫明細，防止漏發與錯發。',
-      path: '/scanner',
-      icon: '🛒',
-      bgGradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-      shadow: 'rgba(16, 185, 129, 0.25)',
-      status: '🟢 系統正常'
-    },
-    {
-      id: 'search',
-      title: '🔍 條碼搜尋系統',
-      desc: '極速檢索全站商品資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，一秒定位商品詳細資訊。',
-      path: '/search',
-      icon: '🔍',
-      bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', // 靛藍色
-      shadow: 'rgba(99, 102, 241, 0.25)',
-      status: '🟢 系統正常'
-    },
-    {
-      id: 'label',
-      title: '🏷️ 智能標籤列印',
-      desc: '輸入關鍵字自動從資料庫抓取營養標示、蟲蟲警語，一鍵排版並支援自訂數量快速列印食品標籤。',
-      path: '/label',
-      icon: '🖨️',
-      bgGradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-      shadow: 'rgba(59, 130, 246, 0.25)',
-      status: '🟢 系統正常'
-    },
-    {
-      id: 'yummy',
-      title: '🍔 Yummy 3PL',
-      desc: '專屬 HKTVmall Yummy Delivery Note 解析引擎，自動清洗無效資料並偵測重複訂單，快速產出列印清單。',
-      path: '/yummy',
-      icon: '🍔',
-      bgGradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', // 橘紅色
-      shadow: 'rgba(249, 115, 22, 0.25)',
-      status: '🟢 系統正常'
-    },
-    {
-      id: 'anymall',
-      title: '🛍️ Anymall 3PL',
-      desc: 'Anymall PDF 智能解析模組，自動抓取商品編號與數量，智能判定是否需要列印標籤。',
-      path: '/anymall',
-      icon: '🛍️',
-      bgGradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', // 粉紅色
-      shadow: 'rgba(236, 72, 153, 0.25)',
-      status: '🟢 系統正常'
-    },
-    {
-      id: 'hellobear',
-      title: '🐻 Hello Bear 3PL',
-      desc: '針對 Hello Bear 的訂單結構優化，專門判定 T06 特殊條碼，支援高效率批量資料轉換。',
-      path: '/hellobear',
-      icon: '🐻',
-      bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', // 紫色
-      shadow: 'rgba(139, 92, 246, 0.25)',
-      status: '🟢 系統正常'
-    },
-    {
-      id: 'homey',
-      title: '🏠 Homey 3PL',
-      desc: 'Homey 專用處理中心，具備多重標籤判定邏輯，自動切換蟲蟲、食品、Repack 等特殊標籤排版。',
-      path: '/homey',
-      icon: '🏠',
-      bgGradient: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', // 藍綠色
-      shadow: 'rgba(20, 184, 166, 0.25)',
-      status: '🟢 系統正常'
-    },
-    {
-      id: 'chat',
-      title: '💬 異常訂單回報',
-      desc: '專屬的即時通訊頻道，遇到查無訂單、包裝異常等狀況，支援圖片上傳與文字回報，1分鐘內可撤回。',
-      path: '/chat',
-      icon: '🚨',
-      bgGradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-      shadow: 'rgba(245, 158, 11, 0.25)',
-      status: '🟢 系統正常'
-    }
+    { id: 'scanner', title: '📦 掃碼出庫作業', desc: '支援相機與實體掃描槍，光速讀取條碼並同步至 Letech 伺服器，自動核對出庫明細，防止漏發與錯發。', path: '/scanner', icon: '🛒', bgGradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', shadow: 'rgba(16, 185, 129, 0.25)', status: '🟢 系統正常' },
+    { id: 'search', title: '🔍 條碼搜尋系統', desc: '極速檢索全站商品資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，一秒定位商品詳細資訊。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
+    { id: 'label', title: '🏷️ 智能標籤列印', desc: '輸入關鍵字自動從資料庫抓取營養標示、蟲蟲警語，一鍵排版並支援自訂數量快速列印食品標籤。', path: '/label', icon: '🖨️', bgGradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: 'rgba(59, 130, 246, 0.25)', status: '🟢 系統正常' },
+    { id: 'yummy', title: '🍔 Yummy 3PL', desc: '專屬 HKTVmall Yummy Delivery Note 解析引擎，自動清洗無效資料並偵測重複訂單，快速產出列印清單。', path: '/yummy', icon: '🍔', bgGradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', shadow: 'rgba(249, 115, 22, 0.25)', status: '🟢 系統正常' },
+    { id: 'anymall', title: '🛍️ Anymall 3PL', desc: 'Anymall PDF 智能解析模組，自動抓取商品編號與數量，智能判定是否需要列印標籤。', path: '/anymall', icon: '🛍️', bgGradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', shadow: 'rgba(236, 72, 153, 0.25)', status: '🟢 系統正常' },
+    { id: 'hellobear', title: '🐻 Hello Bear 3PL', desc: '針對 Hello Bear 的訂單結構優化，專門判定 T06 特殊條碼，支援高效率批量資料轉換。', path: '/hellobear', icon: '🐻', bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', shadow: 'rgba(139, 92, 246, 0.25)', status: '🟢 系統正常' },
+    { id: 'homey', title: '🏠 Homey 3PL', desc: 'Homey 專用處理中心，具備多重標籤判定邏輯，自動切換蟲蟲、食品、Repack 等特殊標籤排版。', path: '/homey', icon: '🏠', bgGradient: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', shadow: 'rgba(20, 184, 166, 0.25)', status: '🟢 系統正常' },
+    { id: 'chat', title: '💬 異常訂單回報', desc: '專屬的即時通訊頻道，遇到查無訂單、包裝異常等狀況，支援圖片上傳與文字回報，1分鐘內可撤回。', path: '/chat', icon: '🚨', bgGradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: 'rgba(245, 158, 11, 0.25)', status: '🟢 系統正常' }
   ];
 
   return (
     <div className="page-content">
-      {/* 注入專屬 Hover 動畫 CSS */}
       <style>{`
-        .feature-card {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            transform: translateY(0);
-        }
-        .feature-card:hover {
-            transform: translateY(-8px);
-        }
-        .feature-card:hover .card-icon-wrapper {
-            transform: scale(1.1) rotate(5deg);
-        }
-        .card-icon-wrapper {
-            transition: all 0.3s ease;
-        }
+        .feature-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateY(0); }
+        .feature-card:hover { transform: translateY(-8px); }
+        .feature-card:hover .card-icon-wrapper { transform: scale(1.1) rotate(5deg); }
+        .card-icon-wrapper { transition: all 0.3s ease; }
       `}</style>
 
-      {/* 頂部歡迎區塊 */}
       <div style={{ background: '#ffffff', borderRadius: '24px', padding: '40px', marginBottom: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
           <div>
-              <h1 style={{ fontSize: '36px', color: '#0f172a', margin: '0 0 10px 0', fontWeight: '800', letterSpacing: '-0.5px' }}>
-                  歡迎使用 Letech 智能管理系統
-              </h1>
-              <p style={{ color: '#64748b', fontSize: '18px', margin: 0 }}>
-                  選擇下方功能模組以開始今日的工作流程。
-              </p>
+              <h1 style={{ fontSize: '36px', color: '#0f172a', margin: '0 0 10px 0', fontWeight: '800', letterSpacing: '-0.5px' }}>歡迎使用 Letech 智能管理系統</h1>
+              <p style={{ color: '#64748b', fontSize: '18px', margin: 0 }}>選擇下方功能模組以開始今日的工作流程。</p>
           </div>
           <div style={{ background: '#f8fafc', padding: '15px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '15px' }}>
               <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px #10b981', animation: 'pulse 2s infinite' }}></div>
@@ -1575,33 +1340,17 @@ function HomePage() {
           </div>
       </div>
 
-      {/* 核心功能卡片網格 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px' }}>
           {features.map((item) => (
-              <div 
-                  key={item.id}
-                  className="feature-card"
-                  onClick={() => navigate(item.path)}
-                  style={{ background: '#ffffff', borderRadius: '24px', padding: '30px', cursor: 'pointer', border: '1px solid #e2e8f0', boxShadow: `0 10px 30px ${item.shadow}`, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-              >
-                  {/* 卡片頂部漸層裝飾線 */}
+              <div key={item.id} className="feature-card" onClick={() => navigate(item.path)} style={{ background: '#ffffff', borderRadius: '24px', padding: '30px', cursor: 'pointer', border: '1px solid #e2e8f0', boxShadow: `0 10px 30px ${item.shadow}`, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '6px', background: item.bgGradient }}></div>
-                  
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                      <div className="card-icon-wrapper" style={{ width: '64px', height: '64px', borderRadius: '16px', background: item.bgGradient, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', boxShadow: `0 8px 16px ${item.shadow}` }}>
-                          {item.icon}
-                      </div>
-                      <span style={{ background: '#f1f5f9', color: '#475569', padding: '6px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: 'bold' }}>
-                          {item.status}
-                      </span>
+                      <div className="card-icon-wrapper" style={{ width: '64px', height: '64px', borderRadius: '16px', background: item.bgGradient, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', boxShadow: `0 8px 16px ${item.shadow}` }}>{item.icon}</div>
+                      <span style={{ background: '#f1f5f9', color: '#475569', padding: '6px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: 'bold' }}>{item.status}</span>
                   </div>
-                  
                   <h3 style={{ fontSize: '22px', color: '#0f172a', margin: '0 0 12px 0', fontWeight: '800' }}>{item.title}</h3>
                   <p style={{ color: '#64748b', fontSize: '15px', lineHeight: '1.6', margin: '0 0 25px 0', flex: 1 }}>{item.desc}</p>
-                  
-                  <div style={{ display: 'flex', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold', fontSize: '15px' }}>
-                      進入系統 <span style={{ marginLeft: '8px', fontSize: '18px' }}>→</span>
-                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold', fontSize: '15px' }}>進入系統 <span style={{ marginLeft: '8px', fontSize: '18px' }}>→</span></div>
               </div>
           ))}
       </div>
@@ -1610,7 +1359,6 @@ function HomePage() {
 }
 
 // ================= 共用元件：萬用資料庫上傳面板 =================
-// 接收三個參數：title(面板標題), infoUrl(獲取資訊的API), uploadUrl(上傳檔案的API)
 function DatabaseUploader({ title, infoUrl, uploadUrl }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -1641,7 +1389,7 @@ function DatabaseUploader({ title, infoUrl, uploadUrl }) {
       const data = await response.json();
       setUploadMsg(`✅ 成功：${data.message}`); 
       setFile(null);
-      fetchDbInfo(); // 上傳完馬上刷新筆數
+      fetchDbInfo(); 
     } catch (err) { setUploadMsg('❌ 上傳失敗！'); } finally { setUploading(false); }
   };
 
@@ -1679,7 +1427,6 @@ function App() {
             <Route path="/label" element={<FoodLabelPage />} />
             <Route path="/chat" element={<ChatPage />} />
             
-            {/* 🌟 補上這五行全新的「3PL 貨品檢測」路由！ */}
             <Route path="/inspection" element={<InspectionHub />} />
             <Route path="/inspection/anymall" element={<InspectionZone zoneName="Anymall" />} />
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />
