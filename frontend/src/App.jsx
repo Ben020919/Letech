@@ -1140,7 +1140,6 @@ function FoodLabelPage() {
       </div>
       
       {error && <p style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ {error}</p>}
-      {!loading && !error && hasSearched && results.length === 0 && <p style={{ color: '#f59e0b', fontWeight: 'bold' }}>❌ 找不到相符的商品資料</p>}
       
       {!loading && !error && results.length > 0 && (
          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '20px' }}>
