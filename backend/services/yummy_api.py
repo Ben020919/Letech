@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from pypdf import PdfReader, PdfWriter
 import pandas as pd
 import re
@@ -7,29 +7,33 @@ import os
 import asyncio
 import uuid
 import base64
+import gc
 from functools import lru_cache
 
-# 🌟 匯入打卡系統 (如果沒有就略過)
 try:
     from services.stats_api import log_action
 except ImportError:
     def log_action(name): pass
 
-# ================= 1. 全域變數與路徑定義 =================
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
 
-# 確保資料夾存在
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
 
-# 確保路徑變數在最外層定義，絕對不會再報錯！
 DEFAULT_EXCEL_PATH = os.path.join(DATA_DIR, "data.xlsx")
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
 
 router = APIRouter()
 
-# ================= 2. 資料庫與輔助函數 =================
+# 🌟 20分鐘後自動毀滅任務
+async def delete_file_later(file_path: str):
+    await asyncio.sleep(1200)
+    if os.path.exists(file_path):
+        try: os.remove(file_path)
+        except: pass
+    gc.collect()
+
 @lru_cache(maxsize=1)
 def load_master_db():
     if not os.path.exists(DEFAULT_EXCEL_PATH): return None
@@ -102,7 +106,6 @@ def get_best_results(results_df):
         results_df = results_df.drop_duplicates(subset=[target_col], keep='first')
     return results_df
 
-# ================= 3. HTML 標籤生成器 =================
 def create_label_html_on_the_fly(item, matched_data, qty):
     data = matched_data if matched_data else {}
     
@@ -204,7 +207,6 @@ def create_caution_html(text, qty):
         return single.replace(div_content, full_body)
     return single
 
-# ================= 4. PDF 解析處理 =================
 def process_yummy_pdf(file_bytes):
     pdf_file = io.BytesIO(file_bytes)
     reader = PdfReader(pdf_file)
@@ -310,10 +312,19 @@ def process_yummy_pdf(file_bytes):
     return temp_items, product_no_tracker, out_filename
 
 @router.post("/upload")
-async def upload_yummy_pdf(file: UploadFile = File(...)):
+async def upload_yummy_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
         file_bytes = await file.read()
         items, tracker, out_filename = await asyncio.to_thread(process_yummy_pdf, file_bytes)
+        
+        # 🌟 釋放記憶體
+        del file_bytes
+        gc.collect()
+
+        # 🌟 註冊背景任務
+        out_path = os.path.join(PDF_OUT_DIR, out_filename)
+        background_tasks.add_task(delete_file_later, out_path)
+
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
         log_action("Yummy_Upload")
         
@@ -325,4 +336,5 @@ async def upload_yummy_pdf(file: UploadFile = File(...)):
             "download_url": f"/generated_pdfs/{out_filename}", "font_css": font_css
         }
     except Exception as e: 
+        gc.collect()
         raise HTTPException(status_code=500, detail=str(e))

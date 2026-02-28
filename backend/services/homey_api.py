@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from pypdf import PdfReader, PdfWriter
 import pandas as pd
 import re
@@ -7,6 +7,7 @@ import os
 import asyncio
 import base64
 import uuid
+import gc
 from functools import lru_cache
 import barcode
 from barcode.writer import ImageWriter
@@ -21,16 +22,19 @@ router = APIRouter()
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
-
-# 🌟 補上這一行！程式才知道要去哪裡找 Excel！
 DEFAULT_EXCEL_PATH = os.path.join(DATA_DIR, "data.xlsx")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
 
+# 🌟 20分鐘後自動毀滅任務
+async def delete_file_later(file_path: str):
+    await asyncio.sleep(1200)
+    if os.path.exists(file_path):
+        try: os.remove(file_path)
+        except: pass
+    gc.collect()
 
-
-# 🌟 資料庫快取
 @lru_cache(maxsize=1)
 def load_master_db():
     if not os.path.exists(DEFAULT_EXCEL_PATH): return None
@@ -67,9 +71,6 @@ def generate_barcode_b64(data: str):
         return f"data:image/png;base64,{b64}"
     except: return ""
 
-# ================= 標籤產生器 (只保留需要的三種) =================
-
-# 1. Repack 標籤
 def create_homey_repack_label_html(p_name, barcode_val, qty):
     barcode_img_src = generate_barcode_b64(barcode_val)
     single_label = f"""
@@ -80,7 +81,6 @@ def create_homey_repack_label_html(p_name, barcode_val, qty):
     </div>"""
     return f"<html><head><style>@page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; background-color: white; }}</style></head><body>{single_label * qty}</body></html>"
 
-# 2. 蟲蟲標籤
 def create_insects_label_html(matched_data, qty):
     data = matched_data if matched_data else {}
     barcode = clean_val(data.get('Barcode', ''))         
@@ -107,7 +107,6 @@ def create_insects_label_html(matched_data, qty):
     """
     return f"<html><head><style>@page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: white;}}</style></head><body>{single_label_html * qty}</body></html>"
 
-# 3. 食品標籤
 def create_food_label_html(item_name, barcode_text, matched_data, qty):
     data = matched_data if matched_data else {}
     excel_name = clean_val(data.get('Name', ''))
@@ -162,7 +161,6 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty):
     return f"<html><head><style>/* FONT_CSS_PLACEHOLDER */ @page {{ size: auto; margin: 0mm; }} body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }}</style></head><body>{single_label_html * qty}</body></html>"
 
 
-# ================= PDF 解析處理 =================
 def process_homey_pdf(file_bytes):
     pdf_file = io.BytesIO(file_bytes)
     reader = PdfReader(pdf_file)
@@ -183,7 +181,6 @@ def process_homey_pdf(file_bytes):
         
         p_no = lines[0].strip() if lines else "Unknown"
         
-        # 數量抓取
         qty = 1
         qty_line_index = -1
         for idx, line in enumerate(lines):
@@ -205,7 +202,6 @@ def process_homey_pdf(file_bytes):
                             qty_line_index = idx - 1
                 break
         
-        # 名稱抓取
         p_name = ""
         if qty_line_index > 1:
             p_name = " ".join(lines[1:qty_line_index])
@@ -216,7 +212,6 @@ def process_homey_pdf(file_bytes):
                 name_parts.append(line)
             p_name = " ".join(name_parts)
             
-        # 條碼抓取
         barcode_val = ""
         search_start = qty_line_index + 1 if qty_line_index != -1 else 0
         candidate_lines = lines[search_start:]
@@ -233,7 +228,6 @@ def process_homey_pdf(file_bytes):
                 barcode_val = clean_line
                 break
         
-        # 🌟 資料庫比對
         excel_label = ""
         matched_data = {}
         if df_master is not None and not df_master.empty:
@@ -247,7 +241,6 @@ def process_homey_pdf(file_bytes):
                     if 'Label_Type' in matched_data: excel_label = str(matched_data.get('Label_Type'))
                     elif 'Label Type' in matched_data: excel_label = str(matched_data.get('Label Type'))
                         
-        # 🌟 嚴格判定標籤類型 (只允許三種列印)
         final_label = "普通Label"
         excel_label_lower = excel_label.lower()
         
@@ -255,13 +248,11 @@ def process_homey_pdf(file_bytes):
             final_label = "Food Label"
         elif "蟲" in excel_label or "insect" in excel_label_lower: 
             final_label = "蟲蟲Label"
-        # 只要條碼有英文字母，或是沒抓到/抓錯條碼，統統歸類為 Print Repack Lable
         elif (barcode_val and barcode_val[-1].isalpha()) or (not barcode_val or barcode_val.strip() == "" or barcode_val == p_no or barcode_val == "(N/A)"): 
             final_label = "Repack Lable"
         else: 
             final_label = "普通Label"
             
-        # 根據最終類型產生對應的 HTML
         final_html = ""
         needs_print = False
         
@@ -293,10 +284,19 @@ def process_homey_pdf(file_bytes):
     return temp_items, product_no_tracker, out_filename
 
 @router.post("/upload")
-async def upload_homey_pdf(file: UploadFile = File(...)):
+async def upload_homey_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
         file_bytes = await file.read()
         items, tracker, out_filename = await asyncio.to_thread(process_homey_pdf, file_bytes)
+        
+        # 🌟 釋放記憶體
+        del file_bytes
+        gc.collect()
+
+        # 🌟 註冊背景任務
+        out_path = os.path.join(PDF_OUT_DIR, out_filename)
+        background_tasks.add_task(delete_file_later, out_path)
+
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
         log_action("Homey_Upload")
         
@@ -307,4 +307,6 @@ async def upload_homey_pdf(file: UploadFile = File(...)):
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
             "download_url": f"/generated_pdfs/{out_filename}", "font_css": font_css
         }
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: 
+        gc.collect()
+        raise HTTPException(status_code=500, detail=str(e))

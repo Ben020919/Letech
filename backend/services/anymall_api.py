@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from pypdf import PdfReader, PdfWriter
 import re
 import io
@@ -7,6 +7,7 @@ import asyncio
 import barcode
 from barcode.writer import ImageWriter
 import uuid
+import gc
 
 try:
     from services.stats_api import log_action
@@ -16,6 +17,16 @@ except ImportError:
 router = APIRouter()
 PDF_OUT_DIR = "generated_pdfs"
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
+
+# 🌟 20分鐘後自動毀滅任務
+async def delete_file_later(file_path: str):
+    await asyncio.sleep(1200)  # 1200秒 = 20分鐘
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except:
+            pass
+    gc.collect() # 刪除後順手清理記憶體
 
 def generate_barcode_b64(data: str):
     try:
@@ -86,17 +97,25 @@ def process_anymall_pdf(file_bytes):
             "status": data_status, "print_html": final_html 
         })
 
-    # 🌟 存檔
     out_filename = f"anymall_{uuid.uuid4().hex}.pdf"
     out_path = os.path.join(PDF_OUT_DIR, out_filename)
     with open(out_path, "wb") as f: writer.write(f)
     return temp_items, product_no_tracker, out_filename
 
 @router.post("/upload")
-async def upload_anymall_pdf(file: UploadFile = File(...)):
+async def upload_anymall_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
         file_bytes = await file.read()
         items, tracker, out_filename = await asyncio.to_thread(process_anymall_pdf, file_bytes)
+        
+        # 🌟 立刻釋放巨大的變數記憶體
+        del file_bytes
+        gc.collect()
+
+        # 🌟 加入自動毀滅任務
+        out_path = os.path.join(PDF_OUT_DIR, out_filename)
+        background_tasks.add_task(delete_file_later, out_path)
+
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
         log_action("Anymall_Upload")
         return {
@@ -104,4 +123,6 @@ async def upload_anymall_pdf(file: UploadFile = File(...)):
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
             "download_url": f"/generated_pdfs/{out_filename}"
         }
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: 
+        gc.collect() # 報錯也要清記憶體
+        raise HTTPException(status_code=500, detail=str(e))

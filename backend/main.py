@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
+import shutil # 🌟 引入檔案清理工具
 from routers import inspection 
 
 # 匯入各個模組
@@ -27,10 +28,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🌟 新增：建立並掛載 "generated_pdfs" 資料夾，讓前端可以下載檔案
+# =====================================================================
+# 🌟 終極硬碟防護：每次 Render 啟動時，無情清空所有舊的 PDF 殘留檔案！
+# =====================================================================
 PDF_DIR = "generated_pdfs"
-os.makedirs(PDF_DIR, exist_ok=True)
+if os.path.exists(PDF_DIR):
+    shutil.rmtree(PDF_DIR) # 砍掉整個資料夾與裡面的所有檔案
+os.makedirs(PDF_DIR, exist_ok=True) # 重新建立一個乾淨的空資料夾
+
+# 掛載乾淨的資料夾，讓前端可以下載檔案
 app.mount("/generated_pdfs", StaticFiles(directory=PDF_DIR), name="generated_pdfs")
+
 
 # 註冊路由
 app.include_router(stats_router, prefix="/api/stats", tags=["Stats"])

@@ -5,6 +5,7 @@ import io
 import re
 import uuid
 import os
+import gc  # 🌟 匯入強制記憶體回收工具
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -32,7 +33,6 @@ async def get_task(zone: str):
     if not task_res.data:
         return {"status": "no_task"}
         
-    # 🌟 關鍵修正：不再用字母排序，改成用我們自建的「PDF 原始順序 (seq)」來排序！
     items_res = supabase.table("inspection_items").select("*").eq("zone", zone_key).order("seq").execute()
     
     return {
@@ -43,7 +43,7 @@ async def get_task(zone: str):
         }
     }
 
-# ================= 2. 上傳 PDF 並寫入兩張表 =================
+# ================= 2. 上傳 PDF 並寫入兩張表 (🌟 強化記憶體管理) =================
 @router.post("/upload/{zone}")
 async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
     zone_key = zone.lower().replace(" ", "")
@@ -52,13 +52,15 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="未知的區域")
 
     try:
+        # 讀取檔案至記憶體
         file_bytes = await file.read()
         pdf_file = io.BytesIO(file_bytes)
         reader = PdfReader(pdf_file)
 
         items_dict = {} 
-        seq_counter = 1 # 🌟 新增：準備一個號碼牌機器，記住 PDF 的原始順序
+        seq_counter = 1 
 
+        # 解析 PDF (這段最吃記憶體)
         for page in reader.pages:
             text = page.extract_text()
             if not text or not text.strip(): continue
@@ -104,7 +106,7 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
                 items_dict[p_no] = {
                     "id": str(uuid.uuid4()), 
                     "zone": zone_key,          
-                    "seq": seq_counter,   # 🌟 發號碼牌：把它在 PDF 裡的順序存進資料庫
+                    "seq": seq_counter,   
                     "Product_No": p_no,
                     "Name": p_name,
                     "Target_Qty": qty,    
@@ -113,21 +115,27 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
                     "Status": "pending",
                     "is_duplicate": False  
                 }
-                seq_counter += 1 # 號碼牌 + 1
+                seq_counter += 1 
 
         items_list = list(items_dict.values())
         
-        # 刪除了上一版那句搗亂的 .sort()，現在完全保留 PDF 原汁原味的順序
-        
+        # 寫入資料庫
         supabase.table("inspection_tasks").upsert({"zone": zone_key, "filename": file.filename}).execute()
         
         supabase.table("inspection_items").delete().eq("zone", zone_key).execute()
         if items_list:
             supabase.table("inspection_items").insert(items_list).execute()
 
+        # 🌟 核心防護：解析完畢並寫入資料庫後，立刻釋放龐大的記憶體物件
+        del file_bytes
+        del pdf_file
+        del reader
+        gc.collect() # 🧹 呼叫清潔工清理記憶體
+
         return {"status": "success", "task": {"filename": file.filename, "items": items_list}}
 
     except Exception as e:
+        gc.collect() # 🧹 即使發生錯誤，也要清空殘留的記憶體避免崩潰
         raise HTTPException(status_code=500, detail=f"PDF 解析或資料庫寫入失敗: {str(e)}")
 
 
