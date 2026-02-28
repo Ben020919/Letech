@@ -1,0 +1,128 @@
+/* ====== 基礎設定 ====== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f7f9; color: #2c3e50; }
+
+/* ====== 主版面佈局 ====== */
+.app-container { display: flex; height: 100vh; overflow: hidden; }
+.sidebar { width: 260px; background-color: #ffffff; border-right: 1px solid #eaedf1; display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.02); z-index: 10; }
+.main-content { flex: 1; padding: 40px; overflow-y: auto; background-color: #f4f7f9; }
+
+/* ====== 左側導航欄 (Sidebar) ====== */
+.sidebar-logo { padding: 25px 20px; font-size: 26px; font-weight: 900; color: #1a252f; border-bottom: 1px solid #f0f2f5; display: flex; align-items: center; gap: 10px; letter-spacing: -0.5px; }
+.logo-dot { color: #3b82f6; }
+.sidebar-menu { padding: 20px 15px; display: flex; flex-direction: column; gap: 8px; }
+.menu-header { font-size: 11px; font-weight: 800; color: #94a3b8; margin-bottom: 8px; padding-left: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
+.menu-item { display: flex; align-items: center; padding: 14px 16px; border-radius: 10px; color: #475569; text-decoration: none; transition: all 0.2s ease; font-weight: 500; font-size: 15px; }
+.menu-item:hover { background-color: #f1f5f9; color: #3b82f6; transform: translateX(4px); }
+.menu-item.active { background-color: #eff6ff; color: #3b82f6; font-weight: 700; box-shadow: inset 3px 0 0 #3b82f6; }
+.menu-icon { margin-right: 14px; font-size: 20px; }
+
+/* ====== 頁面標題 ====== */
+.page-header { margin-bottom: 30px; }
+.page-header h2 { font-size: 32px; color: #0f172a; margin-bottom: 8px; font-weight: 800; letter-spacing: -0.5px; }
+.page-header p { color: #64748b; font-size: 15px; }
+
+/* ====== 💎 升級版 Dashboard 數據卡片 ====== */
+.dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+
+.stat-card { 
+  background: #ffffff; 
+  padding: 24px; 
+  border-radius: 20px; 
+  border: 1px solid #e2e8f0; 
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); 
+  display: flex; 
+  flex-direction: column; 
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card:hover { 
+  transform: translateY(-5px); 
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02); 
+  border-color: #cbd5e1; 
+}
+
+/* 卡片上方：圖示與標題 */
+.card-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.icon-wrapper { 
+  width: 56px; height: 56px; 
+  border-radius: 14px; 
+  display: flex; align-items: center; justify-content: center; 
+  font-size: 28px; 
+  background: #f8fafc; 
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+}
+.stat-label { font-size: 17px; font-weight: 700; color: #334155; }
+
+/* 卡片下方：大數字 (單一數據) */
+.stat-num-container { margin-top: auto; }
+.stat-num { font-size: 3.2em; font-weight: 900; color: #0f172a; line-height: 1; letter-spacing: -1px; }
+.stat-desc { font-size: 13px; color: #94a3b8; font-weight: 500; margin-top: 8px; }
+
+/* 卡片下方：雙數據 (Yummy/Anymall 專用) */
+.dual-stat { 
+  display: flex; justify-content: space-between; 
+  background: #f8fafc; 
+  border-radius: 14px; 
+  padding: 16px; 
+  margin-top: auto;
+  border: 1px solid #f1f5f9;
+}
+.dual-item { width: 48%; display: flex; flex-direction: column; }
+.dual-label { font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.dual-val { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.2; }
+.stat-divider { width: 1px; background-color: #e2e8f0; margin: 0 5px; }
+
+/* 給不同卡片圖示加上淡淡的主題色 */
+.bg-blue { background-color: #eff6ff; color: #3b82f6; }
+.bg-orange { background-color: #fff7ed; color: #f97316; }
+.bg-green { background-color: #f0fdf4; color: #22c55e; }
+.bg-purple { background-color: #faf5ff; color: #a855f7; }
+.bg-red { background-color: #fef2f2; color: #ef4444; }
+.bg-teal { background-color: #f0fdfa; color: #14b8a6; }
+
+/* ================= 手機版專屬響應式優化 (小於 768px 觸發) ================= */
+@media (max-width: 768px) {
+  /* 1. 把左右排版的框架變成上下排版 */
+  .app-container {
+    flex-direction: column !important;
+  }
+
+  /* 2. 把側邊欄變成「底部導航列」或「頂部滑動選單」 */
+  .sidebar {
+    width: 100% !important;
+    height: auto !important;
+    display: flex;
+    overflow-x: auto; /* 允許左右滑動選單 */
+    padding: 10px !important;
+    white-space: nowrap;
+    z-index: 100;
+  }
+  
+  /* 隱藏 Logo 或 Header 節省空間 */
+  .sidebar-logo, .menu-header {
+    display: none !important;
+  }
+
+  /* 選單項目變成橫向排列的按鈕 */
+  .sidebar-menu {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 10px;
+  }
+
+  /* 3. 縮小主要內容區塊的內邊距，把空間留給內容 */
+  .main-content {
+    padding: 15px !important;
+  }
+  
+  .page-content {
+    padding: 10px !important;
+  }
+
+  /* 4. 讓首頁的大標題字體縮小一點 */
+  h1 { font-size: 24px !important; }
+  h2 { font-size: 20px !important; }
+}

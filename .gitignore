@@ -1,0 +1,37 @@
+# === 1. 虛擬環境 (加上 ** 確保所有子目錄都被封鎖) ===
+**/venv/
+**/env/
+**/__pycache__/
+.venv/
+venv/
+env/
+backend/venv/
+*.pyc
+
+# === 2. 機密環境變數檔案 ===
+.env
+*.env
+*.local
+.env.local
+
+# === 3. 前端龐大套件 (加上 ** 確保所有層級都被封鎖) ===
+**/node_modules/
+node_modules/
+frontend/node_modules/
+dist/
+build/
+.next/
+
+# === 4. 本地端產生的資料庫與測試檔案 ===
+backend/data/
+backend/generated_pdfs/
+*.xlsx
+*.csv
+*.pdf
+
+# === 5. 系統與編輯器設定 ===
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

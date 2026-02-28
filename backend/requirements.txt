@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pandas
+openpyxl
+pypdf
+python-barcode
+python-multipart
+python-dotenv
+supabase
+Pillow
