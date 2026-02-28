@@ -50,7 +50,7 @@ function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch('https://letech-2.onrender.com/api/stats/');
+      const res = await fetch('https://letech-pro.onrender.com/api/stats/');
       const data = await res.json();
       setStats(data);
       const now = new Date();
@@ -263,7 +263,7 @@ function ScannerPage() {
     if (!targetOrderId.trim()) return;
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
     try {
-      const res = await fetch(`https://letech-2.onrender.com/api/scanner/order/${targetOrderId.trim()}`);
+      const res = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${targetOrderId.trim()}`);
       if (!res.ok) throw new Error((await res.json()).detail);
       
       const data = await res.json();
@@ -293,7 +293,7 @@ function ScannerPage() {
     setInputVal('');
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
     try {
-      const res = await fetch('https://letech-2.onrender.com/api/scanner/barcode', {
+      const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_id: orderId, barcode: barcode.trim() })
@@ -323,7 +323,7 @@ function ScannerPage() {
 
   const handleReset = async () => {
     if (window.confirm("確定要換單或重置目前進度嗎？")) {
-      try { await fetch(`https://letech-2.onrender.com/api/scanner/cancel/${orderId}`, { method: 'POST' }); } catch (e) {}
+      try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderId}`, { method: 'POST' }); } catch (e) {}
       setOrderData(null); setOrderId(''); setInputVal(''); setErrorMsg(''); setSuccessMsg(''); setIsCameraOpen(false);
     }
   };
@@ -554,7 +554,7 @@ function SearchPage() {
       if (!query.trim()) return;
       setLoading(true); setError(''); setHasSearched(true);
       try {
-        const response = await fetch(`https://letech-2.onrender.com/api/search/?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`https://letech-pro.onrender.com/api/search/?q=${encodeURIComponent(query)}`);
         if (!response.ok) { const errData = await response.json(); setError(errData.detail || '發生未知錯誤'); setResults([]); return; }
         const data = await response.json(); setResults(data);
       } catch (err) { setError('連線失敗！'); setResults([]); } finally { setLoading(false); }
@@ -599,8 +599,8 @@ function SearchPage() {
         {/* 右側：插入萬用資料庫上傳面板 (綁定搜尋專屬 API) */}
         <DatabaseUploader 
             title="⚙️ 搜尋專用資料庫"
-            infoUrl="https://letech-2.onrender.com/api/search/info"
-            uploadUrl="https://letech-2.onrender.com/api/search/upload"
+            infoUrl="https://letech-pro.onrender.com/api/search/info"
+            uploadUrl="https://letech-pro.onrender.com/api/search/upload"
         />
 
       </div>
@@ -630,7 +630,7 @@ function YummyPage() {
     try {
 
 
-      const response = await fetch('https://letech-2.onrender.com/api/yummy/upload', { method: 'POST', body: formData });
+      const response = await fetch('https://letech-pro.onrender.com/api/yummy/upload', { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -638,14 +638,14 @@ function YummyPage() {
 
   const handleDownloadPDF = () => {
     if (resultData && resultData.download_url) {
-        window.open(`https://letech-2.onrender.com${resultData.download_url}`, '_blank');
+        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
     }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
     // 🌟 【新增】偷偷打 API 告訴後端我列印了
-    fetch('https://letech-2.onrender.com/api/stats/log_print', {
+    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'Yummy_Print' }) // 如果是 HelloBear 就是 HelloBear_Print
@@ -675,8 +675,8 @@ function YummyPage() {
           {/* 右側：直接插入我們的萬用資料庫上傳面板 */}
           <DatabaseUploader 
             title="⚙️ 3PL 主資料庫"
-            infoUrl="https://letech-2.onrender.com/api/master/info"
-            uploadUrl="https://letech-2.onrender.com/api/master/upload"
+            infoUrl="https://letech-pro.onrender.com/api/master/info"
+            uploadUrl="https://letech-pro.onrender.com/api/master/upload"
           />
 
       </div>
@@ -741,7 +741,7 @@ function AnymallPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch('https://letech-2.onrender.com/api/anymall/upload', { method: 'POST', body: formData });
+      const response = await fetch('https://letech-pro.onrender.com/api/anymall/upload', { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -749,7 +749,7 @@ function AnymallPage() {
 
   const handleDownloadPDF = () => {
     if (resultData && resultData.download_url) {
-        window.open(`https://letech-2.onrender.com${resultData.download_url}`, '_blank');
+        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
     }
   };
 
@@ -757,7 +757,7 @@ function AnymallPage() {
     if (!htmlContent) return;
 
     // 🌟 【新增】偷偷打 API 告訴後端我列印了
-    fetch('https://letech-2.onrender.com/api/stats/log_print', {
+    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'Anymall_Print' }) // 如果是 HelloBear 就是 HelloBear_Print
@@ -835,7 +835,7 @@ function HelloBearPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch('https://letech-2.onrender.com/api/hellobear/upload', { method: 'POST', body: formData });
+      const response = await fetch('https://letech-pro.onrender.com/api/hellobear/upload', { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -843,7 +843,7 @@ function HelloBearPage() {
 
   const handleDownloadPDF = () => {
     if (resultData && resultData.download_url) {
-        window.open(`https://letech-2.onrender.com${resultData.download_url}`, '_blank');
+        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
     }
   };
 
@@ -851,7 +851,7 @@ function HelloBearPage() {
     if (!htmlContent) return;
 
     // 🌟 【新增】偷偷打 API 告訴後端我列印了
-    fetch('https://letech-2.onrender.com/api/stats/log_print', {
+    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'HelloBear_Print' }) // 如果是 HelloBear 就是 HelloBear_Print
@@ -876,8 +876,8 @@ function HelloBearPage() {
 
         <DatabaseUploader 
           title="⚙️ 3PL & 標籤主資料庫"
-          infoUrl="https://letech-2.onrender.com/api/master/info"
-          uploadUrl="https://letech-2.onrender.com/api/master/upload"
+          infoUrl="https://letech-pro.onrender.com/api/master/info"
+          uploadUrl="https://letech-pro.onrender.com/api/master/upload"
         />
       </div>
       {resultData && (
@@ -940,7 +940,7 @@ function HomeyPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch('https://letech-2.onrender.com/api/homey/upload', { method: 'POST', body: formData });
+      const response = await fetch('https://letech-pro.onrender.com/api/homey/upload', { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -948,7 +948,7 @@ function HomeyPage() {
 
   const handleDownloadPDF = () => {
     if (resultData && resultData.download_url) {
-        window.open(`https://letech-2.onrender.com${resultData.download_url}`, '_blank');
+        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
     }
   };
 
@@ -956,7 +956,7 @@ function HomeyPage() {
     if (!htmlContent) return;
 
     // 🌟 【修正1】打卡通知後端：改成正確的 Homey_Print
-    fetch('https://letech-2.onrender.com/api/stats/log_print', {
+    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'Homey_Print' }) 
@@ -997,8 +997,8 @@ function HomeyPage() {
 
         <DatabaseUploader 
           title="⚙️ 3PL & 標籤主資料庫"
-          infoUrl="https://letech-2.onrender.com/api/master/info"
-          uploadUrl="https://letech-2.onrender.com/api/master/upload"
+          infoUrl="https://letech-pro.onrender.com/api/master/info"
+          uploadUrl="https://letech-pro.onrender.com/api/master/upload"
         />
       </div>
       {resultData && (
@@ -1070,7 +1070,7 @@ function FoodLabelPage() {
       if (!query.trim()) return;
       setLoading(true); setError(''); setHasSearched(true);
       try {
-        const response = await fetch(`https://letech-2.onrender.com/api/food_label/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`https://letech-pro.onrender.com/api/food_label/search?q=${encodeURIComponent(query)}`);
         if (!response.ok) { const errData = await response.json(); setError(errData.detail || '發生未知錯誤'); setResults([]); return; }
         const data = await response.json(); 
         setResults(data);
@@ -1086,7 +1086,7 @@ function FoodLabelPage() {
   const handlePrint = async (item) => {
     const qty = quantities[item.Product_No] || 1;
     try {
-      const response = await fetch('https://letech-2.onrender.com/api/food_label/generate_html', {
+      const response = await fetch('https://letech-pro.onrender.com/api/food_label/generate_html', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1134,8 +1134,8 @@ function FoodLabelPage() {
 
         <DatabaseUploader 
           title="⚙️ 3PL & 標籤主資料庫"
-          infoUrl="https://letech-2.onrender.com/api/master/info"
-          uploadUrl="https://letech-2.onrender.com/api/master/upload"
+          infoUrl="https://letech-pro.onrender.com/api/master/info"
+          uploadUrl="https://letech-pro.onrender.com/api/master/upload"
         />
       </div>
       
@@ -1209,7 +1209,7 @@ function ChatPage() {
   // 取得訊息
   const fetchMessages = async () => {
     try {
-      const res = await fetch('https://letech-2.onrender.com/api/chat/messages');
+      const res = await fetch('https://letech-pro.onrender.com/api/chat/messages');
       const data = await res.json();
       if (data.status === 'success') {
         setMessages(data.messages);
@@ -1290,7 +1290,7 @@ function ChatPage() {
     if (fileToSend) formData.append('file', fileToSend);
 
     try {
-      const res = await fetch('https://letech-2.onrender.com/api/chat/message', { method: 'POST', body: formData });
+      const res = await fetch('https://letech-pro.onrender.com/api/chat/message', { method: 'POST', body: formData });
       if (res.ok) {
         setInputText('');
         setSelectedImage(null);
@@ -1310,7 +1310,7 @@ function ChatPage() {
   const handleDelete = async (msgId) => {
     if (!window.confirm("確定要撤回這則訊息嗎？")) return;
     try {
-      const res = await fetch(`https://letech-2.onrender.com/api/chat/message/${msgId}`, { method: 'DELETE' });
+      const res = await fetch(`https://letech-pro.onrender.com/api/chat/message/${msgId}`, { method: 'DELETE' });
       if (res.ok) {
         fetchMessages();
       } else {
