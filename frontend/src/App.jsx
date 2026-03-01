@@ -11,8 +11,7 @@ function Sidebar() {
   const [isOpen, setIsOpen] = useState(false); 
 
   const menuItems = [
-    { path: '/', icon: '📊', label: '數據儀表板' },
-    { path: '/home', icon: '🏠', label: '系統首頁' },
+    { path: '/', icon: '🏠', label: '系統首頁' }, // 🌟 移除了儀表板，並將首頁設為預設路徑 '/'
     { path: '/scanner', icon: '📷', label: '掃碼出庫系統' },
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
@@ -49,165 +48,6 @@ function Sidebar() {
         </div>
       </div>
     </>
-  );
-}
-
-// ----------------- Dashboard (系統數據儀表板 - 高質感專業版) -----------------
-function Dashboard() {
-  const [stats, setStats] = useState({
-    outbound: 0, search: 0, foodLabel: 0, 
-    yummyUpload: 0, yummyPrint: 0, 
-    hellobearUpload: 0, hellobearPrint: 0, 
-    anymallUpload: 0, anymallPrint: 0, 
-    homeyUpload: 0, homeyPrint: 0
-  });
-  const [lastUpdated, setLastUpdated] = useState('');
-
-  const fetchStats = async () => {
-    try {
-      const res = await fetch('https://letech-pro.onrender.com/api/stats/');
-      const data = await res.json();
-      setStats(data);
-      const now = new Date();
-      setLastUpdated(now.toLocaleTimeString('zh-TW', { hour12: false }));
-    } catch (err) { console.error("獲取數據失敗", err); }
-  };
-
-  useEffect(() => {
-    fetchStats();
-    const interval = setInterval(fetchStats, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const cardStyle = { background: '#ffffff', borderRadius: '24px', padding: '25px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', transition: 'transform 0.2s', cursor: 'default' };
-  const iconWrapperStyle = (bg) => ({ width: '50px', height: '50px', borderRadius: '14px', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', marginBottom: '15px' });
-
-  return (
-    <div className="page-content">
-      <style>{`
-        .stat-card:hover { transform: translateY(-5px); }
-        .pulse-dot { width: 10px; height: 10px; background: #10b981; border-radius: 50%; box-shadow: 0 0 8px #10b981; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
-        
-        /* 🌟 專為 3PL 自動化卡片設計的「手機版響應式」排版 */
-        @media (max-width: 768px) {
-          .dual-stat-box { flex-direction: column !important; gap: 15px; }
-          .dual-stat-divider { width: 100% !important; height: 1px !important; margin: 0 !important; }
-        }
-      `}</style>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '30px', flexWrap: 'wrap', gap: '15px' }}>
-        <div>
-          <h2 style={{ fontSize: '32px', color: '#0f172a', margin: '0 0 8px 0', fontWeight: '800' }}>📊 營運數據中心</h2>
-          <p style={{ color: '#64748b', fontSize: '16px', margin: 0 }}>系統運作與使用量即時監控</p>
-        </div>
-        <div style={{ background: '#f8fafc', padding: '10px 20px', borderRadius: '99px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div className="pulse-dot"></div>
-          <span style={{ fontSize: '14px', color: '#475569', fontWeight: 'bold' }}>Live 同步中 • 最後更新: {lastUpdated}</span>
-        </div>
-      </div>
-
-      <h3 style={{ fontSize: '20px', color: '#334155', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>核心獨立系統</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px', marginBottom: '40px' }}>
-        <div className="stat-card" style={cardStyle}>
-          <div style={iconWrapperStyle('linear-gradient(135deg, #10b981 0%, #059669 100%)')}>📦</div>
-          <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '5px' }}>掃碼出庫完成數</div>
-          <div style={{ fontSize: '42px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>{stats.outbound.toLocaleString()}</div>
-        </div>
-        <div className="stat-card" style={cardStyle}>
-          <div style={iconWrapperStyle('linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)')}>🏷️</div>
-          <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '5px' }}>智能標籤列印次數</div>
-          <div style={{ fontSize: '42px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>{stats.foodLabel.toLocaleString()}</div>
-        </div>
-        <div className="stat-card" style={cardStyle}>
-          <div style={iconWrapperStyle('linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)')}>🔍</div>
-          <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '5px' }}>條碼檢索次數</div>
-          <div style={{ fontSize: '42px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>{stats.search.toLocaleString()}</div>
-        </div>
-      </div>
-
-      <h3 style={{ fontSize: '20px', color: '#334155', marginBottom: '15px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>3PL 自動化引擎 (文件處理)</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px' }}>
-        
-        {/* Yummy */}
-        <div className="stat-card" style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-            <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'), margin: 0 }}>🍔</div>
-            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Yummy 系統</div>
-          </div>
-          {/* 🌟 加入 dual-stat-box 類別控制 */}
-          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.yummyUpload.toLocaleString()}</div>
-            </div>
-            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.yummyPrint.toLocaleString()}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* HelloBear */}
-        <div className="stat-card" style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-            <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #ec4899 0%, #db2777 100%)'), margin: 0 }}>🐻</div>
-            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Hello Bear 系統</div>
-          </div>
-          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.hellobearUpload.toLocaleString()}</div>
-            </div>
-            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.hellobearPrint.toLocaleString()}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Anymall */}
-        <div className="stat-card" style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-            <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #06b6d4 0%, #0d9488 100%)'), margin: 0 }}>🛍️</div>
-            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Anymall 系統</div>
-          </div>
-          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.anymallUpload.toLocaleString()}</div>
-            </div>
-            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.anymallPrint.toLocaleString()}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Homey */}
-        <div className="stat-card" style={cardStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px' }}>
-            <div style={{ ...iconWrapperStyle('linear-gradient(135deg, #14b8a6 0%, #0f766e 100%)'), margin: 0 }}>🏠</div>
-            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b' }}>Homey 系統</div>
-          </div>
-          <div className="dual-stat-box" style={{ display: 'flex', background: '#f8fafc', borderRadius: '16px', padding: '15px', border: '1px solid #f1f5f9' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>📄 上傳 PDF</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.homeyUpload.toLocaleString()}</div>
-            </div>
-            <div className="dual-stat-divider" style={{ width: '1px', background: '#e2e8f0', margin: '0 15px' }}></div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>🖨️ 列印標籤</div>
-              <div style={{ fontSize: '28px', fontWeight: '800', color: '#0f172a' }}>{stats.homeyPrint.toLocaleString()}</div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
   );
 }
 
@@ -1218,7 +1058,6 @@ function ChatPage() {
     } catch (err) { alert("連線失敗！"); }
   };
 
-  // 🌟 加入了「!e.nativeEvent.isComposing」防護，用拼音打字按 Enter 再也不會誤傳！
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -1417,12 +1256,11 @@ function App() {
         <Sidebar />
         <div className="main-content">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<HomePage />} /> {/* 🌟 首頁改為 HomePage */}
             <Route path="/search" element={<SearchPage />} />
             <Route path="/yummy" element={<YummyPage />} />
             <Route path="/anymall" element={<AnymallPage />} />
             <Route path="/hellobear" element={<HelloBearPage />} />
-            <Route path="/home" element={<HomePage />} />
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/homey" element={<HomeyPage />} />
             <Route path="/label" element={<FoodLabelPage />} />
@@ -1433,7 +1271,6 @@ function App() {
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />
             <Route path="/inspection/yummy" element={<InspectionZone zoneName="Yummy" />} />
             <Route path="/inspection/homey" element={<InspectionZone zoneName="Homey" />} />
-            
           </Routes>
         </div>
       </div>
