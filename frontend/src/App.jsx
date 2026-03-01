@@ -1151,21 +1151,26 @@ function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      <div style={{ marginTop: '15px', background: 'white', padding: '15px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid #e2e8f0' }}>
-        <label style={{ cursor: 'pointer', background: '#f1f5f9', padding: '12px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="上傳圖片">
+      {/* 🌟 修正手機版按鈕被擠出去的問題 */}
+      <div style={{ marginTop: '15px', background: 'white', padding: '10px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #e2e8f0', width: '100%', boxSizing: 'border-box' }}>
+        
+        {/* 加入 flexShrink: 0 防止圖標被壓縮 */}
+        <label style={{ cursor: 'pointer', background: '#f1f5f9', padding: '10px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} title="上傳圖片">
           🖼️
           <input id="chat-image-upload" type="file" accept="image/jpeg, image/png, image/jpg" style={{ display: 'none' }} onChange={(e) => setSelectedImage(e.target.files[0])} />
         </label>
         
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          {selectedImage && <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 'bold', marginBottom: '5px' }}>📎 已選擇圖片: {selectedImage.name}</div>}
+        {/* 🌟 關鍵：加入 minWidth: 0，讓輸入框遇到小螢幕會乖乖縮小 */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          {selectedImage && <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 'bold', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📎 {selectedImage.name}</div>}
           <input 
-            type="text" placeholder="請直接輸入訂單號碼..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown}
-            style={{ width: '100%', padding: '12px', border: 'none', outline: 'none', fontSize: '15px', background: 'transparent' }}
+            type="text" placeholder="請輸入單號..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown}
+            style={{ width: '100%', padding: '10px', border: 'none', outline: 'none', fontSize: '15px', background: 'transparent', boxSizing: 'border-box' }}
           />
         </div>
         
-        <button onClick={handleSend} disabled={isSending} style={{ background: isSending ? '#94a3b8' : '#3b82f6', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '10px', fontWeight: 'bold', cursor: isSending ? 'not-allowed' : 'pointer' }}>
+        {/* 加入 flexShrink: 0 和 whiteSpace: 'nowrap' 確保按鈕永遠可見且不換行 */}
+        <button onClick={handleSend} disabled={isSending} style={{ background: isSending ? '#94a3b8' : '#3b82f6', color: 'white', border: 'none', padding: '12px 18px', borderRadius: '10px', fontWeight: 'bold', cursor: isSending ? 'not-allowed' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
           {isSending ? '傳送中...' : '發送 🚀'}
         </button>
       </div>
