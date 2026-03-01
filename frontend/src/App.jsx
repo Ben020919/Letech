@@ -255,9 +255,16 @@ function ScannerPage() {
                     📍 目的地：{orderData.order?.deliver_to_warehouse || '未指定'}
                 </div>
             </div>
-            <button onClick={handleReset} style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                🔄 換單重置
-            </button>
+            
+            {/* 🌟 用一個 div 把兩個按鈕包起來，讓它們並排顯示 */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => alert("🚧 強制出庫功能開發中！(等待 cURL 串接)")} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚠️ 強制出庫
+                </button>
+                <button onClick={handleReset} style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    🔄 換單重置
+                </button>
+            </div>
         </div>
 
         <div style={{ display: 'flex', gap: '25px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
