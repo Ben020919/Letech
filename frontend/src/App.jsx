@@ -149,10 +149,34 @@ function ScannerPage() {
 
   const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
+  
   const handleReset = async () => {
     if (window.confirm("確定要換單或重置目前進度嗎？")) {
       try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderId}`, { method: 'POST' }); } catch (e) {}
       setOrderData(null); setOrderId(''); setInputVal(''); setErrorMsg(''); setSuccessMsg(''); setIsCameraOpen(false);
+    }
+  };
+
+  // 🌟 新增的強制出庫邏輯
+  const handleForceComplete = async () => {
+    if (window.confirm("🚨 警告：確定要「強制出庫」此訂單嗎？\n這將忽略未掃描的數量並直接過帳！")) {
+      setLoading(true); setErrorMsg(''); setSuccessMsg('');
+      try {
+        const res = await fetch(`https://letech-pro.onrender.com/api/scanner/force_complete/${orderId}`, {
+          method: 'POST'
+        });
+        if (!res.ok) throw new Error((await res.json()).detail);
+        
+        playSound('success');
+        setSuccessMsg(`🚨 訂單 ${orderId} 已成功強制出庫！`);
+        
+        // 延遲 2 秒讓用戶看到成功訊息後，自動重置畫面換下一單
+        setTimeout(() => {
+          setOrderData(null); setOrderId(''); setInputVal(''); setSuccessMsg('');
+        }, 2000);
+
+      } catch (err) { setErrorMsg(err.message); playSound('error'); } 
+      finally { setLoading(false); }
     }
   };
 
@@ -256,12 +280,12 @@ function ScannerPage() {
                 </div>
             </div>
             
-            {/* 🌟 用一個 div 把兩個按鈕包起來，讓它們並排顯示 */}
+            {/* 🌟 已經綁定新 API 的按鈕區塊 */}
             <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={() => alert("🚧 強制出庫功能開發中！(等待 cURL 串接)")} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button onClick={handleForceComplete} disabled={loading} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     ⚠️ 強制出庫
                 </button>
-                <button onClick={handleReset} style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button onClick={handleReset} disabled={loading} style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     🔄 換單重置
                 </button>
             </div>

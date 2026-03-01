@@ -135,3 +135,24 @@ async def cancel_order(order_id: str):
             pass
             
     return {"status": "success"}
+
+# ================= 4. 強制出庫 API =================
+@router.post("/force_complete/{order_id}")
+async def force_complete_order(order_id: str):
+    url = f"https://api.letech.com.hk/api/dear/scan/completed?order_id={order_id}&is_mandatory=true"
+    try:
+        # 發送強制過帳請求給 Letech 伺服器
+        res = requests.post(url, headers=get_headers())
+        
+        if res.status_code == 200:
+            # 寫入 Supabase，狀態標記為「⚠️ 強制出庫」
+            log_to_supabase(order_id, "", "⚠️ 強制出庫")
+            
+            # 紀錄儀表板數據 (+1)
+            log_action("Order_Outbound_Success")
+            
+            return {"status": "success", "message": "強制出庫成功"}
+        else:
+            raise HTTPException(status_code=res.status_code, detail=f"強制出庫失敗 (Letech 伺服器回傳代碼：{res.status_code})")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail="無法連線到 Letech 伺服器")
