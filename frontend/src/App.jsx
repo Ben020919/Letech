@@ -726,107 +726,62 @@ function HelloBearPage() {
     </div>
   );
 }
-// ----------------- HomeyPage (支援智慧判定多種標籤) -----------------
-function HomeyPage() {
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [resultData, setResultData] = useState(null);
+// ----------------- HomePage (系統首頁 - 滿血完全體) -----------------
+function HomePage() {
+  const navigate = useNavigate();
 
-  const handleProcess = async () => {
-    if (!file) { setError('請先選擇 PDF 檔案！'); return; }
-    setLoading(true); setError(''); setResultData(null);
-    const formData = new FormData(); formData.append('file', file);
-    try {
-      const response = await fetch('https://letech-pro.onrender.com/api/homey/upload', { method: 'POST', body: formData });
-      if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
-      const data = await response.json(); setResultData(data);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) { window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank'); }
-  };
-
-  const handlePrint = (htmlContent) => {
-    if (!htmlContent) return;
-    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Homey_Print' }) 
-    }).catch(e => console.log(e));
-
-    const finalHtml = htmlContent.replace('/* FONT_CSS_PLACEHOLDER */', resultData.font_css || '');
-    const win = window.open('', '_blank', 'width=400,height=400');
+  const features = [
+    { id: 'scanner', title: '📦 掃碼出庫作業', desc: '支援相機與實體掃描槍，光速讀取條碼並同步至 Letech 伺服器，自動核對出庫明細，防止漏發與錯發。', path: '/scanner', icon: '🛒', bgGradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', shadow: 'rgba(16, 185, 129, 0.25)', status: '🟢 系統正常' },
     
-    if (win) { 
-        win.document.write(finalHtml); 
-        win.document.close(); 
-        setTimeout(() => { win.focus(); win.print(); }, 0); 
-        win.onafterprint = function() { win.close(); }; 
-    }
-  };
+    // 🌟 這裡把 3PL 貨品檢測卡片加回來了！
+    { id: 'inspection', title: '🕵️‍♂️ 3PL 貨品檢測', desc: '上傳各平台 PDF 生成專屬檢測任務，支援手機即時掃碼核對，精準控管包裝數量，杜絕出貨錯誤。', path: '/inspection', icon: '🕵️‍♂️', bgGradient: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', shadow: 'rgba(14, 165, 233, 0.25)', status: '🟢 系統正常' },
+    
+    { id: 'search', title: '🔍 條碼搜尋系統', desc: '極速檢索全站商品資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，一秒定位商品詳細資訊。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
+    { id: 'label', title: '🏷️ 智能標籤列印', desc: '輸入關鍵字自動從資料庫抓取營養標示、蟲蟲警語，一鍵排版並支援自訂數量快速列印食品標籤。', path: '/label', icon: '🖨️', bgGradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: 'rgba(59, 130, 246, 0.25)', status: '🟢 系統正常' },
+    { id: 'yummy', title: '🍔 Yummy 3PL', desc: '專屬 HKTVmall Yummy Delivery Note 解析引擎，自動清洗無效資料並偵測重複訂單，快速產出列印清單。', path: '/yummy', icon: '🍔', bgGradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', shadow: 'rgba(249, 115, 22, 0.25)', status: '🟢 系統正常' },
+    { id: 'anymall', title: '🛍️ Anymall 3PL', desc: 'Anymall PDF 智能解析模組，自動抓取商品編號與數量，智能判定是否需要列印標籤。', path: '/anymall', icon: '🛍️', bgGradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', shadow: 'rgba(236, 72, 153, 0.25)', status: '🟢 系統正常' },
+    { id: 'hellobear', title: '🐻 Hello Bear 3PL', desc: '針對 Hello Bear 的訂單結構優化，專門判定 T06 特殊條碼，支援高效率批量資料轉換。', path: '/hellobear', icon: '🐻', bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', shadow: 'rgba(139, 92, 246, 0.25)', status: '🟢 系統正常' },
+    { id: 'homey', title: '🏠 Homey 3PL', desc: 'Homey 專用處理中心，具備多重標籤判定邏輯，自動切換蟲蟲、食品、Repack 等特殊標籤排版。', path: '/homey', icon: '🏠', bgGradient: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', shadow: 'rgba(20, 184, 166, 0.25)', status: '🟢 系統正常' },
+    { id: 'chat', title: '💬 異常訂單回報', desc: '專屬的即時通訊頻道，遇到查無訂單、包裝異常等狀況，支援圖片上傳與文字回報，1分鐘內可撤回。', path: '/chat', icon: '🚨', bgGradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: 'rgba(245, 158, 11, 0.25)', status: '🟢 系統正常' }
+  ];
 
   return (
     <div className="page-content">
-      <div className="page-header"><h2>🏠 Homey 3PL 系統</h2><p>上傳 Homey Delivery Note (PDF) 進行極速解析 (支援蟲蟲、食品、Repack 標籤)</p></div>
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
-          <button onClick={handleProcess} disabled={loading} style={{ width: '20%', background: loading ? '#94a3b8' : '#14b8a6', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
-            {loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}
-          </button>
-          {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
-        </div>
+      <style>{`
+        .feature-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateY(0); }
+        .feature-card:hover { transform: translateY(-8px); }
+        .feature-card:hover .card-icon-wrapper { transform: scale(1.1) rotate(5deg); }
+        .card-icon-wrapper { transition: all 0.3s ease; }
+      `}</style>
 
-        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
+      <div style={{ background: '#ffffff', borderRadius: '24px', padding: '40px', marginBottom: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+          <div>
+              <h1 style={{ fontSize: '36px', color: '#0f172a', margin: '0 0 10px 0', fontWeight: '800', letterSpacing: '-0.5px' }}>歡迎使用 Letech 智能管理系統</h1>
+              <p style={{ color: '#64748b', fontSize: '18px', margin: 0 }}>選擇下方功能模組以開始今日的工作流程。</p>
+          </div>
+          <div style={{ background: '#f8fafc', padding: '15px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px #10b981', animation: 'pulse 2s infinite' }}></div>
+              <div>
+                  <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>System Status</div>
+                  <div style={{ fontSize: '16px', color: '#0f172a', fontWeight: '800' }}>All Services Online</div>
+              </div>
+          </div>
       </div>
-      {resultData && (
-        <>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
-            <div style={{ flex: '1', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>📊 處理摘要</h3><p style={{ fontSize: '15px', color: '#475569', marginBottom: '10px' }}>有效解析筆數: <strong>{resultData.summary.total_pages}</strong></p>
-               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
-            </div>
-            <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>⚠️ 重複訂單檢測</h3>
-               {resultData.summary.has_duplicates ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}><p style={{ color: '#b91c1c', fontWeight: 'bold', marginBottom: '10px' }}>發現 {resultData.duplicates.length} 筆重複資料！</p><table style={{ width: '100%', fontSize: '13px', textAlign: 'left', borderCollapse: 'collapse' }}><thead><tr style={{ borderBottom: '1px solid #fca5a5' }}><th style={{ padding: '5px' }}>商品編號</th><th style={{ padding: '5px' }}>重複次數</th><th style={{ padding: '5px' }}>出現頁數</th></tr></thead><tbody>{resultData.duplicates.map((d, idx) => (<tr key={idx}><td style={{ padding: '5px', fontWeight: 'bold' }}>{d.Product_No}</td><td style={{ padding: '5px' }}>{d.Count}</td><td style={{ padding: '5px' }}>{d.Pages}</td></tr>))}</tbody></table></div>
-               ) : ( <p style={{ color: '#15803d', fontWeight: 'bold', background: '#f0fdf4', padding: '10px', borderRadius: '8px' }}>✅ 未發現重複訂單</p> )}
-            </div>
-          </div>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>標籤類型</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
-                <tbody>
-                  {resultData.items.map((item, idx) => {
-                    const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
-                    const isHighlight = ["repack", "sku", "蟲", "food"].some(k => item.label_type.toLowerCase().includes(k));
-                    
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isDup ? '#fffbeb' : 'transparent' }}>
-                        <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
-                        <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
-                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
-                          {item.status === 'no_print' ? (
-                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' }}>{item.label_type}</span>
-                          ) : (
-                            <button onClick={() => handlePrint(item.print_html)} style={{ background: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '6px 16px', whiteSpace: 'nowrap', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🖨️ 打印標籤</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px' }}>
+          {features.map((item) => (
+              <div key={item.id} className="feature-card" onClick={() => navigate(item.path)} style={{ background: '#ffffff', borderRadius: '24px', padding: '30px', cursor: 'pointer', border: '1px solid #e2e8f0', boxShadow: `0 10px 30px ${item.shadow}`, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '6px', background: item.bgGradient }}></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                      <div className="card-icon-wrapper" style={{ width: '64px', height: '64px', borderRadius: '16px', background: item.bgGradient, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', boxShadow: `0 8px 16px ${item.shadow}` }}>{item.icon}</div>
+                      <span style={{ background: '#f1f5f9', color: '#475569', padding: '6px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: 'bold' }}>{item.status}</span>
+                  </div>
+                  <h3 style={{ fontSize: '22px', color: '#0f172a', margin: '0 0 12px 0', fontWeight: '800' }}>{item.title}</h3>
+                  <p style={{ color: '#64748b', fontSize: '15px', lineHeight: '1.6', margin: '0 0 25px 0', flex: 1 }}>{item.desc}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold', fontSize: '15px' }}>進入系統 <span style={{ marginLeft: '8px', fontSize: '18px' }}>→</span></div>
+              </div>
+          ))}
+      </div>
     </div>
   );
 }
