@@ -13,13 +13,19 @@ router = APIRouter()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+# 🌟 建立全域變數，保存唯一的一個連線
+_supabase_client = None
+
 def get_supabase() -> Client:
+    global _supabase_client
     if not SUPABASE_URL or not SUPABASE_KEY:
          raise HTTPException(status_code=500, detail="伺服器未設定 Supabase 金鑰 (找不到 .env 檔案或變數)")
-    try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Supabase 連線失敗: {e}")
+    if _supabase_client is None:
+        try:
+            _supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Supabase 連線失敗: {e}")
+    return _supabase_client
 
 # ================= 1. 取得所有訊息 =================
 @router.get("/messages")
@@ -86,15 +92,12 @@ async def send_message(
 
 # ================= 3. 撤回訊息 (刪除) =================
 @router.delete("/message/{msg_id}")
-async def delete_message(msg_id: str): # 🌟 將 int 改為 str，避免 UUID 格式報錯
+async def delete_message(msg_id: str): 
     try:
         supabase = get_supabase()
-        # 根據訊息 ID 從資料庫刪除該筆資料
         res = supabase.table("messages").delete().eq("id", msg_id).execute()
         
-        # 檢查是否真的有刪除到資料 (Supabase 若因權限阻擋，會回傳空陣列)
         if hasattr(res, 'data') and len(res.data) == 0:
-             # 如果你發現這行錯誤，代表是 Supabase RLS 權限沒開
              pass 
 
         return {"status": "success", "message": "訊息已成功撤回"}
