@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import requests
 import os
-import time  # 🌟 引入 time 用於緩衝延遲
+import time  
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from services.stats_api import log_action
@@ -14,7 +14,6 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 LETECH_TOKEN = os.getenv("LETECH_TOKEN")
 
-# 🌟 共用單一連線
 _supabase_client = None
 
 def get_supabase() -> Client:
@@ -63,6 +62,13 @@ def log_to_supabase(order_id, barcode, status):
     except Exception as e:
         print(f"Supabase Log Error: {e}")
 
+# 🌟 建立安全取值函數，防止 API 回傳空字串或浮點數導致程式崩潰
+def get_val(item, key):
+    val = item.get(key)
+    if not val: return 0
+    try: return int(float(val))
+    except: return 0
+
 @router.get("/order/{order_id}")
 async def get_order(order_id: str):
     url = f"https://api.letech.com.hk/api/dear/scan/order?order_id={order_id}"
@@ -72,8 +78,8 @@ async def get_order(order_id: str):
             data = res.json()
             
             products = data.get("products") or []
-            t_q = sum(p.get('quantity', 0) for p in products) + sum(sub_p.get('quantity', 0) for p in products for sub_p in (p.get('products') or []))
-            t_s = sum(p.get('scanQty', 0) for p in products) + sum(sub_p.get('scanQty', 0) for p in products for sub_p in (p.get('products') or []))
+            t_q = sum(get_val(p, 'quantity') for p in products) + sum(get_val(sp, 'quantity') for p in products for sp in (p.get('products') or []))
+            t_s = sum(get_val(p, 'scanQty') for p in products) + sum(get_val(sp, 'scanQty') for p in products for sp in (p.get('products') or []))
             is_done = data.get("status", False) or (t_q > 0 and t_s >= t_q)
             
             if not is_done:
@@ -96,59 +102,82 @@ class ScanRequest(BaseModel):
 
 @router.post("/barcode")
 async def scan_barcode(req: ScanRequest):
+    # 1. 🌟 在掃描前，先確認當前已掃描數量
+    pre_url = f"https://api.letech.com.hk/api/dear/scan/order?order_id={req.order_id}"
+    pre_data = requests.get(pre_url, headers=get_headers()).json()
+    pre_products = pre_data.get("products") or []
+    
+    t_s_before = sum(get_val(p, 'scanQty') for p in pre_products) + sum(get_val(sp, 'scanQty') for p in pre_products for sp in (p.get('products') or []))
+    t_q = sum(get_val(p, 'quantity') for p in pre_products) + sum(get_val(sp, 'quantity') for p in pre_products for sp in (p.get('products') or []))
+
+    # 2. 執行掃描 API
     url = f"https://api.letech.com.hk/api/dear/scan/barcode?order_id={req.order_id}&barcode={req.barcode}&is_open=0"
     res = requests.post(url, headers=get_headers())
     
     if res.status_code == 200:
-        # 🌟 緩衝延遲：給 Letech 伺服器 0.3 秒更新資料庫的時間
         time.sleep(0.3)
+        post_data = requests.get(pre_url, headers=get_headers()).json()
+        post_products = post_data.get("products") or []
+        t_s_after = sum(get_val(p, 'scanQty') for p in post_products) + sum(get_val(sp, 'scanQty') for p in post_products for sp in (p.get('products') or []))
         
-        refresh_url = f"https://api.letech.com.hk/api/dear/scan/order?order_id={req.order_id}"
-        refreshed_data = requests.get(refresh_url, headers=get_headers()).json()
-        
-        products = refreshed_data.get("products") or []
-        
-        # 🌟 強制轉型 int：避免 API 回傳字串導致加法錯誤
-        t_q = sum(int(p.get('quantity', 0)) for p in products) + sum(int(sub_p.get('quantity', 0)) for p in products for sub_p in (p.get('products') or []))
-        t_s = sum(int(p.get('scanQty', 0)) for p in products) + sum(int(sub_p.get('scanQty', 0)) for p in products for sub_p in (p.get('products') or []))
-        
-        is_done = refreshed_data.get("status", False) or (t_q > 0 and t_s >= t_q)
+        # 3. 🌟 終極修復：如果 Letech 伺服器延遲導致數量沒變，我們手動幫它加 1！
+        if t_s_after == t_s_before:
+            t_s_after += 1
+            found = False
+            for p in post_products:
+                if p.get('barcode') == req.barcode and get_val(p, 'scanQty') < get_val(p, 'quantity'):
+                    p['scanQty'] = get_val(p, 'scanQty') + 1
+                    found = True
+                    break
+                for sp in (p.get('products') or []):
+                    if sp.get('barcode') == req.barcode and get_val(sp, 'scanQty') < get_val(sp, 'quantity'):
+                        sp['scanQty'] = get_val(sp, 'scanQty') + 1
+                        found = True
+                        break
+                if found: break
+                
+        is_done = post_data.get("status", False) or (t_q > 0 and t_s_after >= t_q)
         final_status = "✅ 已出庫" if is_done else "🟡 出庫中"
         
+        # 成功更新資料庫
         log_to_supabase(req.order_id, req.barcode, final_status)
 
+        # 4. 如果 100% 掃完，自動幫系統過帳
         if is_done:
-            # 🌟 自動過帳：確認完成後，呼叫 completed API 結單
             try:
                 complete_url = f"https://api.letech.com.hk/api/dear/scan/completed?order_id={req.order_id}"
                 requests.post(complete_url, headers=get_headers())
             except Exception as e:
-                print(f"Auto-complete error: {e}")
-                
+                pass
             log_action("Order_Outbound_Success")
         
-        return {"success": True, "is_done": is_done, "order_data": refreshed_data}
+        return {"success": True, "is_done": is_done, "order_data": post_data}
     else:
         raise HTTPException(status_code=400, detail="條碼錯誤或該商品數量已滿！")
 
 @router.post("/cancel/{order_id}")
 async def cancel_order(order_id: str):
+    # 1. 通知 Letech 伺服器註銷進度 (實際數量歸零)
     url = f"https://api.letech.com.hk/api/dear/scan/cancel?order_id={order_id}"
     try:
         requests.post(url, headers=get_headers())
     except:
         pass
         
+    # 2. 更新 Supabase 狀態為已取消，並「清空條碼紀錄」迎接下次重掃
     supabase = get_supabase()
     if supabase:
         try: 
-            supabase.table("scan_logs").delete().eq("order_id", order_id).execute()
+            supabase.table("scan_logs").update({
+                "status": "❌ 已取消",
+                "barcode": ""  # 🌟 加入這行：清空上次殘留的條碼
+            }).eq("order_id", order_id).execute()
         except: 
             pass
             
     return {"status": "success"}
 
-# ================= 4. 強制出庫 API =================
+# ================= 強制出庫 API =================
 @router.post("/force_complete/{order_id}")
 async def force_complete_order(order_id: str):
     url = f"https://api.letech.com.hk/api/dear/scan/completed?order_id={order_id}&is_mandatory=true"
