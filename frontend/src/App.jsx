@@ -5,7 +5,6 @@ import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
 import './App.css';
 
-// 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false); 
@@ -23,9 +22,7 @@ function Sidebar() {
     { path: '/chat', icon: '💬', label: '查詢不到訂單' },
   ];
 
-  useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname]);
+  useEffect(() => { setIsOpen(false); }, [location.pathname]);
 
   return (
     <>
@@ -51,7 +48,7 @@ function Sidebar() {
   );
 }
 
-// ----------------- ScannerPage (掃碼出庫系統 - 自動彈出+手動按鈕 完美版) -----------------
+// ----------------- ScannerPage (掃碼出庫系統 - 終極暴力彈出版) -----------------
 function ScannerPage() {
   const [orderId, setOrderId] = useState('');
   const [orderData, setOrderData] = useState(null);
@@ -70,34 +67,6 @@ function ScannerPage() {
   const hasOrderRef = useRef(false);
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
-
-  // =========================================================
-  // 🌟 終極監聽器：支援 100% 自動踢出，又相容手動按鈕
-  // =========================================================
-  useEffect(() => {
-      if (orderData) {
-          let t_q = 0, t_s = 0;
-          (orderData.products || []).forEach(p => {
-              if (p.products && p.products.length > 0) {
-                  p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
-              } else {
-                  t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
-              }
-          });
-          const fullyScanned = t_q > 0 && t_s >= t_q;
-          const isApiDone = orderData.status === true || orderData.status === "Completed";
-
-          if (fullyScanned || isApiDone) {
-              setIsCompleted(true);
-              setIsCameraOpen(false); 
-              setSuccessMsg(`🎉 完美！訂單已全數出庫完成，1.5秒後自動換單...`);
-              
-              // 達到 100% 時，1.5秒後自動彈出！
-              const timer = setTimeout(() => forceResetToHome(), 1500);
-              return () => clearTimeout(timer);
-          }
-      }
-  }, [orderData]);
 
   useEffect(() => {
     if (inputRef.current && !isCameraOpen && !isCompleted && !loading) {
@@ -137,12 +106,18 @@ function ScannerPage() {
     } catch (err) {}
   };
 
+  // 🌟 一鍵清空狀態，強制踢回首頁
   const forceResetToHome = () => {
-      setOrderData(null); setOrderId(''); setInputVal(''); 
-      setSuccessMsg(''); setErrorMsg(''); setIsCameraOpen(false); setIsCompleted(false);
+      setOrderData(null); 
+      setOrderId(''); 
+      setInputVal(''); 
+      setSuccessMsg('');
+      setErrorMsg('');
+      setIsCameraOpen(false); 
+      setIsCompleted(false);
   };
 
-  const submitOrder = async (targetOrderId, autoStartCamera = true) => {
+  const submitOrder = async (targetOrderId, autoStartCamera = false) => {
     if (!targetOrderId.trim()) return;
     setLoading(true); setErrorMsg(''); setSuccessMsg(''); setIsCompleted(false);
     try {
@@ -167,8 +142,7 @@ function ScannerPage() {
       setOrderId(targetOrderId.trim());
       setInputVal('');
       playSound('success');
-      
-      // 🌟 自動開啟相機
+
       if (autoStartCamera) {
           setTimeout(() => setIsCameraOpen(true), 500);
       }
@@ -177,13 +151,13 @@ function ScannerPage() {
     finally { setLoading(false); }
   };
 
+  // 🌟 核心修改區：直接在掃描回傳時判斷是否踢出！
   const submitBarcode = async (barcode) => {
     if (!barcode.trim()) return;
     setInputVal('');
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
     
     const currentOrderId = orderIdRef.current;
-    
     try {
       const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
         method: 'POST',
@@ -193,8 +167,8 @@ function ScannerPage() {
       if (!res.ok) throw new Error((await res.json()).detail);
       const data = await res.json();
       playSound('success');
-      setOrderData(data.order_data);
       
+      // 🌟 強制使用 Number() 轉換，避免變成 "1"+"3"="13"
       let t_q = 0, t_s = 0;
       (data.order_data?.products || []).forEach(p => {
           if (p.products && p.products.length > 0) {
@@ -204,8 +178,22 @@ function ScannerPage() {
           }
       });
       const fullyScanned = t_q > 0 && t_s >= t_q;
+      const isApiDone = data.order_data?.status === true || data.order_data?.status === "Completed";
 
-      if (!data.is_done && !fullyScanned) {
+      if (isApiDone || fullyScanned) {
+          // 🚀 達到 100% 瞬間觸發踢出機制！
+          setOrderData(data.order_data); 
+          setIsCompleted(true);
+          setIsCameraOpen(false); // 秒關相機
+          setSuccessMsg(`🎉 完美！訂單已全數出庫完成。即將返回...`);
+          
+          // 1.5 秒後直接呼叫清空函數！
+          setTimeout(() => {
+              forceResetToHome();
+          }, 1500);
+      } else {
+          // 還沒掃完，只更新畫面，繼續掃
+          setOrderData(data.order_data);
           setSuccessMsg(`✅ ${barcode} 掃描成功！請繼續掃下一件...`);
       }
 
@@ -217,50 +205,11 @@ function ScannerPage() {
     finally { setLoading(false); }
   };
 
-  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, true); };
+  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, false); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
-  // =========================================================
-  // 🌟 手動操作：完成 & 掃新單的按鈕邏輯
-  // =========================================================
-  const handleNextOrder = async () => {
-    let t_q = 0, t_s = 0;
-    (orderData?.products || []).forEach(p => {
-        if (p.products && p.products.length > 0) {
-            p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
-        } else {
-            t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
-        }
-    });
-    const fullyScanned = t_q > 0 && t_s >= t_q;
-    const isApiDone = orderData?.status === true || orderData?.status === "Completed";
-
-    // 情況 A：已經 100% 掃滿，直接回首頁
-    if (fullyScanned || isApiDone) {
-        playSound('success');
-        forceResetToHome();
-    } 
-    // 情況 B：還沒掃滿 (例如母單未掃子單)，觸發強制完成保障資料寫入
-    else {
-        if (window.confirm("⚠️ 系統偵測尚未 100% 掃描完成！\n確定要「強制過帳」並掃描下一單嗎？")) {
-            setLoading(true);
-            try {
-                const res = await fetch(`https://letech-pro.onrender.com/api/scanner/force_complete/${orderIdRef.current}`, { method: 'POST' });
-                if (!res.ok) throw new Error("強制完成記錄失敗");
-                playSound('success');
-                forceResetToHome();
-            } catch (err) {
-                setErrorMsg(err.message);
-                playSound('error');
-            } finally {
-                setLoading(false);
-            }
-        }
-    }
-  };
-
   const handleReset = async () => {
-    if (window.confirm("確定要換單或重置目前進度嗎？ (已掃記錄會保留於後台)")) {
+    if (window.confirm("確定要換單或重置目前進度嗎？")) {
       try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); } catch (e) {}
       forceResetToHome();
     }
@@ -274,7 +223,10 @@ function ScannerPage() {
         if (!res.ok) throw new Error((await res.json()).detail);
         
         playSound('success');
-        forceResetToHome();
+        setSuccessMsg(`🚨 訂單 ${orderIdRef.current} 已成功強制出庫！`);
+        setIsCompleted(true); 
+        setIsCameraOpen(false);
+        setTimeout(() => forceResetToHome(), 1500);
       } catch (err) { setErrorMsg(err.message); playSound('error'); } 
       finally { setLoading(false); }
     }
@@ -339,7 +291,7 @@ function ScannerPage() {
                 </div>
             ) : (
                 <button onClick={() => setIsCameraOpen(true)} style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', padding: '16px 20px', fontSize: '18px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: 'pointer', width: '100%', marginBottom: '25px', boxShadow: '0 6px 12px rgba(37, 99, 235, 0.2)', transition: 'transform 0.1s' }}>
-                    📷 啟用手機相機掃描單號
+                    📷 啟用手機相機掃描
                 </button>
             )}
 
@@ -360,6 +312,7 @@ function ScannerPage() {
     );
   }
 
+  // 確保進度條顯示的數字也是 Number，避免出錯
   let totalQty = 0; let totalScanned = 0;
   const products = orderData.products || [];
   products.forEach(p => {
@@ -384,11 +337,7 @@ function ScannerPage() {
                 </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {/* 🌟 特別強化的綠色大按鈕，保證顯眼 */}
-                <button onClick={handleNextOrder} disabled={loading} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '12px', fontWeight: '800', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '16px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}>
-                    ✅ 完成 & 掃新單
-                </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={handleForceComplete} disabled={loading || isCompleted} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     ⚠️ 強制出庫
                 </button>
@@ -440,12 +389,11 @@ function ScannerPage() {
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
                                           
-                                          {/* 🌟 顯示母單數字 */}
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
-                                              {p.quantity}
+                                              {hasChildren ? '-' : p.quantity}
                                           </td>
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: (isDone || allChildrenDone) ? '#15803d' : '#2563eb' }}>
-                                              {p.scanQty}
+                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: isDone ? '#15803d' : '#2563eb' }}>
+                                              {hasChildren ? '-' : p.scanQty}
                                           </td>
                                           <td style={{ padding: '16px 20px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                               {hasChildren ? (
@@ -500,8 +448,8 @@ function ScannerPage() {
                             <button onClick={() => setIsCameraOpen(false)} style={{ marginTop: '15px', background: '#fef2f2', color: '#ef4444', padding: '12px 20px', borderRadius: '10px', border: '1px solid #fca5a5', fontWeight: 'bold', cursor: 'pointer', width: '100%', transition: 'all 0.2s' }}>❌ 關閉相機</button>
                         </div>
                     ) : (
-                        <button onClick={() => setIsCameraOpen(true)} disabled={loading} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '25px', boxShadow: '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
-                            📷 開啟相機掃描商品
+                        <button onClick={() => setIsCameraOpen(true)} disabled={isCompleted} style={{ background: isCompleted ? '#cbd5e1' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: isCompleted ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '25px', boxShadow: isCompleted ? 'none' : '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
+                            📷 開啟手機相機
                         </button>
                     )}
 
@@ -526,6 +474,7 @@ function ScannerPage() {
   );
 }
 
+// ----------------- SearchPage (條碼搜尋系統) -----------------
 function SearchPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -552,6 +501,7 @@ function SearchPage() {
       </div>
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         
+        {/* 左側：搜尋區塊 */}
         <div style={{ flex: '1', minWidth: '300px', maxWidth: '700px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
           <div style={{ position: 'relative', width: '100%', marginBottom: '20px' }}>
              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋..." 
@@ -591,6 +541,7 @@ function SearchPage() {
           )}
         </div>
         
+        {/* 右側：插入萬用資料庫上傳面板 */}
         <DatabaseUploader 
             title="⚙️ 搜尋專用資料庫"
             infoUrl="https://letech-pro.onrender.com/api/search/info"
@@ -602,6 +553,7 @@ function SearchPage() {
   );
 }
 
+// ================= 共用表格樣式 =================
 const tableCellStyle = { padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6' };
 
 function YummyPage() {
@@ -677,7 +629,7 @@ function YummyPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={tableCellStyle}>{item.Name}</td>
-                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', color: '#64748b' }}>{item.Date}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
@@ -757,7 +709,7 @@ function AnymallPage() {
             <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
+                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
                 <tbody>
                   {resultData.items.map((item, idx) => {
                     const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
@@ -766,7 +718,7 @@ function AnymallPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={tableCellStyle}>{item.Name}</td>
-                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           {item.status === 'no_print' ? (
@@ -862,7 +814,7 @@ function HelloBearPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
-                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
@@ -966,7 +918,7 @@ function HomeyPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
-                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
