@@ -60,6 +60,7 @@ function ScannerPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false); 
   
   const inputRef = useRef(null);
   const lastCameraScan = useRef(""); 
@@ -69,6 +70,21 @@ function ScannerPage() {
       inputRef.current.focus();
     }
   }, [orderData, loading, isCameraOpen]);
+
+  // 🌟 自動跳出機制
+  useEffect(() => {
+    let timer;
+    if (isCompleted) {
+        timer = setTimeout(() => {
+            setOrderData(null); 
+            setOrderId(''); 
+            setInputVal(''); 
+            setSuccessMsg('');
+            setIsCompleted(false); 
+        }, 1500);
+    }
+    return () => clearTimeout(timer);
+  }, [isCompleted]);
 
   const handleFocusLoss = () => {
     if (!isCameraOpen) {
@@ -104,7 +120,7 @@ function ScannerPage() {
 
   const submitOrder = async (targetOrderId) => {
     if (!targetOrderId.trim()) return;
-    setLoading(true); setErrorMsg(''); setSuccessMsg('');
+    setLoading(true); setErrorMsg(''); setSuccessMsg(''); setIsCompleted(false);
     try {
       const res = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${targetOrderId.trim()}`);
       if (!res.ok) throw new Error((await res.json()).detail);
@@ -115,15 +131,23 @@ function ScannerPage() {
           (p.products || []).forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
       });
       if (data.status || (t_q > 0 && t_s >= t_q)) throw new Error(`🚫 訂單 ${targetOrderId} 已出庫！請勿重複作業。`);
+      
       setOrderData(data);
       setOrderId(targetOrderId.trim());
       setInputVal('');
       playSound('success');
+
+      // 🌟 魔法 1：訂單鎖定成功後，延遲 0.5 秒「自動幫你開啟相機」
+      setTimeout(() => {
+          setIsCameraOpen(true);
+      }, 500);
+
     } catch (err) { setErrorMsg(err.message); playSound('error'); setInputVal(''); } 
     finally { setLoading(false); }
   };
 
-  const submitBarcode = async (barcode) => {
+  // 增加一個 fromCamera 參數，用來判斷是不是用相機掃的
+  const submitBarcode = async (barcode, fromCamera = false) => {
     if (!barcode.trim()) return;
     setInputVal('');
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
@@ -137,7 +161,6 @@ function ScannerPage() {
       const data = await res.json();
       playSound('success');
       
-      // 🌟 雙重檢查：防止後端 API 狀態判斷失準，前端再算一次數量
       let t_q = 0, t_s = 0;
       (data.order_data?.products || []).forEach(p => {
           t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
@@ -147,30 +170,36 @@ function ScannerPage() {
 
       if (data.is_done || fullyScanned) {
           setSuccessMsg(`🎉 完美！訂單 ${orderId} 已全數出庫完成。`);
-          setOrderData(data.order_data); // 更新畫面讓進度條跑到 100%
-          
-          // 🌟 延遲 1.5 秒後自動跳回掃描新單的畫面，讓使用者有視覺緩衝
-          setTimeout(() => {
-              setOrderData(null); 
-              setOrderId(''); 
-              setInputVal('');
-              setSuccessMsg('');
-          }, 1500);
+          setOrderData(data.order_data); 
+          setIsCompleted(true); 
       } else {
           setSuccessMsg(`✅ ${barcode} 掃描成功！`);
           setOrderData(data.order_data);
+          
+          // 🌟 魔法 2：如果是相機掃的，成功後延遲 0.8 秒「再次自動打開相機」讓你繼續掃
+          if (fromCamera) {
+              setTimeout(() => {
+                  setIsCameraOpen(true);
+              }, 800);
+          }
       }
-    } catch (err) { setErrorMsg(err.message); playSound('error'); } 
+    } catch (err) { 
+        setErrorMsg(err.message); 
+        playSound('error'); 
+        // 報錯時不自動開相機，讓員工看清楚錯誤訊息
+    } 
     finally { setLoading(false); }
   };
 
   const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
-  const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
+  
+  // 實體掃描槍掃的，不觸發相機連掃
+  const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal, false); };
   
   const handleReset = async () => {
     if (window.confirm("確定要換單或重置目前進度嗎？")) {
       try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderId}`, { method: 'POST' }); } catch (e) {}
-      setOrderData(null); setOrderId(''); setInputVal(''); setErrorMsg(''); setSuccessMsg(''); setIsCameraOpen(false);
+      setOrderData(null); setOrderId(''); setInputVal(''); setErrorMsg(''); setSuccessMsg(''); setIsCameraOpen(false); setIsCompleted(false);
     }
   };
 
@@ -185,11 +214,7 @@ function ScannerPage() {
         
         playSound('success');
         setSuccessMsg(`🚨 訂單 ${orderId} 已成功強制出庫！`);
-        
-        // 強制出庫成功後，一樣延遲 1.5 秒自動返回
-        setTimeout(() => {
-          setOrderData(null); setOrderId(''); setInputVal(''); setSuccessMsg('');
-        }, 1500);
+        setIsCompleted(true); 
 
       } catch (err) { setErrorMsg(err.message); playSound('error'); } 
       finally { setLoading(false); }
@@ -214,11 +239,12 @@ function ScannerPage() {
           if (html5QrCode && html5QrCode.isScanning) {
              html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
           }
+          // 掃到條碼後，暫時關閉相機避免重複掃描
           setIsCameraOpen(false);
           playSound('success');
           
           if (!orderData) submitOrder(decodedText);
-          else submitBarcode(decodedText);
+          else submitBarcode(decodedText, true); // 🌟 告訴系統這是相機掃的
         },
         (error) => { }
       ).catch(err => {
@@ -297,10 +323,10 @@ function ScannerPage() {
             </div>
             
             <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={handleForceComplete} disabled={loading} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button onClick={handleForceComplete} disabled={loading || isCompleted} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     ⚠️ 強制出庫
                 </button>
-                <button onClick={handleReset} disabled={loading} style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button onClick={handleReset} disabled={loading || isCompleted} style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     🔄 換單重置
                 </button>
             </div>
@@ -386,7 +412,7 @@ function ScannerPage() {
                             <button onClick={() => setIsCameraOpen(false)} style={{ marginTop: '15px', background: '#fef2f2', color: '#ef4444', padding: '12px 20px', borderRadius: '10px', border: '1px solid #fca5a5', fontWeight: 'bold', cursor: 'pointer', width: '100%', transition: 'all 0.2s' }}>❌ 關閉相機</button>
                         </div>
                     ) : (
-                        <button onClick={() => setIsCameraOpen(true)} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: 'pointer', width: '100%', marginBottom: '25px', boxShadow: '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
+                        <button onClick={() => setIsCameraOpen(true)} disabled={isCompleted} style={{ background: isCompleted ? '#cbd5e1' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: isCompleted ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '25px', boxShadow: isCompleted ? 'none' : '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
                             📷 開啟手機相機
                         </button>
                     )}
@@ -399,11 +425,11 @@ function ScannerPage() {
 
                     <input 
                         ref={inputRef} type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={handleBarcodeKeyDown}
-                        placeholder="掃描商品條碼..." disabled={loading || isCameraOpen}
-                        style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '12px', border: '2px solid #10b981', outline: 'none', fontWeight: 'bold', backgroundColor: (loading || isCameraOpen) ? '#f8fafc' : '#ffffff', color: '#334155', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
+                        placeholder="掃描商品條碼..." disabled={loading || isCameraOpen || isCompleted}
+                        style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '12px', border: '2px solid #10b981', outline: 'none', fontWeight: 'bold', backgroundColor: (loading || isCameraOpen || isCompleted) ? '#f8fafc' : '#ffffff', color: '#334155', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
                     />
                     <p style={{ color: '#64748b', fontSize: '13px', marginTop: '15px', fontWeight: '500' }}>
-                        {isCameraOpen ? '🎯 請將條碼對準鏡頭' : '🔒 游標已鎖定，可直接刷條碼'}
+                        {isCompleted ? '🎉 訂單已完成，即將返回...' : isCameraOpen ? '🎯 請將條碼對準鏡頭' : '🔒 游標已鎖定，可直接刷條碼'}
                     </p>
                 </div>
             </div>
