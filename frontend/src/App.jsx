@@ -48,7 +48,7 @@ function Sidebar() {
   );
 }
 
-// ----------------- ScannerPage (掃碼出庫系統 - 終極暴力彈出版) -----------------
+// ----------------- ScannerPage (掃碼出庫系統 - UI 專業升級版) -----------------
 function ScannerPage() {
   const [orderId, setOrderId] = useState('');
   const [orderData, setOrderData] = useState(null);
@@ -67,6 +67,29 @@ function ScannerPage() {
   const hasOrderRef = useRef(false);
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
+
+  useEffect(() => {
+      if (orderData) {
+          let t_q = 0, t_s = 0;
+          (orderData.products || []).forEach(p => {
+              if (p.products && p.products.length > 0) {
+                  p.products.forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
+              } else {
+                  t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
+              }
+          });
+          const fullyScanned = t_q > 0 && t_s >= t_q;
+
+          if (fullyScanned || orderData.status === true || orderData.status === "Completed") {
+              setIsCompleted(true);
+              setIsCameraOpen(false); 
+              setSuccessMsg(`🎉 完美！訂單已全數出庫完成。即將返回...`);
+              
+              const timer = setTimeout(() => forceResetToHome(), 1500);
+              return () => clearTimeout(timer);
+          }
+      }
+  }, [orderData]);
 
   useEffect(() => {
     if (inputRef.current && !isCameraOpen && !isCompleted && !loading) {
@@ -106,18 +129,12 @@ function ScannerPage() {
     } catch (err) {}
   };
 
-  // 🌟 一鍵清空狀態，強制踢回首頁
   const forceResetToHome = () => {
-      setOrderData(null); 
-      setOrderId(''); 
-      setInputVal(''); 
-      setSuccessMsg('');
-      setErrorMsg('');
-      setIsCameraOpen(false); 
-      setIsCompleted(false);
+      setOrderData(null); setOrderId(''); setInputVal(''); 
+      setSuccessMsg(''); setErrorMsg(''); setIsCameraOpen(false); setIsCompleted(false);
   };
 
-  const submitOrder = async (targetOrderId, autoStartCamera = false) => {
+  const submitOrder = async (targetOrderId) => {
     if (!targetOrderId.trim()) return;
     setLoading(true); setErrorMsg(''); setSuccessMsg(''); setIsCompleted(false);
     try {
@@ -128,9 +145,9 @@ function ScannerPage() {
       let t_q = 0, t_s = 0;
       (data.products || []).forEach(p => {
           if (p.products && p.products.length > 0) {
-              p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
+              p.products.forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
           } else {
-              t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
+              t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
           }
       });
 
@@ -142,58 +159,39 @@ function ScannerPage() {
       setOrderId(targetOrderId.trim());
       setInputVal('');
       playSound('success');
-
-      if (autoStartCamera) {
-          setTimeout(() => setIsCameraOpen(true), 500);
-      }
+      setTimeout(() => setIsCameraOpen(true), 500);
 
     } catch (err) { setErrorMsg(err.message); playSound('error'); setInputVal(''); } 
     finally { setLoading(false); }
   };
 
-  // 🌟 核心修改區：直接在掃描回傳時判斷是否踢出！
   const submitBarcode = async (barcode) => {
     if (!barcode.trim()) return;
     setInputVal('');
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
     
-    const currentOrderId = orderIdRef.current;
     try {
       const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
+        body: JSON.stringify({ order_id: orderIdRef.current, barcode: barcode.trim() })
       });
       if (!res.ok) throw new Error((await res.json()).detail);
       const data = await res.json();
       playSound('success');
+      setOrderData(data.order_data);
       
-      // 🌟 強制使用 Number() 轉換，避免變成 "1"+"3"="13"
       let t_q = 0, t_s = 0;
       (data.order_data?.products || []).forEach(p => {
           if (p.products && p.products.length > 0) {
-              p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
+              p.products.forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
           } else {
-              t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
+              t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
           }
       });
       const fullyScanned = t_q > 0 && t_s >= t_q;
-      const isApiDone = data.order_data?.status === true || data.order_data?.status === "Completed";
 
-      if (isApiDone || fullyScanned) {
-          // 🚀 達到 100% 瞬間觸發踢出機制！
-          setOrderData(data.order_data); 
-          setIsCompleted(true);
-          setIsCameraOpen(false); // 秒關相機
-          setSuccessMsg(`🎉 完美！訂單已全數出庫完成。即將返回...`);
-          
-          // 1.5 秒後直接呼叫清空函數！
-          setTimeout(() => {
-              forceResetToHome();
-          }, 1500);
-      } else {
-          // 還沒掃完，只更新畫面，繼續掃
-          setOrderData(data.order_data);
+      if (!data.is_done && !fullyScanned) {
           setSuccessMsg(`✅ ${barcode} 掃描成功！請繼續掃下一件...`);
       }
 
@@ -205,7 +203,7 @@ function ScannerPage() {
     finally { setLoading(false); }
   };
 
-  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, false); };
+  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
   const handleReset = async () => {
@@ -255,7 +253,7 @@ function ScannerPage() {
               if (html5QrCode && html5QrCode.isScanning) {
                  html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
               }
-              submitOrder(decodedText, true).finally(() => { isProcessingRef.current = false; });
+              submitOrder(decodedText).finally(() => { isProcessingRef.current = false; });
           } else {
               submitBarcode(decodedText).finally(() => { isProcessingRef.current = false; });
           }
@@ -312,14 +310,13 @@ function ScannerPage() {
     );
   }
 
-  // 確保進度條顯示的數字也是 Number，避免出錯
   let totalQty = 0; let totalScanned = 0;
   const products = orderData.products || [];
   products.forEach(p => {
       if (p.products && p.products.length > 0) {
-          p.products.forEach(sp => { totalQty += Number(sp.quantity || 0); totalScanned += Number(sp.scanQty || 0); });
+          p.products.forEach(sp => { totalQty += (sp.quantity || 0); totalScanned += (sp.scanQty || 0); });
       } else {
-          totalQty += Number(p.quantity || 0); totalScanned += Number(p.scanQty || 0);
+          totalQty += (p.quantity || 0); totalScanned += (p.scanQty || 0);
       }
   });
   const progressPercent = totalQty === 0 ? 0 : Math.min((totalScanned / totalQty) * 100, 100);
@@ -377,8 +374,8 @@ function ScannerPage() {
                               
                               let allChildrenDone = false;
                               if (hasChildren) {
-                                  const c_tq = p.products.reduce((sum, sp) => sum + Number(sp.quantity || 0), 0);
-                                  const c_ts = p.products.reduce((sum, sp) => sum + Number(sp.scanQty || 0), 0);
+                                  const c_tq = p.products.reduce((sum, sp) => sum + (sp.quantity || 0), 0);
+                                  const c_ts = p.products.reduce((sum, sp) => sum + (sp.scanQty || 0), 0);
                                   allChildrenDone = c_tq > 0 && c_ts >= c_tq;
                               }
                               const parentBg = hasChildren ? (allChildrenDone ? '#f0fdf4' : '#f8fafc') : (isDone ? '#f0fdf4' : '#ffffff');
@@ -389,6 +386,7 @@ function ScannerPage() {
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
                                           
+                                          {/* 🌟 如果是母單，隱藏數量，避免混淆 */}
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
                                               {hasChildren ? '-' : p.quantity}
                                           </td>
