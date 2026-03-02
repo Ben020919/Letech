@@ -64,8 +64,39 @@ function ScannerPage() {
   
   const inputRef = useRef(null);
   const lastCameraScan = useRef(""); 
+  const isProcessingRef = useRef(false); // 🌟 防連刷鎖，避免同一個條碼瞬間打 10 次 API
+  
+  // 🌟 使用 Ref 儲存最新狀態，避免相機因為畫面更新而中斷！
+  const orderIdRef = useRef('');
+  const hasOrderRef = useRef(false);
+  useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
+  useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
 
-  // 確保游標永遠鎖定在輸入框 (除非相機打開或已完成)
+  // 🌟 終極監聽機制：只要 orderData 更新且達 100%，就自動關相機並踢出！
+  useEffect(() => {
+      if (orderData) {
+          let t_q = 0, t_s = 0;
+          (orderData.products || []).forEach(p => {
+              t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
+              (p.products || []).forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
+          });
+          const fullyScanned = t_q > 0 && t_s >= t_q;
+          const isApiDone = orderData.status === true;
+
+          if (fullyScanned || isApiDone) {
+              setIsCompleted(true);
+              setIsCameraOpen(false); // 瞬間關閉相機
+              setSuccessMsg(`🎉 完美！訂單 ${orderIdRef.current} 已全數出庫完成。`);
+              
+              // 1.5 秒後徹底重置畫面回首頁
+              const timer = setTimeout(() => {
+                  forceResetToHome();
+              }, 1500);
+              return () => clearTimeout(timer);
+          }
+      }
+  }, [orderData]);
+
   useEffect(() => {
     if (inputRef.current && !isCameraOpen && !isCompleted && !loading) {
       inputRef.current.focus();
@@ -101,10 +132,10 @@ function ScannerPage() {
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.3);
       }
-    } catch (err) { console.error("聲音播放失敗", err); }
+    } catch (err) {}
   };
 
-  // 🌟 專屬的重置函數，用來清空所有狀態回到初始畫面
+  // 一鍵清空所有狀態回首頁
   const forceResetToHome = () => {
       setOrderData(null); 
       setOrderId(''); 
@@ -122,41 +153,51 @@ function ScannerPage() {
       const res = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${targetOrderId.trim()}`);
       if (!res.ok) throw new Error((await res.json()).detail);
       const data = await res.json();
+      
       let t_q = 0, t_s = 0;
       (data.products || []).forEach(p => {
           t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
           (p.products || []).forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
       });
-      if (data.status || (t_q > 0 && t_s >= t_q)) throw new Error(`🚫 訂單 ${targetOrderId} 已出庫！請勿重複作業。`);
+      if (data.status || (t_q > 0 && t_s >= t_q)) {
+          throw new Error(`🚫 訂單 ${targetOrderId} 已出庫！請勿重複作業。`);
+      }
       
       setOrderData(data);
       setOrderId(targetOrderId.trim());
       setInputVal('');
       playSound('success');
 
-      // 🌟 魔法 1：如果是由相機掃描進來的單號，才自動開相機掃貨品
+      // 🌟 如果是相機掃的單號，進去後自動把相機打開準備掃貨
       if (autoStartCamera) {
-          setTimeout(() => setIsCameraOpen(true), 800);
+          setTimeout(() => setIsCameraOpen(true), 500);
       }
 
     } catch (err) { setErrorMsg(err.message); playSound('error'); setInputVal(''); } 
     finally { setLoading(false); }
   };
 
-  const submitBarcode = async (barcode, fromCamera = false) => {
+  const submitBarcode = async (barcode) => {
     if (!barcode.trim()) return;
     setInputVal('');
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
+    
+    const currentOrderId = orderIdRef.current;
+    
     try {
       const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderId, barcode: barcode.trim() })
+        body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
       });
       if (!res.ok) throw new Error((await res.json()).detail);
       const data = await res.json();
       playSound('success');
       
+      // 🌟 直接將最新資料塞進狀態，上面那個最強監聽器(useEffect)會自己判斷要不要跳出！
+      setOrderData(data.order_data);
+      
+      // 判斷是否還沒滿，如果還沒滿，就提示繼續掃 (相機不會關！)
       let t_q = 0, t_s = 0;
       (data.order_data?.products || []).forEach(p => {
           t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
@@ -164,40 +205,24 @@ function ScannerPage() {
       });
       const fullyScanned = t_q > 0 && t_s >= t_q;
 
-      if (data.is_done || fullyScanned) {
-          setSuccessMsg(`🎉 完美！訂單 ${orderId} 已全數出庫完成。`);
-          setOrderData(data.order_data); 
-          setIsCompleted(true); 
-          setIsCameraOpen(false); // 強制關閉相機
-          
-          // 🌟 直接在這裡執行強制跳出，不依賴 useEffect
-          setTimeout(() => {
-              forceResetToHome();
-          }, 1500);
-
-      } else {
-          setSuccessMsg(`✅ ${barcode} 掃描成功！`);
-          setOrderData(data.order_data);
-          
-          // 🌟 魔法 2：如果是相機掃的，成功後再次打開相機
-          if (fromCamera) {
-              setTimeout(() => setIsCameraOpen(true), 800);
-          }
+      if (!data.is_done && !fullyScanned) {
+          setSuccessMsg(`✅ ${barcode} 掃描成功！請繼續掃下一件...`);
       }
+
     } catch (err) { 
         setErrorMsg(err.message); 
         playSound('error'); 
-        setIsCameraOpen(false); // 發生錯誤時確保相機關閉，讓使用者看訊息
+        setIsCameraOpen(false); // 報錯時才關閉相機讓員工看畫面
     } 
     finally { setLoading(false); }
   };
 
-  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, false); }; // 實體槍不自動開相機
-  const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal, false); }; // 實體槍不自動開相機
+  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, false); };
+  const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
   const handleReset = async () => {
     if (window.confirm("確定要換單或重置目前進度嗎？")) {
-      try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderId}`, { method: 'POST' }); } catch (e) {}
+      try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); } catch (e) {}
       forceResetToHome();
     }
   };
@@ -206,29 +231,26 @@ function ScannerPage() {
     if (window.confirm("🚨 警告：確定要「強制出庫」此訂單嗎？\n這將忽略未掃描的數量並直接過帳！")) {
       setLoading(true); setErrorMsg(''); setSuccessMsg('');
       try {
-        const res = await fetch(`https://letech-pro.onrender.com/api/scanner/force_complete/${orderId}`, {
+        const res = await fetch(`https://letech-pro.onrender.com/api/scanner/force_complete/${orderIdRef.current}`, {
           method: 'POST'
         });
         if (!res.ok) throw new Error((await res.json()).detail);
         
         playSound('success');
-        setSuccessMsg(`🚨 訂單 ${orderId} 已成功強制出庫！`);
+        setSuccessMsg(`🚨 訂單 ${orderIdRef.current} 已成功強制出庫！`);
         setIsCompleted(true); 
         setIsCameraOpen(false);
 
-        // 🌟 強制出庫也直接在這裡執行跳出
-        setTimeout(() => {
-            forceResetToHome();
-        }, 1500);
-
+        setTimeout(() => forceResetToHome(), 1500);
       } catch (err) { setErrorMsg(err.message); playSound('error'); } 
       finally { setLoading(false); }
     }
   };
 
+  // 🌟 真・無縫連續掃描相機引擎
   useEffect(() => {
     let html5QrCode;
-    // 只有當 isCameraOpen 為 true 且 還沒完成 時才開啟相機
+    
     if (isCameraOpen && !isCompleted) {
       html5QrCode = new Html5Qrcode("reader");
       const cameraConfig = { facingMode: "environment" }; 
@@ -238,21 +260,26 @@ function ScannerPage() {
         cameraConfig,
         scanConfig,
         (decodedText) => {
+          // 防呆：避免同一秒內打 10 次 API
+          if (isProcessingRef.current) return;
           if (lastCameraScan.current === decodedText) return;
+
+          isProcessingRef.current = true;
           lastCameraScan.current = decodedText;
+          
+          // 2秒後才能再次掃「同一個」條碼
           setTimeout(() => { lastCameraScan.current = ""; }, 2000);
           
-          if (html5QrCode && html5QrCode.isScanning) {
-             html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
-          }
-          // 掃到條碼後，先將狀態切換為關閉，避免畫面衝突
-          setIsCameraOpen(false);
-          
-          // 判斷是掃單號還是掃貨品
-          if (!orderData) {
-              submitOrder(decodedText, true); // true 代表是相機掃的，後續要自動開相機
+          if (!hasOrderRef.current) {
+              // 1. 掃單號：立刻關閉相機切換畫面
+              setIsCameraOpen(false);
+              if (html5QrCode && html5QrCode.isScanning) {
+                 html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
+              }
+              submitOrder(decodedText, true).finally(() => { isProcessingRef.current = false; });
           } else {
-              submitBarcode(decodedText, true); // true 代表是相機掃的，後續要自動開相機
+              // 2. 掃貨品：【不關閉相機】，直接打API，實現連續無縫掃描！
+              submitBarcode(decodedText).finally(() => { isProcessingRef.current = false; });
           }
         },
         (error) => { }
@@ -262,12 +289,13 @@ function ScannerPage() {
          setIsCameraOpen(false);
       });
     }
+    
     return () => {
       if (html5QrCode && html5QrCode.isScanning) {
         html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
       }
     };
-  }, [isCameraOpen, isCompleted]); // 移除 orderData 依賴，防止它亂關相機
+  }, [isCameraOpen, isCompleted]); // 🚨 移除了 orderData 依賴，所以相機絕對不會被畫面數字跳動打斷！
 
   if (!orderData) {
     return (
@@ -438,7 +466,7 @@ function ScannerPage() {
                         style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '12px', border: '2px solid #10b981', outline: 'none', fontWeight: 'bold', backgroundColor: (loading || isCameraOpen || isCompleted) ? '#f8fafc' : '#ffffff', color: '#334155', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
                     />
                     <p style={{ color: '#64748b', fontSize: '13px', marginTop: '15px', fontWeight: '500' }}>
-                        {isCompleted ? '🎉 訂單已完成，即將返回...' : isCameraOpen ? '🎯 請將條碼對準鏡頭' : '🔒 游標已鎖定，可直接刷條碼'}
+                        {isCompleted ? '🎉 訂單已完成，即將返回...' : isCameraOpen ? '🎯 鏡頭持續掃描中...' : '🔒 游標已鎖定，可直接刷條碼'}
                     </p>
                 </div>
             </div>
