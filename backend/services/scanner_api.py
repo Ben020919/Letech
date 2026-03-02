@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import requests
 import os
+import time  # 🌟 引入 time 用於緩衝延遲
 from dotenv import load_dotenv
 from supabase import create_client, Client
 from services.stats_api import log_action
@@ -99,20 +100,31 @@ async def scan_barcode(req: ScanRequest):
     res = requests.post(url, headers=get_headers())
     
     if res.status_code == 200:
+        # 🌟 緩衝延遲：給 Letech 伺服器 0.3 秒更新資料庫的時間
+        time.sleep(0.3)
+        
         refresh_url = f"https://api.letech.com.hk/api/dear/scan/order?order_id={req.order_id}"
         refreshed_data = requests.get(refresh_url, headers=get_headers()).json()
         
         products = refreshed_data.get("products") or []
-        t_q = sum(p.get('quantity', 0) for p in products) + sum(sub_p.get('quantity', 0) for p in products for sub_p in (p.get('products') or []))
-        t_s = sum(p.get('scanQty', 0) for p in products) + sum(sub_p.get('scanQty', 0) for p in products for sub_p in (p.get('products') or []))
+        
+        # 🌟 強制轉型 int：避免 API 回傳字串導致加法錯誤
+        t_q = sum(int(p.get('quantity', 0)) for p in products) + sum(int(sub_p.get('quantity', 0)) for p in products for sub_p in (p.get('products') or []))
+        t_s = sum(int(p.get('scanQty', 0)) for p in products) + sum(int(sub_p.get('scanQty', 0)) for p in products for sub_p in (p.get('products') or []))
         
         is_done = refreshed_data.get("status", False) or (t_q > 0 and t_s >= t_q)
-        
         final_status = "✅ 已出庫" if is_done else "🟡 出庫中"
         
         log_to_supabase(req.order_id, req.barcode, final_status)
 
         if is_done:
+            # 🌟 自動過帳：確認完成後，呼叫 completed API 結單
+            try:
+                complete_url = f"https://api.letech.com.hk/api/dear/scan/completed?order_id={req.order_id}"
+                requests.post(complete_url, headers=get_headers())
+            except Exception as e:
+                print(f"Auto-complete error: {e}")
+                
             log_action("Order_Outbound_Success")
         
         return {"success": True, "is_done": is_done, "order_data": refreshed_data}
@@ -141,16 +153,11 @@ async def cancel_order(order_id: str):
 async def force_complete_order(order_id: str):
     url = f"https://api.letech.com.hk/api/dear/scan/completed?order_id={order_id}&is_mandatory=true"
     try:
-        # 發送強制過帳請求給 Letech 伺服器
         res = requests.post(url, headers=get_headers())
         
         if res.status_code == 200:
-            # 寫入 Supabase，狀態標記為「⚠️ 強制出庫」
             log_to_supabase(order_id, "", "⚠️ 強制出庫")
-            
-            # 紀錄儀表板數據 (+1)
             log_action("Order_Outbound_Success")
-            
             return {"status": "success", "message": "強制出庫成功"}
         else:
             raise HTTPException(status_code=res.status_code, detail=f"強制出庫失敗 (Letech 伺服器回傳代碼：{res.status_code})")
