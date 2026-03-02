@@ -51,7 +51,7 @@ function Sidebar() {
   );
 }
 
-// ----------------- ScannerPage (掃碼出庫系統 - UI 專業升級版) -----------------
+// ----------------- ScannerPage (掃碼出庫系統 - 返璞歸真穩定版) -----------------
 function ScannerPage() {
   const [orderId, setOrderId] = useState('');
   const [orderData, setOrderData] = useState(null);
@@ -71,7 +71,7 @@ function ScannerPage() {
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
 
-  // 🌟 核彈級踢出監聽器 (支援母子單精算)
+  // 🌟 核彈級踢出監聽器 (支援母子單精算，與畫面顯示脫鉤)
   useEffect(() => {
       if (orderData) {
           let t_q = 0, t_s = 0;
@@ -179,48 +179,18 @@ function ScannerPage() {
     const currentOrderId = orderIdRef.current;
     
     try {
-      // 🌟 第一步：檢查是不是掃到了母單的條碼？
-      const matchedParent = orderData?.products?.find(
-          p => p.barcode === barcode.trim() && p.products && p.products.length > 0
-      );
-
-      let finalOrderData = null;
-
-      if (matchedParent) {
-          // 🪄 魔法發動：自動幫忙代打子商品 API
-          setSuccessMsg(`📦 偵測到組合母單！系統正在極速代掃子商品...`);
-          
-          for (const child of matchedParent.products) {
-              const missingQty = Number(child.quantity || 0) - Number(child.scanQty || 0);
-              for (let i = 0; i < missingQty; i++) {
-                  await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ order_id: currentOrderId, barcode: child.barcode })
-                  });
-              }
-          }
-          const refreshRes = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${currentOrderId}`);
-          finalOrderData = await refreshRes.json();
-          playSound('success');
-      } else {
-          // 正常商品掃描
-          const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
-          });
-          if (!res.ok) throw new Error((await res.json()).detail);
-          const data = await res.json();
-          finalOrderData = data.order_data;
-          playSound('success');
-      }
+      const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
+      });
+      if (!res.ok) throw new Error((await res.json()).detail);
+      const data = await res.json();
+      playSound('success');
+      setOrderData(data.order_data);
       
-      setOrderData(finalOrderData);
-      
-      // 🌟 第二步：判斷是否達標
       let t_q = 0, t_s = 0;
-      (finalOrderData?.products || []).forEach(p => {
+      (data.order_data?.products || []).forEach(p => {
           if (p.products && p.products.length > 0) {
               p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
           } else {
@@ -229,8 +199,8 @@ function ScannerPage() {
       });
       const fullyScanned = t_q > 0 && t_s >= t_q;
 
-      if (!finalOrderData?.status && !fullyScanned) {
-          setSuccessMsg(matchedParent ? `✅ 組合包拆分掃描成功！請繼續...` : `✅ ${barcode} 掃描成功！請繼續...`);
+      if (!data.is_done && !fullyScanned) {
+          setSuccessMsg(`✅ ${barcode} 掃描成功！請繼續掃下一件...`);
       }
 
     } catch (err) { 
@@ -241,7 +211,7 @@ function ScannerPage() {
     finally { setLoading(false); }
   };
 
-  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
+  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, false); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
   const handleReset = async () => {
@@ -424,11 +394,12 @@ function ScannerPage() {
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
                                           
+                                          {/* 🌟 恢復顯示母單的實際應出數量與已掃數量 */}
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
-                                              {hasChildren ? '-' : p.quantity}
+                                              {p.quantity}
                                           </td>
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: isDone ? '#15803d' : '#2563eb' }}>
-                                              {hasChildren ? '-' : p.scanQty}
+                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: (isDone || allChildrenDone) ? '#15803d' : '#2563eb' }}>
+                                              {p.scanQty}
                                           </td>
                                           <td style={{ padding: '16px 20px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                               {hasChildren ? (
@@ -484,7 +455,7 @@ function ScannerPage() {
                         </div>
                     ) : (
                         <button onClick={() => setIsCameraOpen(true)} disabled={isCompleted} style={{ background: isCompleted ? '#cbd5e1' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: isCompleted ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '25px', boxShadow: isCompleted ? 'none' : '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
-                            📷 開啟手機相機
+                            📷 開啟相機掃描商品
                         </button>
                     )}
 
@@ -509,7 +480,6 @@ function ScannerPage() {
   );
 }
 
-// ----------------- SearchPage (條碼搜尋系統) -----------------
 function SearchPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -536,7 +506,6 @@ function SearchPage() {
       </div>
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         
-        {/* 左側：搜尋區塊 */}
         <div style={{ flex: '1', minWidth: '300px', maxWidth: '700px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
           <div style={{ position: 'relative', width: '100%', marginBottom: '20px' }}>
              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋..." 
@@ -576,7 +545,6 @@ function SearchPage() {
           )}
         </div>
         
-        {/* 右側：插入萬用資料庫上傳面板 */}
         <DatabaseUploader 
             title="⚙️ 搜尋專用資料庫"
             infoUrl="https://letech-pro.onrender.com/api/search/info"
@@ -588,7 +556,6 @@ function SearchPage() {
   );
 }
 
-// ================= 共用表格樣式 =================
 const tableCellStyle = { padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6' };
 
 function YummyPage() {
@@ -838,22 +805,25 @@ function HelloBearPage() {
             <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
+                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>標籤類型</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
                 <tbody>
                   {resultData.items.map((item, idx) => {
                     const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
+                    const isHighlight = ["repack", "sku", "蟲", "food"].some(k => item.label_type.toLowerCase().includes(k));
+                    
                     return (
                       <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isDup ? '#fffbeb' : 'transparent' }}>
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
-                        <td style={tableCellStyle}>{item.Name}</td>
+                        <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
                         <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
+                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           {item.status === 'no_print' ? (
-                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' }}>無需打印</span>
+                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' }}>{item.label_type}</span>
                           ) : (
-                            <button onClick={() => handlePrint(item.print_html)} style={{ background: '#f3e8ff', color: '#7c3aed', border: '1px solid #ddd6fe', padding: '6px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🖨️ 打印標籤</button>
+                            <button onClick={() => handlePrint(item.print_html)} style={{ background: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '6px 16px', whiteSpace: 'nowrap', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🖨️ 打印標籤</button>
                           )}
                         </td>
                       </tr>
@@ -869,7 +839,6 @@ function HelloBearPage() {
   );
 }
 
-// ----------------- HomeyPage (支援智慧判定多種標籤) -----------------
 function HomeyPage() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -974,7 +943,6 @@ function HomeyPage() {
   );
 }
 
-// ----------------- FoodLabelPage (標籤列印系統) -----------------
 function FoodLabelPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -1095,7 +1063,6 @@ function FoodLabelPage() {
   );
 }
 
-// ----------------- ChatPage (查詢不到訂單 - 完美捲動版) -----------------
 function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [userName, setUserName] = useState('');
@@ -1263,16 +1230,12 @@ function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 🌟 修正手機版按鈕被擠出去的問題 */}
       <div style={{ marginTop: '15px', background: 'white', padding: '10px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #e2e8f0', width: '100%', boxSizing: 'border-box' }}>
-        
-        {/* 加入 flexShrink: 0 防止圖標被壓縮 */}
         <label style={{ cursor: 'pointer', background: '#f1f5f9', padding: '10px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} title="上傳圖片">
           🖼️
           <input id="chat-image-upload" type="file" accept="image/jpeg, image/png, image/jpg" style={{ display: 'none' }} onChange={(e) => setSelectedImage(e.target.files[0])} />
         </label>
         
-        {/* 🌟 關鍵：加入 minWidth: 0，讓輸入框遇到小螢幕會乖乖縮小 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           {selectedImage && <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 'bold', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📎 {selectedImage.name}</div>}
           <input 
@@ -1281,7 +1244,6 @@ function ChatPage() {
           />
         </div>
         
-        {/* 加入 flexShrink: 0 和 whiteSpace: 'nowrap' 確保按鈕永遠可見且不換行 */}
         <button onClick={handleSend} disabled={isSending} style={{ background: isSending ? '#94a3b8' : '#3b82f6', color: 'white', border: 'none', padding: '12px 18px', borderRadius: '10px', fontWeight: 'bold', cursor: isSending ? 'not-allowed' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
           {isSending ? '傳送中...' : '發送 🚀'}
         </button>
@@ -1290,7 +1252,6 @@ function ChatPage() {
   );
 }
 
-// ----------------- HomePage (系統首頁 - 滿血完全體) -----------------
 function HomePage() {
   const navigate = useNavigate();
 
@@ -1347,7 +1308,6 @@ function HomePage() {
   );
 }
 
-// ================= 共用元件：萬用資料庫上傳面板 =================
 function DatabaseUploader({ title, infoUrl, uploadUrl }) {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
