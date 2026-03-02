@@ -414,7 +414,7 @@ function ScannerPage() {
         </div>
     </div>
   );
-}// ----------------- ScannerPage (掃碼出庫系統 - UI 專業升級版) -----------------
+// ----------------- ScannerPage (掃碼出庫系統 - UI 專業升級版) -----------------
 function ScannerPage() {
   const [orderId, setOrderId] = useState('');
   const [orderData, setOrderData] = useState(null);
@@ -434,44 +434,24 @@ function ScannerPage() {
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
 
-  // ========================================================
-  // 🔥 精準數學監聽器：修正母子商品的數量重複計算問題
-  // ========================================================
   useEffect(() => {
       if (orderData) {
           let t_q = 0, t_s = 0;
-          
-          // 🌟 全新精準算法：如果有子商品，只算子商品；如果沒有，才算自己。
           (orderData.products || []).forEach(p => {
               if (p.products && p.products.length > 0) {
-                  p.products.forEach(sp => { 
-                      t_q += (sp.quantity || 0); 
-                      t_s += (sp.scanQty || 0); 
-                  });
+                  p.products.forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
               } else {
-                  t_q += (p.quantity || 0); 
-                  t_s += (p.scanQty || 0);
+                  t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
               }
           });
-          
           const fullyScanned = t_q > 0 && t_s >= t_q;
-          
-          // 如果 Letech 伺服器回傳狀態已完成，或者前端精算已達標
+
           if (fullyScanned || orderData.status === true || orderData.status === "Completed") {
               setIsCompleted(true);
-              setIsCameraOpen(false); // 瞬間關閉相機
-              setSuccessMsg(`🎉 完美！訂單已全數出庫完成。`);
+              setIsCameraOpen(false); 
+              setSuccessMsg(`🎉 完美！訂單已全數出庫完成。即將返回...`);
               
-              // 1.5 秒後暴力重置回首頁
-              const timer = setTimeout(() => {
-                  setOrderData(null); 
-                  setOrderId(''); 
-                  setInputVal(''); 
-                  setSuccessMsg('');
-                  setErrorMsg('');
-                  setIsCameraOpen(false); 
-                  setIsCompleted(false);
-              }, 1500);
+              const timer = setTimeout(() => forceResetToHome(), 1500);
               return () => clearTimeout(timer);
           }
       }
@@ -515,6 +495,11 @@ function ScannerPage() {
     } catch (err) {}
   };
 
+  const forceResetToHome = () => {
+      setOrderData(null); setOrderId(''); setInputVal(''); 
+      setSuccessMsg(''); setErrorMsg(''); setIsCameraOpen(false); setIsCompleted(false);
+  };
+
   const submitOrder = async (targetOrderId) => {
     if (!targetOrderId.trim()) return;
     setLoading(true); setErrorMsg(''); setSuccessMsg(''); setIsCompleted(false);
@@ -540,8 +525,6 @@ function ScannerPage() {
       setOrderId(targetOrderId.trim());
       setInputVal('');
       playSound('success');
-
-      // 鎖定單號後，0.5秒自動開相機
       setTimeout(() => setIsCameraOpen(true), 500);
 
     } catch (err) { setErrorMsg(err.message); playSound('error'); setInputVal(''); } 
@@ -553,18 +536,15 @@ function ScannerPage() {
     setInputVal('');
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
     
-    const currentOrderId = orderIdRef.current;
     try {
       const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
+        body: JSON.stringify({ order_id: orderIdRef.current, barcode: barcode.trim() })
       });
       if (!res.ok) throw new Error((await res.json()).detail);
       const data = await res.json();
       playSound('success');
-      
-      // 更新畫面，交給上面的 useEffect 判斷是否 100% 踢出
       setOrderData(data.order_data);
       
       let t_q = 0, t_s = 0;
@@ -577,15 +557,14 @@ function ScannerPage() {
       });
       const fullyScanned = t_q > 0 && t_s >= t_q;
 
-      // 如果還沒滿，提示繼續掃，並且【不關相機】
-      if (data.order_data?.status !== true && !fullyScanned) {
+      if (!data.is_done && !fullyScanned) {
           setSuccessMsg(`✅ ${barcode} 掃描成功！請繼續掃下一件...`);
       }
 
     } catch (err) { 
         setErrorMsg(err.message); 
         playSound('error'); 
-        setIsCameraOpen(false); // 報錯時關閉相機讓員工看畫面
+        setIsCameraOpen(false); 
     } 
     finally { setLoading(false); }
   };
@@ -593,11 +572,6 @@ function ScannerPage() {
   const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
-  const forceResetToHome = () => {
-      setOrderData(null); setOrderId(''); setInputVal(''); 
-      setSuccessMsg(''); setErrorMsg(''); setIsCameraOpen(false); setIsCompleted(false);
-  };
-
   const handleReset = async () => {
     if (window.confirm("確定要換單或重置目前進度嗎？")) {
       try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); } catch (e) {}
@@ -609,23 +583,19 @@ function ScannerPage() {
     if (window.confirm("🚨 警告：確定要「強制出庫」此訂單嗎？\n這將忽略未掃描的數量並直接過帳！")) {
       setLoading(true); setErrorMsg(''); setSuccessMsg('');
       try {
-        const res = await fetch(`https://letech-pro.onrender.com/api/scanner/force_complete/${orderIdRef.current}`, {
-          method: 'POST'
-        });
+        const res = await fetch(`https://letech-pro.onrender.com/api/scanner/force_complete/${orderIdRef.current}`, { method: 'POST' });
         if (!res.ok) throw new Error((await res.json()).detail);
         
         playSound('success');
         setSuccessMsg(`🚨 訂單 ${orderIdRef.current} 已成功強制出庫！`);
         setIsCompleted(true); 
         setIsCameraOpen(false);
-
         setTimeout(() => forceResetToHome(), 1500);
       } catch (err) { setErrorMsg(err.message); playSound('error'); } 
       finally { setLoading(false); }
     }
   };
 
-  // 連掃相機引擎
   useEffect(() => {
     let html5QrCode;
     if (isCameraOpen && !isCompleted) {
@@ -651,17 +621,14 @@ function ScannerPage() {
               }
               submitOrder(decodedText).finally(() => { isProcessingRef.current = false; });
           } else {
-              // 掃貨品：【絕對不關閉相機】，直接打API
               submitBarcode(decodedText).finally(() => { isProcessingRef.current = false; });
           }
         },
         (error) => { }
       ).catch(err => {
-         console.error("相機啟動失敗", err);
          setIsCameraOpen(false);
       });
     }
-    
     return () => {
       if (html5QrCode && html5QrCode.isScanning) {
         html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
@@ -681,7 +648,6 @@ function ScannerPage() {
         {errorMsg && <div style={{ background: '#fef2f2', color: '#991b1b', padding: '15px', borderRadius: '12px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px', border: '1px solid #fecaca', boxShadow: '0 4px 6px rgba(153, 27, 27, 0.1)' }}>{errorMsg}</div>}
 
         <div style={{ maxWidth: '480px', margin: '0 auto', background: '#ffffff', padding: '40px 30px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', textAlign: 'center', border: '1px solid #f1f5f9' }}>
-            
             {isCameraOpen ? (
                 <div style={{ marginBottom: '25px' }}>
                     <div id="reader" style={{ width: '100%', borderRadius: '16px', overflow: 'hidden', border: '2px solid #e2e8f0' }}></div>
@@ -710,7 +676,6 @@ function ScannerPage() {
     );
   }
 
-  // 渲染清單時也使用修正後的數學邏輯，確保畫面的進度條也準確無誤！
   let totalQty = 0; let totalScanned = 0;
   const products = orderData.products || [];
   products.forEach(p => {
@@ -770,18 +735,40 @@ function ScannerPage() {
                       </thead>
                       <tbody>
                           {products.map((p, idx) => {
-                              const isDone = (p.quantity - p.scanQty) <= 0;
+                              const hasChildren = p.products && p.products.length > 0;
+                              const isDone = hasChildren ? false : (p.quantity - p.scanQty) <= 0;
+                              
+                              let allChildrenDone = false;
+                              if (hasChildren) {
+                                  const c_tq = p.products.reduce((sum, sp) => sum + (sp.quantity || 0), 0);
+                                  const c_ts = p.products.reduce((sum, sp) => sum + (sp.scanQty || 0), 0);
+                                  allChildrenDone = c_tq > 0 && c_ts >= c_tq;
+                              }
+                              const parentBg = hasChildren ? (allChildrenDone ? '#f0fdf4' : '#f8fafc') : (isDone ? '#f0fdf4' : '#ffffff');
+
                               return (
                                   <React.Fragment key={idx}>
-                                      <tr style={{ borderBottom: '1px solid #f1f5f9', background: isDone ? '#f0fdf4' : '#ffffff', transition: 'background 0.2s' }}>
+                                      <tr style={{ borderBottom: '1px solid #f1f5f9', background: parentBg, transition: 'background 0.2s' }}>
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>{p.quantity}</td>
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: isDone ? '#15803d' : '#2563eb' }}>{p.scanQty}</td>
+                                          
+                                          {/* 🌟 如果是母單，隱藏數量，避免混淆 */}
+                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
+                                              {hasChildren ? '-' : p.quantity}
+                                          </td>
+                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: isDone ? '#15803d' : '#2563eb' }}>
+                                              {hasChildren ? '-' : p.scanQty}
+                                          </td>
                                           <td style={{ padding: '16px 20px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                              <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: isDone ? '#dcfce7' : '#fef3c7', color: isDone ? '#166534' : '#b45309' }}>
-                                                  {isDone ? '✅ 已完成' : `缺 ${p.quantity - p.scanQty}`}
-                                              </span>
+                                              {hasChildren ? (
+                                                  <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: allChildrenDone ? '#dcfce7' : '#e2e8f0', color: allChildrenDone ? '#166534' : '#475569' }}>
+                                                      {allChildrenDone ? '✅ 組合完成' : '📦 組合母單'}
+                                                  </span>
+                                              ) : (
+                                                  <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: isDone ? '#dcfce7' : '#fef3c7', color: isDone ? '#166534' : '#b45309' }}>
+                                                      {isDone ? '✅ 已完成' : `缺 ${p.quantity - p.scanQty}`}
+                                                  </span>
+                                              )}
                                           </td>
                                       </tr>
                                       {(p.products || []).map((sp, sidx) => {
