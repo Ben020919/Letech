@@ -85,8 +85,9 @@ function ScannerPage() {
               }
           });
           const fullyScanned = t_q > 0 && t_s >= t_q;
+          const isApiDone = orderData.status === true || orderData.status === "Completed";
 
-          if (fullyScanned || orderData.status === true || orderData.status === "Completed") {
+          if (fullyScanned || isApiDone) {
               setIsCompleted(true);
               setIsCameraOpen(false); 
               setSuccessMsg(`🎉 完美！訂單已全數出庫完成，1.5秒後自動換單...`);
@@ -141,7 +142,7 @@ function ScannerPage() {
       setSuccessMsg(''); setErrorMsg(''); setIsCameraOpen(false); setIsCompleted(false);
   };
 
-  const submitOrder = async (targetOrderId, autoStartCamera = false) => {
+  const submitOrder = async (targetOrderId, autoStartCamera = true) => {
     if (!targetOrderId.trim()) return;
     setLoading(true); setErrorMsg(''); setSuccessMsg(''); setIsCompleted(false);
     try {
@@ -167,7 +168,7 @@ function ScannerPage() {
       setInputVal('');
       playSound('success');
       
-      // 🌟 智能判斷：如果是手機相機掃的單號，就自動開相機；如果是實體槍，就不開。
+      // 🌟 自動開啟相機
       if (autoStartCamera) {
           setTimeout(() => setIsCameraOpen(true), 500);
       }
@@ -216,7 +217,7 @@ function ScannerPage() {
     finally { setLoading(false); }
   };
 
-  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, false); };
+  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal, true); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
   // =========================================================
@@ -239,7 +240,7 @@ function ScannerPage() {
         playSound('success');
         forceResetToHome();
     } 
-    // 情況 B：還沒掃滿，觸發強制完成保障資料寫入
+    // 情況 B：還沒掃滿 (例如母單未掃子單)，觸發強制完成保障資料寫入
     else {
         if (window.confirm("⚠️ 系統偵測尚未 100% 掃描完成！\n確定要「強制過帳」並掃描下一單嗎？")) {
             setLoading(true);
@@ -384,8 +385,8 @@ function ScannerPage() {
             </div>
             
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {/* 🌟 右上角的綠色大按鈕，確保永遠存在 */}
-                <button onClick={handleNextOrder} disabled={loading} style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)' }}>
+                {/* 🌟 特別強化的綠色大按鈕，保證顯眼 */}
+                <button onClick={handleNextOrder} disabled={loading} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '12px', fontWeight: '800', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '16px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}>
                     ✅ 完成 & 掃新單
                 </button>
                 <button onClick={handleForceComplete} disabled={loading || isCompleted} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -439,6 +440,7 @@ function ScannerPage() {
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
                                           
+                                          {/* 🌟 顯示母單數字 */}
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
                                               {p.quantity}
                                           </td>
@@ -498,7 +500,7 @@ function ScannerPage() {
                             <button onClick={() => setIsCameraOpen(false)} style={{ marginTop: '15px', background: '#fef2f2', color: '#ef4444', padding: '12px 20px', borderRadius: '10px', border: '1px solid #fca5a5', fontWeight: 'bold', cursor: 'pointer', width: '100%', transition: 'all 0.2s' }}>❌ 關閉相機</button>
                         </div>
                     ) : (
-                        <button onClick={() => setIsCameraOpen(true)} disabled={isCompleted} style={{ background: isCompleted ? '#cbd5e1' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: isCompleted ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '25px', boxShadow: isCompleted ? 'none' : '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
+                        <button onClick={() => setIsCameraOpen(true)} disabled={loading} style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '25px', boxShadow: '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
                             📷 開啟相機掃描商品
                         </button>
                     )}
@@ -675,7 +677,7 @@ function YummyPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={tableCellStyle}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', color: '#64748b' }}>{item.Date}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
@@ -764,7 +766,7 @@ function AnymallPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={tableCellStyle}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           {item.status === 'no_print' ? (
@@ -860,7 +862,7 @@ function HelloBearPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
@@ -964,7 +966,7 @@ function HomeyPage() {
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
                         <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
+                        <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
                         <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
