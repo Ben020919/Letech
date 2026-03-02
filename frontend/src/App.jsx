@@ -5,6 +5,7 @@ import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
 import './App.css';
 
+// 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false); 
@@ -22,7 +23,9 @@ function Sidebar() {
     { path: '/chat', icon: '💬', label: '查詢不到訂單' },
   ];
 
-  useEffect(() => { setIsOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
 
   return (
     <>
@@ -68,14 +71,15 @@ function ScannerPage() {
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
 
+  // 🌟 核彈級踢出監聽器 (支援母子單精算)
   useEffect(() => {
       if (orderData) {
           let t_q = 0, t_s = 0;
           (orderData.products || []).forEach(p => {
               if (p.products && p.products.length > 0) {
-                  p.products.forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
+                  p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
               } else {
-                  t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
+                  t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
               }
           });
           const fullyScanned = t_q > 0 && t_s >= t_q;
@@ -134,7 +138,7 @@ function ScannerPage() {
       setSuccessMsg(''); setErrorMsg(''); setIsCameraOpen(false); setIsCompleted(false);
   };
 
-  const submitOrder = async (targetOrderId) => {
+  const submitOrder = async (targetOrderId, autoStartCamera = false) => {
     if (!targetOrderId.trim()) return;
     setLoading(true); setErrorMsg(''); setSuccessMsg(''); setIsCompleted(false);
     try {
@@ -145,9 +149,9 @@ function ScannerPage() {
       let t_q = 0, t_s = 0;
       (data.products || []).forEach(p => {
           if (p.products && p.products.length > 0) {
-              p.products.forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
+              p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
           } else {
-              t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
+              t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
           }
       });
 
@@ -159,8 +163,10 @@ function ScannerPage() {
       setOrderId(targetOrderId.trim());
       setInputVal('');
       playSound('success');
-      setTimeout(() => setIsCameraOpen(true), 500);
-
+      
+      if (autoStartCamera) {
+          setTimeout(() => setIsCameraOpen(true), 500);
+      }
     } catch (err) { setErrorMsg(err.message); playSound('error'); setInputVal(''); } 
     finally { setLoading(false); }
   };
@@ -170,29 +176,61 @@ function ScannerPage() {
     setInputVal('');
     setLoading(true); setErrorMsg(''); setSuccessMsg('');
     
+    const currentOrderId = orderIdRef.current;
+    
     try {
-      const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: orderIdRef.current, barcode: barcode.trim() })
-      });
-      if (!res.ok) throw new Error((await res.json()).detail);
-      const data = await res.json();
-      playSound('success');
-      setOrderData(data.order_data);
+      // 🌟 第一步：檢查是不是掃到了母單的條碼？
+      const matchedParent = orderData?.products?.find(
+          p => p.barcode === barcode.trim() && p.products && p.products.length > 0
+      );
+
+      let finalOrderData = null;
+
+      if (matchedParent) {
+          // 🪄 魔法發動：自動幫忙代打子商品 API
+          setSuccessMsg(`📦 偵測到組合母單！系統正在極速代掃子商品...`);
+          
+          for (const child of matchedParent.products) {
+              const missingQty = Number(child.quantity || 0) - Number(child.scanQty || 0);
+              for (let i = 0; i < missingQty; i++) {
+                  await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ order_id: currentOrderId, barcode: child.barcode })
+                  });
+              }
+          }
+          const refreshRes = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${currentOrderId}`);
+          finalOrderData = await refreshRes.json();
+          playSound('success');
+      } else {
+          // 正常商品掃描
+          const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
+          });
+          if (!res.ok) throw new Error((await res.json()).detail);
+          const data = await res.json();
+          finalOrderData = data.order_data;
+          playSound('success');
+      }
       
+      setOrderData(finalOrderData);
+      
+      // 🌟 第二步：判斷是否達標
       let t_q = 0, t_s = 0;
-      (data.order_data?.products || []).forEach(p => {
+      (finalOrderData?.products || []).forEach(p => {
           if (p.products && p.products.length > 0) {
-              p.products.forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
+              p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
           } else {
-              t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
+              t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
           }
       });
       const fullyScanned = t_q > 0 && t_s >= t_q;
 
-      if (!data.is_done && !fullyScanned) {
-          setSuccessMsg(`✅ ${barcode} 掃描成功！請繼續掃下一件...`);
+      if (!finalOrderData?.status && !fullyScanned) {
+          setSuccessMsg(matchedParent ? `✅ 組合包拆分掃描成功！請繼續...` : `✅ ${barcode} 掃描成功！請繼續...`);
       }
 
     } catch (err) { 
@@ -207,10 +245,13 @@ function ScannerPage() {
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
   const handleReset = async () => {
-    if (window.confirm("確定要換單或重置目前進度嗎？")) {
-      try { await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); } catch (e) {}
-      forceResetToHome();
+    // 移除 window.confirm，直接執行取消 API 並返回首頁
+    try { 
+        await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); 
+    } catch (e) {
+        console.error("取消訂單發生錯誤:", e);
     }
+    forceResetToHome();
   };
 
   const handleForceComplete = async () => {
@@ -253,7 +294,7 @@ function ScannerPage() {
               if (html5QrCode && html5QrCode.isScanning) {
                  html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
               }
-              submitOrder(decodedText).finally(() => { isProcessingRef.current = false; });
+              submitOrder(decodedText, true).finally(() => { isProcessingRef.current = false; });
           } else {
               submitBarcode(decodedText).finally(() => { isProcessingRef.current = false; });
           }
@@ -314,9 +355,9 @@ function ScannerPage() {
   const products = orderData.products || [];
   products.forEach(p => {
       if (p.products && p.products.length > 0) {
-          p.products.forEach(sp => { totalQty += (sp.quantity || 0); totalScanned += (sp.scanQty || 0); });
+          p.products.forEach(sp => { totalQty += Number(sp.quantity || 0); totalScanned += Number(sp.scanQty || 0); });
       } else {
-          totalQty += (p.quantity || 0); totalScanned += (p.scanQty || 0);
+          totalQty += Number(p.quantity || 0); totalScanned += Number(p.scanQty || 0);
       }
   });
   const progressPercent = totalQty === 0 ? 0 : Math.min((totalScanned / totalQty) * 100, 100);
@@ -374,8 +415,8 @@ function ScannerPage() {
                               
                               let allChildrenDone = false;
                               if (hasChildren) {
-                                  const c_tq = p.products.reduce((sum, sp) => sum + (sp.quantity || 0), 0);
-                                  const c_ts = p.products.reduce((sum, sp) => sum + (sp.scanQty || 0), 0);
+                                  const c_tq = p.products.reduce((sum, sp) => sum + Number(sp.quantity || 0), 0);
+                                  const c_ts = p.products.reduce((sum, sp) => sum + Number(sp.scanQty || 0), 0);
                                   allChildrenDone = c_tq > 0 && c_ts >= c_tq;
                               }
                               const parentBg = hasChildren ? (allChildrenDone ? '#f0fdf4' : '#f8fafc') : (isDone ? '#f0fdf4' : '#ffffff');
@@ -386,7 +427,6 @@ function ScannerPage() {
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
                                           
-                                          {/* 🌟 如果是母單，隱藏數量，避免混淆 */}
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
                                               {hasChildren ? '-' : p.quantity}
                                           </td>
@@ -472,7 +512,6 @@ function ScannerPage() {
   );
 }
 
-// ----------------- SearchPage (條碼搜尋系統) -----------------
 function SearchPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
