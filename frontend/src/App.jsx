@@ -136,9 +136,26 @@ function ScannerPage() {
       if (!res.ok) throw new Error((await res.json()).detail);
       const data = await res.json();
       playSound('success');
-      if (data.is_done) {
+      
+      // 🌟 雙重檢查：防止後端 API 狀態判斷失準，前端再算一次數量
+      let t_q = 0, t_s = 0;
+      (data.order_data?.products || []).forEach(p => {
+          t_q += (p.quantity || 0); t_s += (p.scanQty || 0);
+          (p.products || []).forEach(sp => { t_q += (sp.quantity || 0); t_s += (sp.scanQty || 0); });
+      });
+      const fullyScanned = t_q > 0 && t_s >= t_q;
+
+      if (data.is_done || fullyScanned) {
           setSuccessMsg(`🎉 完美！訂單 ${orderId} 已全數出庫完成。`);
-          setOrderData(null); setOrderId('');
+          setOrderData(data.order_data); // 更新畫面讓進度條跑到 100%
+          
+          // 🌟 延遲 1.5 秒後自動跳回掃描新單的畫面，讓使用者有視覺緩衝
+          setTimeout(() => {
+              setOrderData(null); 
+              setOrderId(''); 
+              setInputVal('');
+              setSuccessMsg('');
+          }, 1500);
       } else {
           setSuccessMsg(`✅ ${barcode} 掃描成功！`);
           setOrderData(data.order_data);
@@ -157,7 +174,6 @@ function ScannerPage() {
     }
   };
 
-  // 🌟 新增的強制出庫邏輯
   const handleForceComplete = async () => {
     if (window.confirm("🚨 警告：確定要「強制出庫」此訂單嗎？\n這將忽略未掃描的數量並直接過帳！")) {
       setLoading(true); setErrorMsg(''); setSuccessMsg('');
@@ -170,10 +186,10 @@ function ScannerPage() {
         playSound('success');
         setSuccessMsg(`🚨 訂單 ${orderId} 已成功強制出庫！`);
         
-        // 延遲 2 秒讓用戶看到成功訊息後，自動重置畫面換下一單
+        // 強制出庫成功後，一樣延遲 1.5 秒自動返回
         setTimeout(() => {
           setOrderData(null); setOrderId(''); setInputVal(''); setSuccessMsg('');
-        }, 2000);
+        }, 1500);
 
       } catch (err) { setErrorMsg(err.message); playSound('error'); } 
       finally { setLoading(false); }
@@ -280,7 +296,6 @@ function ScannerPage() {
                 </div>
             </div>
             
-            {/* 🌟 已經綁定新 API 的按鈕區塊 */}
             <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={handleForceComplete} disabled={loading} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     ⚠️ 強制出庫
@@ -396,7 +411,6 @@ function ScannerPage() {
     </div>
   );
 }
-
 // ----------------- SearchPage (條碼搜尋系統) -----------------
 function SearchPage() {
   const [query, setQuery] = useState('');
