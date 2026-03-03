@@ -139,35 +139,49 @@ export default function InspectionZone({ zoneName }) {
         } catch (err) { console.error("更新數量失敗", err); }
     };
 
+    // 🌟🌟 強化版掃碼判定：支援尾數模糊比對
     const processBarcode = (scannedCode) => {
         if (itemsRef.current.length === 0) return;
         const cleanScanned = String(scannedCode).trim();
-        let matchFound = false;
+        
+        let matchedItems = [];
         let isFull = false;
 
+        // 遍歷所有商品進行比對
         for (let item of itemsRef.current) {
             const pdfBarcode = String(item.Barcode).trim();
-            const purePdfBarcode = pdfBarcode.replace(/[A-Za-z]+$/, '');
-
+            const purePdfBarcode = pdfBarcode.replace(/[A-Za-z]+$/, ''); // 移除母單結尾字母
+            
+            // 條件 1: 完全相等 (掃描槍通常是這個)
             if (pdfBarcode === cleanScanned || purePdfBarcode === cleanScanned) {
-                matchFound = true;
-                if (item.Scanned_Qty < item.Target_Qty) {
-                    playSound('success');
-                    showAlert(`✅ 掃描成功！(${cleanScanned})`, "success");
-                    updateItemQty(item.id, item.Scanned_Qty + 1, true); 
-                } else {
-                    isFull = true;
-                }
-                break; 
+                matchedItems.push(item);
+            } 
+            // 條件 2: 手動輸入且長度較短 (小於等於 8 碼)，則檢查「條碼尾數」是否相符
+            else if (cleanScanned.length > 0 && cleanScanned.length <= 8) {
+                 if (pdfBarcode.endsWith(cleanScanned) || purePdfBarcode.endsWith(cleanScanned)) {
+                     matchedItems.push(item);
+                 }
             }
         }
 
-        if (!matchFound) {
+        if (matchedItems.length === 0) {
             playSound('error');
             showAlert("❌ 拿錯貨了！找不到此條碼：" + cleanScanned, "error");
-        } else if (isFull) {
+        } else if (matchedItems.length > 1) {
+            // 防呆：如果輸入的尾數太短，導致配對到兩個不同的商品
             playSound('error');
-            showAlert("⚠️ 數量已滿！請勿多拿！", "warning");
+            showAlert(`⚠️ 找到 ${matchedItems.length} 個符合的條碼，請輸入更長的尾數！`, "warning");
+        } else {
+            // 準確找到唯一一個商品
+            const targetItem = matchedItems[0];
+            if (targetItem.Scanned_Qty < targetItem.Target_Qty) {
+                playSound('success');
+                showAlert(`✅ 掃描成功！(${targetItem.Barcode})`, "success");
+                updateItemQty(targetItem.id, targetItem.Scanned_Qty + 1, true); 
+            } else {
+                playSound('error');
+                showAlert("⚠️ 數量已滿！請勿多拿！", "warning");
+            }
         }
 
         setTimeout(() => setInputValue(""), 200);
@@ -262,10 +276,10 @@ export default function InspectionZone({ zoneName }) {
             {items.length > 0 && (
                 <div ref={topRef} style={{ marginBottom: '20px', background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
                     <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#64748b', marginBottom: '8px' }}>
-                        {isCameraOpen ? '📷 相機掃描模式中...' : '⌨️ 游標已鎖定，請直接使用實體掃碼槍'}
+                        {isCameraOpen ? '📷 相機掃描模式中...' : '⌨️ 游標已鎖定，可刷條碼或手動輸入最後4~6碼'}
                     </div>
                     <input 
-                        ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleKeyDown} disabled={isCameraOpen} placeholder="在此掃描或輸入條碼..."
+                        ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleKeyDown} disabled={isCameraOpen} placeholder="在此掃描，或輸入條碼末幾碼..."
                         style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '10px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: isCameraOpen ? '#e2e8f0' : '#ffffff' }}
                     />
                     
@@ -273,7 +287,7 @@ export default function InspectionZone({ zoneName }) {
                         onClick={() => setIsCameraOpen(!isCameraOpen)} 
                         style={{ width: '100%', marginTop: '15px', background: isCameraOpen ? '#ef4444' : '#3b82f6', color: 'white', padding: '12px', fontSize: '16px', borderRadius: '10px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
                     >
-                        {isCameraOpen ? '❌ 關閉相機 (切換回掃描槍)' : '📷 開啟手機相機掃描'}
+                        {isCameraOpen ? '❌ 關閉相機 (切換回手動/掃描槍)' : '📷 開啟手機相機掃描'}
                     </button>
                     
                     {/* 相機顯示區 */}
