@@ -814,7 +814,7 @@ function HelloBearPage() {
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
           <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
-          <button onClick={handleProcess} disabled={loading} style={{ width: '20%', background: loading ? '#94a3b8' : '#8b5cf6', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
+          <button onClick={handleProcess} disabled={loading} style={{ width: '20%', minWidth: '150px', background: loading ? '#94a3b8' : '#8b5cf6', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
             {loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}
           </button>
           {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
@@ -840,23 +840,36 @@ function HelloBearPage() {
             <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>標籤類型</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
+                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
                 <tbody>
                   {resultData.items.map((item, idx) => {
                     const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
-                    const isHighlight = ["repack", "sku", "蟲", "food"].some(k => item.label_type.toLowerCase().includes(k));
                     
+                    // 🌟 判斷 Barcode 是否包含英文字母 (組合母單提示)
+                    const hasLetter = /[a-zA-Z]/.test(item.Barcode || "");
+                    // 🌟 判斷 Product_No 和 Barcode 是否完全相同
+                    const isSame = item.Product_No === item.Barcode;
+                    
+                    // 如果有英文字母或是兩者相同，就觸發高亮
+                    const needsHighlight = hasLetter || isSame;
+
+                    const rowBgColor = isDup ? '#fffbeb' : (needsHighlight ? '#fef08a' : 'transparent'); // #fef08a 是亮黃色
+                    const textColor = needsHighlight ? '#ea580c' : 'inherit'; // #ea580c 是顯眼的橘色
+
                     return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isDup ? '#fffbeb' : 'transparent' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: rowBgColor, transition: 'background 0.2s' }}>
                         <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
-                        <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
-                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
+                        <td style={{ padding: '12px', fontWeight: 'bold', color: textColor }}>{item.Product_No}</td>
+                        <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', color: textColor, fontWeight: needsHighlight ? 'bold' : 'normal' }}>{item.Name}</td>
+                        <td style={{ padding: '12px', fontFamily: 'monospace' }}>
+                          <span style={{ background: needsHighlight ? '#fde047' : '#f1f5f9', padding: '4px 8px', borderRadius: '4px', color: textColor, fontWeight: needsHighlight ? 'bold' : 'normal' }}>
+                            {item.Barcode}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center', color: textColor }}>{item.Qty}</td>
                         <td style={{ padding: '12px', textAlign: 'center' }}>
                           {item.status === 'no_print' ? (
-                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' }}>{item.label_type}</span>
+                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' }}>無需打印</span>
                           ) : (
                             <button onClick={() => handlePrint(item.print_html)} style={{ background: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '6px 16px', whiteSpace: 'nowrap', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🖨️ 打印標籤</button>
                           )}
