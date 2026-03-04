@@ -16,6 +16,7 @@ from services.food_label_api import router as food_label_router
 from services.chat_api import router as chat_router
 from services.scanner_api import router as scanner_router
 from services.master_api import router as master_router
+from services.inventory_api import router as inventory_router # 👇 新增這行：匯入我們剛寫好的 DEAR 庫存 API
 
 app = FastAPI()
 
@@ -52,6 +53,7 @@ app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
 app.include_router(scanner_router, prefix="/api/scanner", tags=["Scanner"])
 app.include_router(master_router, prefix="/api/master", tags=["MasterDB"])
 app.include_router(inspection.router, prefix="/api/inspection", tags=["Inspection"])
+app.include_router(inventory_router, prefix="/api/inventory", tags=["Inventory"]) # 👇 新增這行：註冊庫存路由
 
 @app.get("/")
 def read_root():

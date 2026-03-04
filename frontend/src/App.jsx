@@ -12,6 +12,7 @@ function Sidebar() {
 
   const menuItems = [
     { path: '/', icon: '🏠', label: '系統首頁' }, 
+    { path: '/inventory', icon: '📦', label: 'DEAR 庫存查詢' },
     { path: '/scanner', icon: '📷', label: '掃碼出庫系統' },
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
@@ -48,6 +49,110 @@ function Sidebar() {
         </div>
       </div>
     </>
+  );
+}
+
+function InventoryPage() {
+  const [sku, setSku] = useState('');
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!sku.trim()) return;
+
+    setLoading(true);
+    setError('');
+    setResults(null);
+
+    try {
+      // ⚠️ 注意：這裡假設你會將 API 部署到你現有的 Render 後端
+      const response = await fetch(`http://127.0.0.1:8000/api/inventory?sku=${encodeURIComponent(sku)}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.detail || '查詢失敗');
+      }
+
+      setResults(result.data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 過濾 HKTV SD4 的邏輯
+  const targetLocation = "HKTV SD4";
+  const filteredData = results ? results.filter(item => {
+    if (!item.Location) return false;
+    return item.Location.trim().toUpperCase() === targetLocation.toUpperCase();
+  }) : [];
+
+  return (
+    <div className="page-content">
+      <div className="page-header" style={{ textAlign: 'center', marginBottom: '30px' }}>
+        <h2 style={{ fontSize: '32px', color: '#0f172a', fontWeight: '800' }}>📦 HKTV SD4 庫存查詢</h2>
+        <p style={{ color: '#64748b', fontSize: '16px' }}>請輸入產品完整 SKU 以查詢 DEAR 即時庫存</p>
+      </div>
+
+      <div style={{ maxWidth: '600px', margin: '0 auto', background: '#ffffff', padding: '30px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+          <input 
+            type="text" 
+            value={sku} 
+            onChange={(e) => setSku(e.target.value)} 
+            placeholder="例如: TEST-SKU-001" 
+            required
+            style={{ flex: 1, padding: '16px', fontSize: '18px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none' }}
+          />
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{ background: '#3b82f6', color: 'white', padding: '0 24px', fontSize: '18px', borderRadius: '12px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}
+          >
+            {loading ? '查詢中...' : '查詢'}
+          </button>
+        </form>
+
+        {error && <div style={{ background: '#fef2f2', color: '#991b1b', padding: '15px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #fecaca' }}>❌ {error}</div>}
+
+        {results && (
+          <div style={{ marginTop: '30px' }}>
+            <h3 style={{ borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '20px' }}>
+              {filteredData.length > 0 ? `✅ SKU: ${sku} 在 HKTV SD4 的庫存狀況` : `⚠️ 找不到 SKU: ${sku} 在 HKTV SD4 的庫存資料`}
+            </h3>
+
+            {filteredData.length === 0 && results.length > 0 && (
+              <div style={{ background: '#fffbeb', color: '#b45309', padding: '15px', borderRadius: '12px', fontSize: '14px', border: '1px solid #fde047' }}>
+                💡 提示：此商品在 HKTV SD4 沒有庫存。但它在其他倉庫有紀錄：{Array.from(new Set(results.map(i => i.Location))).filter(Boolean).join(', ')}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gap: '15px', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+              {filteredData.map((item, idx) => (
+                <div key={idx} style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>📍 倉庫位置</div>
+                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a', marginBottom: '15px' }}>{item.Location}</div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '15px' }}>
+                    <div>
+                      <div style={{ fontSize: '20px', color: '#64748b' }}>現有總庫存</div>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#334155' }}>{item.OnHand || 0}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '20px', color: '#64748b' }}>可用庫存</div>
+                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: item.Available > 0 ? '#16a34a' : '#dc2626' }}>{item.Available || 0}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1305,6 +1410,7 @@ function HomePage() {
 
   const features = [
     { id: 'scanner', title: '📦 掃碼出庫作業', desc: '支援相機與實體掃描槍，光速讀取條碼並同步至 Letech 伺服器，自動核對出庫明細，防止漏發與錯發。', path: '/scanner', icon: '🛒', bgGradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', shadow: 'rgba(16, 185, 129, 0.25)', status: '🟢 系統正常' },
+    { id: 'inventory', title: '📦 DEAR 庫存查詢', desc: '即時連線 DEAR Systems，快速查詢商品在 HKTV SD4 倉庫的可用庫存與總量。', path: '/inventory', icon: '📦', bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', shadow: 'rgba(139, 92, 246, 0.25)', status: '🟢 系統正常' },
     { id: 'inspection', title: '🕵️‍♂️ 3PL 貨品檢測', desc: '上傳各平台 PDF 生成專屬檢測任務，支援手機即時掃碼核對，精準控管包裝數量，杜絕出貨錯誤。', path: '/inspection', icon: '🕵️‍♂️', bgGradient: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', shadow: 'rgba(14, 165, 233, 0.25)', status: '🟢 系統正常' },
     { id: 'search', title: '🔍 條碼搜尋系統', desc: '極速檢索全站商品資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，一秒定位商品詳細資訊。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
     { id: 'label', title: '🏷️ 智能標籤列印', desc: '輸入關鍵字自動從資料庫抓取營養標示、蟲蟲警語，一鍵排版並支援自訂數量快速列印食品標籤。', path: '/label', icon: '🖨️', bgGradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: 'rgba(59, 130, 246, 0.25)', status: '🟢 系統正常' },
@@ -1312,7 +1418,7 @@ function HomePage() {
     { id: 'anymall', title: '🛍️ Anymall 3PL', desc: 'Anymall PDF 智能解析模組，自動抓取商品編號與數量，智能判定是否需要列印標籤。', path: '/anymall', icon: '🛍️', bgGradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', shadow: 'rgba(236, 72, 153, 0.25)', status: '🟢 系統正常' },
     { id: 'hellobear', title: '🐻 Hello Bear 3PL', desc: '針對 Hello Bear 的訂單結構優化，專門判定 T06 特殊條碼，支援高效率批量資料轉換。', path: '/hellobear', icon: '🐻', bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', shadow: 'rgba(139, 92, 246, 0.25)', status: '🟢 系統正常' },
     { id: 'homey', title: '🏠 Homey 3PL', desc: 'Homey 專用處理中心，具備多重標籤判定邏輯，自動切換蟲蟲、食品、Repack 等特殊標籤排版。', path: '/homey', icon: '🏠', bgGradient: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', shadow: 'rgba(20, 184, 166, 0.25)', status: '🟢 系統正常' },
-    { id: 'chat', title: '💬 異常訂單回報', desc: '專屬的即時通訊頻道，遇到查無訂單、包裝異常等狀況，支援圖片上傳與文字回報，1分鐘內可撤回。', path: '/chat', icon: '🚨', bgGradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: 'rgba(245, 158, 11, 0.25)', status: '🟢 系統正常' }
+    { id: 'chat', title: '💬 異常訂單回報', desc: '專屬的即時通訊頻道，遇到查無訂單、包裝異常等狀況，支援圖片上傳與文字回報，1分鐘內可撤回。', path: '/chat', icon: '🚨', bgGradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: 'rgba(245, 158, 11, 0.25)', status: '🟢 系統正常' },
   ];
 
   return (
@@ -1406,6 +1512,10 @@ function DatabaseUploader({ title, infoUrl, uploadUrl }) {
   );
 }
 
+
+
+
+
 function App() {
   return (
     <Router>
@@ -1422,7 +1532,7 @@ function App() {
             <Route path="/homey" element={<HomeyPage />} />
             <Route path="/label" element={<FoodLabelPage />} />
             <Route path="/chat" element={<ChatPage />} />
-            
+            <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/inspection" element={<InspectionHub />} />
             <Route path="/inspection/anymall" element={<InspectionZone zoneName="Anymall" />} />
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />
