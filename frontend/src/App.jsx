@@ -68,7 +68,7 @@ function InventoryPage() {
 
     try {
       // ⚠️ 注意：這裡假設你會將 API 部署到你現有的 Render 後端
-      const response = await fetch(`http://127.0.0.1:8000/api/inventory?sku=${encodeURIComponent(sku)}`);
+      const response = await fetch(`https://letech-pro.onrender.com/api/inventory?sku=${encodeURIComponent(sku)}`);
       const result = await response.json();
 
       if (!response.ok || !result.success) {
