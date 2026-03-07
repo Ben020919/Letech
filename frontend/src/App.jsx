@@ -60,7 +60,7 @@ function InventoryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-const handleSearch = async (e) => {
+  const handleSearch = async (e) => {
     e.preventDefault();
     if (!sku.trim()) return;
 
@@ -70,7 +70,6 @@ const handleSearch = async (e) => {
     setProductInfo(null);
 
     try {
-      // 🌟 現在直接把輸入的值(不管是 SKU 還是 條碼) 丟給我們聰明的後端 API 即可！
       const response = await fetch(`https://letech-pro.onrender.com/api/inventory/?sku=${encodeURIComponent(sku.trim())}`);
       const result = await response.json();
 
@@ -80,22 +79,15 @@ const handleSearch = async (e) => {
 
       setResults(result.data);
       
-      // 如果後端有找到商品基本資料，就設定它
-      if (result.product_info) {
-          setProductInfo(result.product_info);
-      } else if (result.data && result.data.length > 0) {
-          // 備用方案
+      // 🌟 提取這支商品的基本資訊 (只要陣列裡有資料，隨便抓第一筆的商品資訊即可)
+      if (result.data && result.data.length > 0) {
           const firstItem = result.data[0];
           setProductInfo({
               Name: firstItem.Name || '未知商品名稱',
               SKU: firstItem.SKU || '-',
-              Barcode: firstItem.UPC || firstItem.Barcode || '-',
+              Barcode: firstItem.UPC || firstItem.Barcode || '-', // DEAR 通常存在 UPC 欄位
               UOM: firstItem.UOM || '個'
           });
-      }
-
-      if (result.message && (!result.data || result.data.length === 0)) {
-          setError("系統中找不到該商品的實體庫存紀錄。");
       }
 
     } catch (err) {
