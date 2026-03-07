@@ -49,14 +49,45 @@ class DearAPIClient:
             except Exception as e:
                 raise Exception(f"連線失敗: {str(e)}")
 
-    # 🌟 新增功能：去 DEAR 的產品總目錄抓取 UPC 和 UOM 等基本資料
-def get_inventory_by_sku(self, query: str) -> List[Dict[str, Any]]:
+    def get_product_info(self, sku: str) -> dict:
         """
-        支援使用 SKU 或 Barcode 查詢特定產品的庫存數量
+        只使用 SKU 搜尋 DEAR 的商品總目錄，以獲取基本資訊。
         """
-        # 注意：DEAR API 的 ProductAvailabilityList 允許模糊搜尋，
-        # 我們直接把前端傳來的字串丟給 SKU 參數，DEAR 通常能同時比對 SKU 和 Barcode
-        params = {"SKU": query}
+        params = {"SKU": sku}
+        response_data = self._make_request("Product", params)
+        products = response_data.get("Products", [])
+        
+        if products:
+            p = products[0]
+            
+            # 🚨 終端機除錯雷達
+            print(f"\n🔍 [DEAR 原始資料解析] SKU: {sku}")
+            print(f"原始 Barcode 欄位: {p.get('Barcode')}")
+            print(f"原始 UPC 欄位: {p.get('UPC')}")
+            print("-" * 40)
+
+            # 自動掃描可能的條碼欄位
+            barcode_val = (
+                p.get("Barcode") or 
+                p.get("UPC") or 
+                p.get("AdditionalAttribute1") or 
+                p.get("AdditionalAttribute2") or 
+                p.get("AdditionalAttribute3")
+            )
+            
+            return {
+                "Name": p.get("Name", "-"),
+                "SKU": p.get("SKU", "-"),
+                "UPC": str(barcode_val).strip() if barcode_val else "-",  
+                "UOM": p.get("UOM", "個")   
+            }
+        return {}
+
+    def get_inventory_by_sku(self, sku: str) -> List[Dict[str, Any]]:
+        """
+        取得指定 SKU 的庫存明細
+        """
+        params = {"SKU": sku}
         response_data = self._make_request("ref/productavailability", params)
         
         if isinstance(response_data, dict):
@@ -66,22 +97,31 @@ def get_inventory_by_sku(self, query: str) -> List[Dict[str, Any]]:
         return []
 
 @router.get("/")
-def get_inventory(query: str = Query(..., alias="sku", description="要查詢的產品 SKU 或 Barcode")):
-    """
-    接收前端傳來的 SKU 或 Barcode，向 DEAR API 查詢庫存並回傳
-    """
+def get_inventory(sku: str = Query(..., description="要查詢的產品 SKU")):
     account_id = os.getenv("DEAR_ACCOUNT_ID")
     application_key = os.getenv("DEAR_APPLICATION_KEY")
 
     if not account_id or not application_key:
-        raise HTTPException(status_code=500, detail="伺服器缺少 DEAR API 金鑰設定 (請檢查 Render 環境變數)")
+        raise HTTPException(status_code=500, detail="伺服器缺少 DEAR API 金鑰設定")
 
     try:
         dear_client = DearAPIClient(account_id=account_id, application_key=application_key)
-        data = dear_client.get_inventory_by_sku(query)
+        
+        product_info = dear_client.get_product_info(sku)
+        
+        if not product_info or product_info.get("SKU") == "-":
+            return {
+                "success": True, 
+                "product_info": None, 
+                "data": [],
+                "message": "在 DEAR 中找不到對應的商品"
+            }
+            
+        data = dear_client.get_inventory_by_sku(sku)
         
         return {
             "success": True, 
+            "product_info": product_info, 
             "data": data
         }
         
