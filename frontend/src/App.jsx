@@ -1,5 +1,5 @@
 import { Html5Qrcode } from 'html5-qrcode'; 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, useNavigate, Route, Link, useLocation } from 'react-router-dom';
 import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
@@ -309,29 +309,40 @@ function ScannerPage() {
   useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
   useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
 
-  // 🌟 核彈級踢出監聽器 (支援母子單精算)
-  useEffect(() => {
-      if (orderData) {
-          let t_q = 0, t_s = 0;
-          (orderData.products || []).forEach(p => {
-              if (p.products && p.products.length > 0) {
-                  p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
-              } else {
-                  t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
-              }
-          });
-          const fullyScanned = t_q > 0 && t_s >= t_q;
-
-          if (fullyScanned || orderData.status === true || orderData.status === "Completed") {
-              setIsCompleted(true);
-              setIsCameraOpen(false); 
-              setSuccessMsg(`🎉 完美！訂單已全數出庫完成。即將返回...`);
-              
-              const timer = setTimeout(() => forceResetToHome(), 1500);
-              return () => clearTimeout(timer);
-          }
-      }
+  // 🌟 效能優化：集中處理數學計算
+  const orderStats = useMemo(() => {
+    if (!orderData) return { totalQty: 0, totalScanned: 0, fullyScanned: false };
+    
+    let t_q = 0, t_s = 0;
+    (orderData.products || []).forEach(p => {
+        if (p.products && p.products.length > 0) {
+            // 如果有子單，總進度「只加子單的數量」
+            p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
+        } else {
+            // 沒子單，才算自己
+            t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
+        }
+    });
+    
+    return {
+        totalQty: t_q,
+        totalScanned: t_s,
+        fullyScanned: t_q > 0 && t_s >= t_q,
+        progressPercent: t_q === 0 ? 0 : Math.min((t_s / t_q) * 100, 100)
+    };
   }, [orderData]);
+
+  // 🌟 核彈級踢出監聽器
+  useEffect(() => {
+      if (orderData && (orderStats.fullyScanned || orderData.status === true || orderData.status === "Completed")) {
+          setIsCompleted(true);
+          setIsCameraOpen(false); 
+          setSuccessMsg(`🎉 完美！訂單已全數出庫完成。即將返回...`);
+          
+          const timer = setTimeout(() => forceResetToHome(), 1500);
+          return () => clearTimeout(timer);
+      }
+  }, [orderData, orderStats.fullyScanned]);
 
   useEffect(() => {
     if (inputRef.current && !isCameraOpen && !isCompleted && !loading) {
@@ -417,58 +428,20 @@ function ScannerPage() {
     const currentOrderId = orderIdRef.current;
     
     try {
-      // 🌟 第一步：檢查是不是掃到了母單的條碼？
-      const matchedParent = orderData?.products?.find(
-          p => p.barcode === barcode.trim() && p.products && p.products.length > 0
-      );
-
-      let finalOrderData = null;
-
-      if (matchedParent) {
-          // 🪄 魔法發動：自動幫忙代打子商品 API
-          setSuccessMsg(`📦 偵測到組合母單！系統正在極速代掃子商品...`);
-          
-          for (const child of matchedParent.products) {
-              const missingQty = Number(child.quantity || 0) - Number(child.scanQty || 0);
-              for (let i = 0; i < missingQty; i++) {
-                  await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ order_id: currentOrderId, barcode: child.barcode })
-                  });
-              }
-          }
-          const refreshRes = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${currentOrderId}`);
-          finalOrderData = await refreshRes.json();
-          playSound('success');
-      } else {
-          // 正常商品掃描
-          const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
-          });
-          if (!res.ok) throw new Error((await res.json()).detail);
-          const data = await res.json();
-          finalOrderData = data.order_data;
-          playSound('success');
-      }
-      
-      setOrderData(finalOrderData);
-      
-      // 🌟 第二步：判斷是否達標
-      let t_q = 0, t_s = 0;
-      (finalOrderData?.products || []).forEach(p => {
-          if (p.products && p.products.length > 0) {
-              p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
-          } else {
-              t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
-          }
+      const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
       });
-      const fullyScanned = t_q > 0 && t_s >= t_q;
-
-      if (!finalOrderData?.status && !fullyScanned) {
-          setSuccessMsg(matchedParent ? `✅ 組合包拆分掃描成功！請繼續...` : `✅ ${barcode} 掃描成功！請繼續...`);
+      
+      if (!res.ok) throw new Error((await res.json()).detail);
+      const data = await res.json();
+      
+      setOrderData(data.order_data);
+      playSound('success');
+      
+      if (!data.is_done) {
+          setSuccessMsg(`✅ ${data.message || '掃描成功！請繼續...'}`);
       }
 
     } catch (err) { 
@@ -482,14 +455,22 @@ function ScannerPage() {
   const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
   const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
   
+  // 🌟 修改：清空並作廢進度 (呼叫 Cancel API，並加上防呆警告)
   const handleReset = async () => {
-    // 移除 window.confirm，直接執行取消 API 並返回首頁
-    try { 
-        await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); 
-    } catch (e) {
-        console.error("取消訂單發生錯誤:", e);
+    if (window.confirm("⚠️ 警告：確定要「重置」這筆訂單的掃描進度嗎？\n這將會清除您剛才在 Letech 掃描的所有紀錄，必須重新掃描！")) {
+        setLoading(true);
+        try { 
+            await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); 
+            playSound('success');
+            forceResetToHome();
+        } catch (e) {
+            console.error("取消訂單發生錯誤:", e);
+            setErrorMsg("重置失敗，請稍後再試");
+            playSound('error');
+        } finally {
+            setLoading(false);
+        }
     }
-    forceResetToHome();
   };
 
   const handleForceComplete = async () => {
@@ -512,7 +493,14 @@ function ScannerPage() {
   useEffect(() => {
     let html5QrCode;
     if (isCameraOpen && !isCompleted) {
-      html5QrCode = new Html5Qrcode("reader");
+      // 🌟 保護機制：確保 Html5Qrcode 已載入
+      if (typeof window.Html5Qrcode === 'undefined') {
+        setErrorMsg("相機模組載入異常，請確保已安裝 html5-qrcode");
+        setIsCameraOpen(false);
+        return;
+      }
+
+      html5QrCode = new window.Html5Qrcode("reader");
       const cameraConfig = { facingMode: "environment" }; 
       const scanConfig = { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 };
       
@@ -549,6 +537,7 @@ function ScannerPage() {
     };
   }, [isCameraOpen, isCompleted]); 
 
+  // ----- UI: 未輸入訂單前的畫面 -----
   if (!orderData) {
     return (
       <div className="page-content" onClick={handleFocusLoss}>
@@ -589,17 +578,7 @@ function ScannerPage() {
     );
   }
 
-  let totalQty = 0; let totalScanned = 0;
-  const products = orderData.products || [];
-  products.forEach(p => {
-      if (p.products && p.products.length > 0) {
-          p.products.forEach(sp => { totalQty += Number(sp.quantity || 0); totalScanned += Number(sp.scanQty || 0); });
-      } else {
-          totalQty += Number(p.quantity || 0); totalScanned += Number(p.scanQty || 0);
-      }
-  });
-  const progressPercent = totalQty === 0 ? 0 : Math.min((totalScanned / totalQty) * 100, 100);
-
+  // ----- UI: 訂單處理中畫面 -----
   return (
     <div className="page-content" onClick={handleFocusLoss}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px', background: '#ffffff', padding: '20px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
@@ -613,12 +592,12 @@ function ScannerPage() {
                 </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button onClick={handleForceComplete} disabled={loading || isCompleted} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     ⚠️ 強制出庫
                 </button>
-                <button onClick={handleReset} disabled={loading || isCompleted} style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    🔄 換單重置
+                <button onClick={handleReset} disabled={loading || isCompleted} style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde047', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }} title="清除目前掃描紀錄，全部重來">
+                    🔄 重置
                 </button>
             </div>
         </div>
@@ -628,10 +607,10 @@ function ScannerPage() {
                 <div style={{ padding: '20px 25px', borderBottom: '1px solid #f1f5f9' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontWeight: '700', color: '#334155', fontSize: '15px' }}>
                         <span>📦 出庫進度</span>
-                        <span style={{ color: progressPercent === 100 ? '#10b981' : '#2563eb' }}>{totalScanned} / {totalQty}</span>
+                        <span style={{ color: orderStats.progressPercent === 100 ? '#10b981' : '#2563eb' }}>{orderStats.totalScanned} / {orderStats.totalQty}</span>
                     </div>
                     <div style={{ width: '100%', background: '#f1f5f9', borderRadius: '999px', height: '10px', overflow: 'hidden', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)' }}>
-                        <div style={{ width: `${progressPercent}%`, background: progressPercent === 100 ? '#10b981' : '#3b82f6', height: '100%', transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}></div>
+                        <div style={{ width: `${orderStats.progressPercent}%`, background: orderStats.progressPercent === 100 ? '#10b981' : '#3b82f6', height: '100%', transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}></div>
                     </div>
                 </div>
                 
@@ -647,34 +626,46 @@ function ScannerPage() {
                           </tr>
                       </thead>
                       <tbody>
-                          {products.map((p, idx) => {
+                          {(orderData.products || []).map((p, idx) => {
                               const hasChildren = p.products && p.products.length > 0;
                               const isDone = hasChildren ? false : (p.quantity - p.scanQty) <= 0;
                               
                               let allChildrenDone = false;
+                              let bundleScanned = 0; 
+                              
                               if (hasChildren) {
                                   const c_tq = p.products.reduce((sum, sp) => sum + Number(sp.quantity || 0), 0);
                                   const c_ts = p.products.reduce((sum, sp) => sum + Number(sp.scanQty || 0), 0);
                                   allChildrenDone = c_tq > 0 && c_ts >= c_tq;
+                                  
+                                  // 🌟 動態比例換算計算：母單進度
+                                  if (p.quantity > 0) {
+                                      const ratios = p.products.map(sp => {
+                                          const reqPerBundle = Number(sp.quantity) / Number(p.quantity);
+                                          return reqPerBundle > 0 ? Math.floor(Number(sp.scanQty || 0) / reqPerBundle) : 0;
+                                      });
+                                      bundleScanned = Math.min(...ratios);
+                                  }
                               }
                               const parentBg = hasChildren ? (allChildrenDone ? '#f0fdf4' : '#f8fafc') : (isDone ? '#f0fdf4' : '#ffffff');
 
                               return (
                                   <React.Fragment key={idx}>
+                                      {/* 母單行 */}
                                       <tr style={{ borderBottom: '1px solid #f1f5f9', background: parentBg, transition: 'background 0.2s' }}>
                                           <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
                                           <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
                                           
                                           <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
-                                              {hasChildren ? '-' : p.quantity}
+                                              {p.quantity}
                                           </td>
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: isDone ? '#15803d' : '#2563eb' }}>
-                                              {hasChildren ? '-' : p.scanQty}
+                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: (hasChildren ? bundleScanned === p.quantity : isDone) ? '#15803d' : '#2563eb' }}>
+                                              {hasChildren ? bundleScanned : p.scanQty}
                                           </td>
                                           <td style={{ padding: '16px 20px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                               {hasChildren ? (
                                                   <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: allChildrenDone ? '#dcfce7' : '#e2e8f0', color: allChildrenDone ? '#166534' : '#475569' }}>
-                                                      {allChildrenDone ? '✅ 組合完成' : '📦 組合母單'}
+                                                      {allChildrenDone ? '✅ 組合完成' : `📦 母單 (${bundleScanned}/${p.quantity})`}
                                                   </span>
                                               ) : (
                                                   <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: isDone ? '#dcfce7' : '#fef3c7', color: isDone ? '#166534' : '#b45309' }}>
@@ -683,6 +674,8 @@ function ScannerPage() {
                                               )}
                                           </td>
                                       </tr>
+                                      
+                                      {/* 子單行 */}
                                       {(p.products || []).map((sp, sidx) => {
                                           const sDone = (sp.quantity - sp.scanQty) <= 0;
                                           return (
@@ -709,7 +702,6 @@ function ScannerPage() {
                 </div>
             </div>
 
-            {/* 右側：現代化掃描區 */}
             <div style={{ flex: '1', minWidth: '300px', position: 'sticky', top: '20px' }}>
                 {successMsg && <div style={{ background: '#dcfce7', color: '#166534', padding: '16px', borderRadius: '14px', textAlign: 'center', fontWeight: '700', marginBottom: '15px', border: '1px solid #bbf7d0', boxShadow: '0 4px 6px rgba(22, 101, 52, 0.1)' }}>{successMsg}</div>}
                 {errorMsg && <div style={{ background: '#fef2f2', color: '#991b1b', padding: '16px', borderRadius: '14px', textAlign: 'center', fontWeight: '700', marginBottom: '15px', border: '1px solid #fecaca', boxShadow: '0 4px 6px rgba(153, 27, 27, 0.1)' }}>{errorMsg}</div>}
@@ -749,7 +741,6 @@ function ScannerPage() {
     </div>
   );
 }
-
 function SearchPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
