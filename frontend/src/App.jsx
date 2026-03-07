@@ -52,23 +52,26 @@ function Sidebar() {
   );
 }
 
+// ----------------- InventoryPage (DEAR 庫存查詢系統 - 專業表格版) -----------------
 function InventoryPage() {
   const [sku, setSku] = useState('');
   const [results, setResults] = useState(null);
+  const [productInfo, setProductInfo] = useState(null); // 🌟 新增：用來存放商品基本資料
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSearch = async (e) => {
+const handleSearch = async (e) => {
     e.preventDefault();
     if (!sku.trim()) return;
 
     setLoading(true);
     setError('');
     setResults(null);
+    setProductInfo(null);
 
     try {
-      // ⚠️ 注意：這裡假設你會將 API 部署到你現有的 Render 後端
-      const response = await fetch(`https://letech-pro.onrender.com/api/inventory?sku=${encodeURIComponent(sku)}`);
+      // 🌟 現在直接把輸入的值(不管是 SKU 還是 條碼) 丟給我們聰明的後端 API 即可！
+      const response = await fetch(`https://letech-pro.onrender.com/api/inventory/?sku=${encodeURIComponent(sku.trim())}`);
       const result = await response.json();
 
       if (!response.ok || !result.success) {
@@ -76,6 +79,25 @@ function InventoryPage() {
       }
 
       setResults(result.data);
+      
+      // 如果後端有找到商品基本資料，就設定它
+      if (result.product_info) {
+          setProductInfo(result.product_info);
+      } else if (result.data && result.data.length > 0) {
+          // 備用方案
+          const firstItem = result.data[0];
+          setProductInfo({
+              Name: firstItem.Name || '未知商品名稱',
+              SKU: firstItem.SKU || '-',
+              Barcode: firstItem.UPC || firstItem.Barcode || '-',
+              UOM: firstItem.UOM || '個'
+          });
+      }
+
+      if (result.message && (!result.data || result.data.length === 0)) {
+          setError("系統中找不到該商品的實體庫存紀錄。");
+      }
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -83,36 +105,91 @@ function InventoryPage() {
     }
   };
 
-  // 過濾 HKTV SD4 的邏輯
   const targetLocation = "HKTV SD4";
   const filteredData = results ? results.filter(item => {
     if (!item.Location) return false;
-    return item.Location.trim().toUpperCase() === targetLocation.toUpperCase();
+    if (item.Location.trim().toUpperCase() !== targetLocation.toUpperCase()) return false;
+    
+    // 剔除幽靈數據
+    const soh = item.OnHand || 0;
+    const allocated = item.Allocated || 0;
+    const onOrder = item.OnOrder || 0;
+    
+    if (soh === 0 && allocated === 0 && onOrder === 0) {
+      return false;
+    }
+    
+    return true;
   }) : [];
+
+  const groupedData = {};
+  let totalSOH = 0;
+  let totalAllocated = 0;
+  let totalAvailable = 0;
+
+  filteredData.forEach(item => {
+    totalSOH += (item.OnHand || 0);
+    totalAllocated += (item.Allocated || 0);
+    totalAvailable += (item.Available || 0);
+
+    let batchDisplay = item.Batch || '-';
+    let formattedDate = '';
+    
+    if (item.ExpiryDate && item.ExpiryDate !== "") {
+        const dateObj = new Date(item.ExpiryDate);
+        if (!isNaN(dateObj.getTime())) {
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            formattedDate = `(${day}/${month}/${year})`;
+        }
+    }
+
+    const groupKey = `${batchDisplay}_${formattedDate}`;
+
+    if (!groupedData[groupKey]) {
+      groupedData[groupKey] = { 
+          Batch: batchDisplay, 
+          ExpiryStr: formattedDate,
+          SOH: 0, Avail: 0, OnOrder: 0, Allocated: 0 
+      };
+    }
+    groupedData[groupKey].SOH += (item.OnHand || 0);
+    groupedData[groupKey].Avail += (item.Available || 0);
+    groupedData[groupKey].OnOrder += (item.OnOrder || 0);
+    groupedData[groupKey].Allocated += (item.Allocated || 0);
+  });
+
+  const displayRows = Object.values(groupedData).filter(row => 
+    row.SOH !== 0 || row.Avail !== 0 || row.OnOrder !== 0 || row.Allocated !== 0
+  );
 
   return (
     <div className="page-content">
       <div className="page-header" style={{ textAlign: 'center', marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '32px', color: '#0f172a', fontWeight: '800' }}>📦 HKTV SD4 庫存查詢</h2>
-        <p style={{ color: '#64748b', fontSize: '16px' }}>請輸入產品完整 SKU 以查詢 DEAR 即時庫存</p>
+        <h2 style={{ fontSize: '32px', color: '#0f172a', fontWeight: '800', margin: 0 }}>📦 HKTV SD4 庫存查詢</h2>
+        <p style={{ color: '#64748b', fontSize: '16px', marginTop: '10px' }}>支援掃描 Barcode 或輸入 SKU 進行即時查詢</p>
       </div>
 
-      <div style={{ maxWidth: '600px', margin: '0 auto', background: '#ffffff', padding: '30px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto', background: '#ffffff', padding: '30px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
+        
+        {/* 🌟 搜尋輸入框 */}
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <input 
             type="text" 
             value={sku} 
             onChange={(e) => setSku(e.target.value)} 
-            placeholder="例如: TEST-SKU-001" 
+            placeholder="掃描條碼或輸入 SKU (例: TEST-SKU-001)" 
             required
-            style={{ flex: 1, padding: '16px', fontSize: '18px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none' }}
+            autoFocus
+            style={{ flex: 1, padding: '16px', fontSize: '18px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }}
           />
           <button 
             type="submit" 
             disabled={loading}
-            style={{ background: '#3b82f6', color: 'white', padding: '0 24px', fontSize: '18px', borderRadius: '12px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}
+            style={{ background: '#3b82f6', color: 'white', padding: '0 24px', fontSize: '18px', borderRadius: '12px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
           >
-            {loading ? '查詢中...' : '查詢'}
+            {loading ? '查詢中...' : '🔍 查詢'}
           </button>
         </form>
 
@@ -120,35 +197,99 @@ function InventoryPage() {
 
         {results && (
           <div style={{ marginTop: '30px' }}>
-            <h3 style={{ borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '20px' }}>
-              {filteredData.length > 0 ? `✅ SKU: ${sku} 在 HKTV SD4 的庫存狀況` : `⚠️ 找不到 SKU: ${sku} 在 HKTV SD4 的庫存資料`}
+            
+            {/* 🌟 新增區塊：商品基本資訊卡片 */}
+            {productInfo && (
+                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '25px' }}>
+                    <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', marginBottom: '15px', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px' }}>
+                        {productInfo.Name}
+                    </div>
+                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                        <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', flex: 1, minWidth: '150px' }}>
+                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>SKU</div>
+                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#3b82f6', fontFamily: 'monospace' }}>{productInfo.SKU}</div>
+                        </div>
+                        <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', flex: 1, minWidth: '150px' }}>
+                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>Barcode (UPC)</div>
+                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#10b981', fontFamily: 'monospace' }}>{productInfo.Barcode}</div>
+                        </div>
+                        <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100px' }}>
+                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>單位 UOM</div>
+                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#475569' }}>{productInfo.UOM}</div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <h3 style={{ paddingBottom: '10px', marginBottom: '20px', color: '#0f172a', fontWeight: 'bold', fontSize: '18px' }}>
+              {filteredData.length > 0 ? `✅ HKTV SD4 庫存明細` : `⚠️ 找不到此商品在 HKTV SD4 的實體庫存`}
             </h3>
 
             {filteredData.length === 0 && results.length > 0 && (
               <div style={{ background: '#fffbeb', color: '#b45309', padding: '15px', borderRadius: '12px', fontSize: '14px', border: '1px solid #fde047' }}>
-                💡 提示：此商品在 HKTV SD4 沒有庫存。但它在其他倉庫有紀錄：{Array.from(new Set(results.map(i => i.Location))).filter(Boolean).join(', ')}
+                💡 提示：此商品在 HKTV SD4 沒有實體庫存。但它在其他倉庫有紀錄：{Array.from(new Set(results.map(i => i.Location))).filter(Boolean).join(', ')}
               </div>
             )}
 
-            <div style={{ display: 'grid', gap: '15px', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
-              {filteredData.map((item, idx) => (
-                <div key={idx} style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: '14px', color: '#64748b', marginBottom: '8px' }}>📍 倉庫位置</div>
-                  <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a', marginBottom: '15px' }}>{item.Location}</div>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '15px' }}>
+            {filteredData.length > 0 && (
+              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
+                
+                <div style={{ padding: '20px 25px', background: 'linear-gradient(to right, #f8fafc, #ffffff)', borderBottom: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>
+                    📍 HKTV SD4
+                  </div>
+                  <div style={{ display: 'flex', gap: '25px', textAlign: 'center' }}>
                     <div>
-                      <div style={{ fontSize: '20px', color: '#64748b' }}>現有總庫存</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#334155' }}>{item.OnHand || 0}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>總 SOH</div>
+                      <div style={{ fontSize: '22px', fontWeight: '900', color: '#334155' }}>{totalSOH}</div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '20px', color: '#64748b' }}>可用庫存</div>
-                      <div style={{ fontSize: '20px', fontWeight: 'bold', color: item.Available > 0 ? '#16a34a' : '#dc2626' }}>{item.Available || 0}</div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>總 Allocated</div>
+                      <div style={{ fontSize: '22px', fontWeight: '900', color: '#64748b' }}>{totalAllocated}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>總 Available</div>
+                      <div style={{ fontSize: '22px', fontWeight: '900', color: totalAvailable > 0 ? '#16a34a' : '#dc2626' }}>{totalAvailable}</div>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', color: '#475569', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <th style={{ padding: '12px 20px', fontWeight: '700' }}>BATCH/ SERIAL#</th>
+                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>SOH</th>
+                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>AVAIL</th>
+                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ON ORDER</th>
+                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ALLOCATED</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayRows.map((item, idx) => (
+                        <tr key={idx} style={{ borderTop: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                          <td style={{ padding: '12px 20px', fontFamily: 'monospace', fontWeight: '600', color: '#0f172a' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span>{item.Batch}</span>
+                                {item.ExpiryStr && (
+                                    <span style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>
+                                        {item.ExpiryStr}
+                                    </span>
+                                )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '12px 20px', fontWeight: '600', color: '#334155', textAlign: 'right' }}>{item.SOH}</td>
+                          <td style={{ padding: '12px 20px', fontWeight: 'bold', color: item.Avail > 0 ? '#16a34a' : '#dc2626', textAlign: 'right' }}>{item.Avail}</td>
+                          <td style={{ padding: '12px 20px', fontWeight: '600', color: '#2563eb', textAlign: 'right' }}>{item.OnOrder}</td>
+                          <td style={{ padding: '12px 20px', color: '#64748b', textAlign: 'right' }}>{item.Allocated}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+              </div>
+            )}
           </div>
         )}
       </div>
