@@ -43,7 +43,7 @@ async def get_task(zone: str):
         }
     }
 
-# ================= 2. 上傳 PDF 並寫入兩張表 (🌟 強化記憶體管理) =================
+# ================= 2. 上傳 PDF 並寫入兩張表 (🌟 強化記憶體管理 + 完美條碼分離) =================
 @router.post("/upload/{zone}")
 async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
     zone_key = zone.lower().replace(" ", "")
@@ -60,7 +60,7 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
         items_dict = {} 
         seq_counter = 1 
 
-        # 解析 PDF (這段最吃記憶體)
+        # 解析 PDF
         for page in reader.pages:
             text = page.extract_text()
             if not text or not text.strip(): continue
@@ -87,16 +87,44 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
             elif len(lines) > 1 and qty_line_idx == -1:
                 p_name = lines[1]
 
+            # 🌟 這裡替換成全新的「神級條碼與日期分離」邏輯 🌟
             barcode_val = ""
             if qty_line_idx != -1 and qty_line_idx < len(lines) - 1:
                 raw_bc_lines = lines[qty_line_idx+1:]
-                bc_text = "".join(raw_bc_lines)
-                bc_text = re.sub(r'N/A|\*|\s', '', bc_text)
-                bc_text = re.sub(r'202\d{5}.*', '', bc_text) 
-                if bc_text:
-                    barcode_val = bc_text.rstrip('-') 
+                # 將下方所有文字用空白拼起來，保留單字間的界線
+                bc_text = " ".join(raw_bc_lines)
+                
+                # 1. 移除無效字元 N/A, * (不要移除空白，以保留詞的界線)
+                bc_text = re.sub(r'N/A|\*', ' ', bc_text)
+                
+                # 2. 將字串依照空白切割成多個候選詞
+                candidates = bc_text.split()
+                
+                for candidate in candidates:
+                    candidate = candidate.strip()
+                    if not candidate: continue
+                    
+                    # 3. 判斷並剔除常見的日期格式
+                    # (a) 包含連字號或斜線的日期: 2024-03-07, 07/03/2024, 24/03/2024
+                    if re.match(r'^\d{2,4}[-/]\d{1,2}[-/]\d{2,4}$', candidate):
+                        continue
+                    
+                    # (b) 連在一起的純數字日期 (例如 20240307)，特徵是 202 開頭且剛好 8 碼
+                    if re.match(r'^202\d{5}$', candidate):
+                        continue
+                    
+                    # 4. 如果這個字串沒有被上面的日期規則濾掉，那它就是我們要的 Barcode！
+                    barcode_val = candidate
+                    
+                    # 5. 終極防呆：如果 PDF 提取時 Barcode 和日期「沒有空格」黏在一起 
+                    # 例如 48912345678902024-12-31，強制將尾巴的日期切掉
+                    barcode_val = re.sub(r'(202\d[-/]\d{1,2}[-/]\d{1,2})$', '', barcode_val)
+                    barcode_val = re.sub(r'(202\d{5})$', '', barcode_val)
+                    break
 
-            if not barcode_val:
+            if barcode_val:
+                barcode_val = barcode_val.rstrip('-')
+            else:
                 barcode_val = p_no
 
             if p_no in items_dict:
