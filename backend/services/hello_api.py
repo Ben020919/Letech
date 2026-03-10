@@ -7,7 +7,6 @@ import asyncio
 import barcode
 from barcode.writer import ImageWriter
 import uuid
-from services.master_api import load_master_db
 import gc
 
 try:
@@ -19,7 +18,7 @@ router = APIRouter()
 PDF_OUT_DIR = "generated_pdfs"
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
 
-# 🌟 20分鐘後自動毀滅任務
+# 🌟 5分鐘後自動毀滅任務 (釋放空間)
 async def delete_file_later(file_path: str):
     await asyncio.sleep(300)
     if os.path.exists(file_path):
@@ -77,18 +76,54 @@ def process_hellobear_pdf(file_bytes):
         if qty_line_index > 1: p_name = " ".join(lines[1:qty_line_index])
         elif len(lines) > 1 and qty_line_index == -1: p_name = lines[1]
             
+        # ==========================================
+        # 🌟 究極防禦版：條碼萃取與淨化邏輯
+        # ==========================================
         barcode_val = ""
+        
+        # 1. 取得數量行之後的所有文字
         if qty_line_index != -1 and qty_line_index < len(lines) - 1:
-            raw = lines[qty_line_index+1:]
-            bc_text = re.sub(r'[\s\*]', '', "".join([l for l in raw if "N/A" not in l and "PAGE" not in l]))
-            if bc_text: barcode_val = bc_text
-        if not barcode_val: barcode_val = "(N/A)"
+            raw_lines_after_qty = lines[qty_line_index+1:]
+            
+            # 2. 將這些行合併成一個字串
+            raw_text = "".join(raw_lines_after_qty)
+            
+            # 3. 尋找被星星包圍的內容 (例如 *12345* 或 ** )
+            # 這裡不先去空白，以免破壞原有結構，直接用正則抓星星裡面的東西
+            star_match = re.search(r'\*(.*?)\*', raw_text)
+            
+            if star_match:
+                extracted = star_match.group(1)
+                # 4. 針對抓出來的內容進行暴力清洗
+                # 清除：空格、減號、N/A、(N/A)、NA
+                clean_extracted = re.sub(r'[\s\-]', '', extracted) # 清除空白和減號
+                clean_extracted = re.sub(r'\(?N/?A\)?', '', clean_extracted, flags=re.IGNORECASE) # 清除各種形式的 NA
+                
+                # 5. 驗證清洗後的結果
+                # 如果清洗後還有東西（代表是真正的條碼），才賦值給 barcode_val
+                if clean_extracted:
+                    barcode_val = clean_extracted
+            else:
+                # 6. 如果連星星都沒找到，我們試著在剩餘的文字中尋找長度夠長的純數字/英數字串，當作最後的掙扎
+                 fallback_text = re.sub(r'[\s\-]', '', raw_text)
+                 fallback_text = re.sub(r'\(?N/?A\)?', '', fallback_text, flags=re.IGNORECASE)
+                 
+                 # 尋找連續的英數字元，長度大於等於5 (避免抓到零星的殘留字元)
+                 fallback_match = re.search(r'[A-Za-z0-9]{5,}', fallback_text)
+                 if fallback_match:
+                     barcode_val = fallback_match.group(0)
+
+
+        # 🌟 絕對防線：如果經歷了上面的重重關卡，barcode_val 還是空的
+        # 或者它短得不可思議 (例如只剩一個殘留的符號)，就強制變成 Product_No！
+        if not barcode_val or len(barcode_val) < 4: 
+            barcode_val = p_no
 
         if p_no not in product_no_tracker: product_no_tracker[p_no] = []
         product_no_tracker[p_no].append(i + 1)
         
         needs_print = False
-        if barcode_val and barcode_val != "(N/A)":
+        if barcode_val:
             if re.search(r'[A-Za-z]', barcode_val):
                 needs_print = True
                 
@@ -112,16 +147,16 @@ async def upload_hellobear_pdf(background_tasks: BackgroundTasks, file: UploadFi
         file_bytes = await file.read()
         items, tracker, out_filename = await asyncio.to_thread(process_hellobear_pdf, file_bytes)
         
-        # 🌟 釋放記憶體
+        # 釋放記憶體
         del file_bytes
         gc.collect()
 
-        # 🌟 註冊背景任務
         out_path = os.path.join(PDF_OUT_DIR, out_filename)
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
         log_action("HelloBear_Upload")
+        
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
