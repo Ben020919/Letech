@@ -43,7 +43,7 @@ async def get_task(zone: str):
         }
     }
 
-# ================= 2. 上傳 PDF 並寫入兩張表 (🌟 強化記憶體管理 + 完美條碼分離) =================
+# ================= 2. 上傳 PDF 並寫入兩張表 (🌟 強化記憶體管理 + 究極防禦條碼解析) =================
 @router.post("/upload/{zone}")
 async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
     zone_key = zone.lower().replace(" ", "")
@@ -69,7 +69,7 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
             lines = [l for l in raw_lines if not l.startswith("[Image")]
             if not lines: continue
 
-            p_no = lines[0]
+            p_no = lines[0] if lines else "Unknown"
 
             qty_line_idx = -1
             qty = 1
@@ -77,8 +77,11 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
                 if ".0000" in line:
                     qty_line_idx = idx
                     match = re.search(r"(\d+)\s*\.0000", line)
-                    if match:
+                    if match and int(match.group(1)) > 0:
                         qty = int(match.group(1))
+                    elif idx > 0 and lines[idx-1].strip().isdigit():
+                        qty = int(lines[idx-1].strip())
+                        qty_line_idx = idx - 1
                     break
 
             p_name = ""
@@ -87,44 +90,40 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
             elif len(lines) > 1 and qty_line_idx == -1:
                 p_name = lines[1]
 
-            # 🌟 這裡替換成全新的「神級條碼與日期分離」邏輯 🌟
+            # ==========================================
+            # 🌟 究極防禦版：條碼萃取與淨化邏輯 (與 hello_api 相同)
+            # ==========================================
             barcode_val = ""
+            
+            # 1. 取得數量行之後的所有文字
             if qty_line_idx != -1 and qty_line_idx < len(lines) - 1:
-                raw_bc_lines = lines[qty_line_idx+1:]
-                # 將下方所有文字用空白拼起來，保留單字間的界線
-                bc_text = " ".join(raw_bc_lines)
+                raw_lines_after_qty = lines[qty_line_idx+1:]
                 
-                # 1. 移除無效字元 N/A, * (不要移除空白，以保留詞的界線)
-                bc_text = re.sub(r'N/A|\*', ' ', bc_text)
+                # 2. 將這些行合併成一個字串
+                raw_text = "".join(raw_lines_after_qty)
                 
-                # 2. 將字串依照空白切割成多個候選詞
-                candidates = bc_text.split()
+                # 3. 尋找被星星包圍的內容
+                star_match = re.search(r'\*(.*?)\*', raw_text)
                 
-                for candidate in candidates:
-                    candidate = candidate.strip()
-                    if not candidate: continue
+                if star_match:
+                    extracted = star_match.group(1)
+                    # 4. 針對抓出來的內容進行暴力清洗
+                    clean_extracted = re.sub(r'[\s\-]', '', extracted)
+                    clean_extracted = re.sub(r'\(?N/?A\)?', '', clean_extracted, flags=re.IGNORECASE)
                     
-                    # 3. 判斷並剔除常見的日期格式
-                    # (a) 包含連字號或斜線的日期: 2024-03-07, 07/03/2024, 24/03/2024
-                    if re.match(r'^\d{2,4}[-/]\d{1,2}[-/]\d{2,4}$', candidate):
-                        continue
-                    
-                    # (b) 連在一起的純數字日期 (例如 20240307)，特徵是 202 開頭且剛好 8 碼
-                    if re.match(r'^202\d{5}$', candidate):
-                        continue
-                    
-                    # 4. 如果這個字串沒有被上面的日期規則濾掉，那它就是我們要的 Barcode！
-                    barcode_val = candidate
-                    
-                    # 5. 終極防呆：如果 PDF 提取時 Barcode 和日期「沒有空格」黏在一起 
-                    # 例如 48912345678902024-12-31，強制將尾巴的日期切掉
-                    barcode_val = re.sub(r'(202\d[-/]\d{1,2}[-/]\d{1,2})$', '', barcode_val)
-                    barcode_val = re.sub(r'(202\d{5})$', '', barcode_val)
-                    break
+                    # 5. 驗證清洗後的結果
+                    if clean_extracted:
+                        barcode_val = clean_extracted
+                else:
+                    # 6. 備用方案
+                     fallback_text = re.sub(r'[\s\-]', '', raw_text)
+                     fallback_text = re.sub(r'\(?N/?A\)?', '', fallback_text, flags=re.IGNORECASE)
+                     fallback_match = re.search(r'[A-Za-z0-9]{5,}', fallback_text)
+                     if fallback_match:
+                         barcode_val = fallback_match.group(0)
 
-            if barcode_val:
-                barcode_val = barcode_val.rstrip('-')
-            else:
+            # 🌟 絕對防線
+            if not barcode_val or barcode_val.strip().upper() in ["N/A", "(N/A)", "NA", "-"] or len(barcode_val) < 4: 
                 barcode_val = p_no
 
             if p_no in items_dict:
@@ -154,16 +153,16 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
         if items_list:
             supabase.table("inspection_items").insert(items_list).execute()
 
-        # 🌟 核心防護：解析完畢並寫入資料庫後，立刻釋放龐大的記憶體物件
+        # 🌟 核心防護：釋放記憶體
         del file_bytes
         del pdf_file
         del reader
-        gc.collect() # 🧹 呼叫清潔工清理記憶體
+        gc.collect() 
 
         return {"status": "success", "task": {"filename": file.filename, "items": items_list}}
 
     except Exception as e:
-        gc.collect() # 🧹 即使發生錯誤，也要清空殘留的記憶體避免崩潰
+        gc.collect() 
         raise HTTPException(status_code=500, detail=f"PDF 解析或資料庫寫入失敗: {str(e)}")
 
 
