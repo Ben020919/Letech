@@ -14,7 +14,6 @@ from services.hello_api import router as hellobear_router
 from services.homey_api import router as homey_router 
 from services.food_label_api import router as food_label_router
 from services.chat_api import router as chat_router
-from services.scanner_api import router as scanner_router
 from services.master_api import router as master_router
 from services.inventory_api import router as inventory_router # 👇 新增這行：匯入我們剛寫好的 DEAR 庫存 API
 
@@ -50,7 +49,6 @@ app.include_router(hellobear_router, prefix="/api/hellobear", tags=["HelloBear"]
 app.include_router(homey_router, prefix="/api/homey", tags=["Homey"])
 app.include_router(food_label_router, prefix="/api/food_label", tags=["FoodLabel"])
 app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
-app.include_router(scanner_router, prefix="/api/scanner", tags=["Scanner"])
 app.include_router(master_router, prefix="/api/master", tags=["MasterDB"])
 app.include_router(inspection.router, prefix="/api/inspection", tags=["Inspection"])
 app.include_router(inventory_router, prefix="/api/inventory", tags=["Inventory"]) # 👇 新增這行：註冊庫存路由
