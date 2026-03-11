@@ -20,7 +20,7 @@ function Sidebar() {
     { path: '/homey', icon: '🏠', label: 'Homey 3PL' },
     { path: '/label', icon: '🏷️', label: '標籤列印系統' },
     { path: '/search', icon: '🔍', label: '條碼搜尋系統' },
-    { path: '/chat', icon: '💬', label: '查詢不到訂單' },
+    { path: '/chat', icon: '💬', label: '異常訂單問題' },
   ];
 
   useEffect(() => {
@@ -1019,7 +1019,7 @@ function ChatPage() {
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)' }}>
       <div className="page-header" style={{ marginBottom: '15px' }}>
-        <h2 style={{ fontSize: '30px', color: '#0f172a', fontWeight: '800', margin: 0 }}>💬 查詢不到訂單記錄</h2>
+        <h2 style={{ fontSize: '30px', color: '#0f172a', fontWeight: '800', margin: 0 }}>💬 異常訂單記錄</h2>
         <p style={{ color: '#64748b', fontSize: '16px', marginTop: '10px' }}>這裡是專屬的溝通頻道，遇到找不到訂單的狀況請在此回報。</p>
         <div style={{ background: '#f0fdf4', color: '#166534', padding: '12px 15px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '14px', marginTop: '10px' }}>
           💡 <strong>填寫範例</strong>：<br/>
