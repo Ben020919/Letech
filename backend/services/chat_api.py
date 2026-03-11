@@ -66,6 +66,7 @@ async def send_message(
             file_bytes = await file.read()
             unique_filename = f"{int(time.time())}_{file.filename}"
             
+            # ✅ 這裡已經修復了縮排錯誤 (補齊了空白)
             supabase.storage.from_("chat_images").upload(
                 file=file_bytes,
                 path=unique_filename,
@@ -73,10 +74,9 @@ async def send_message(
             )
             img_url = supabase.storage.from_("chat_images").get_public_url(unique_filename)
 
-        if msg_text and not msg_text.startswith("查詢不到訂單："):
-            msg_text = f"查詢不到訂單：{msg_text}"
-        elif not msg_text and file:
-            msg_text = "查詢不到訂單：(僅附圖)"
+        # ✅ 不會再強加「查詢不到訂單：」，只有單純傳圖片時加上提示
+        if not msg_text and file:
+            msg_text = "(僅附圖)"
 
         if msg_text or img_url:
             data = {

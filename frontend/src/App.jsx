@@ -13,7 +13,6 @@ function Sidebar() {
   const menuItems = [
     { path: '/', icon: '🏠', label: '系統首頁' }, 
     { path: '/inventory', icon: '📦', label: 'DEAR 庫存查詢' },
-    { path: '/scanner', icon: '📷', label: '掃碼出庫系統' },
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
     { path: '/anymall', icon: '🛍️', label: 'Anymall 3PL' },
@@ -56,7 +55,8 @@ function Sidebar() {
 function InventoryPage() {
   const [sku, setSku] = useState('');
   const [results, setResults] = useState(null);
-  const [productInfo, setProductInfo] = useState(null); // 🌟 新增：用來存放商品基本資料
+  const [productInfo, setProductInfo] = useState(null); 
+  const [componentsInventory, setComponentsInventory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -68,6 +68,7 @@ function InventoryPage() {
     setError('');
     setResults(null);
     setProductInfo(null);
+    setComponentsInventory(null);
 
     try {
       const response = await fetch(`https://letech-pro.onrender.com/api/inventory/?sku=${encodeURIComponent(sku.trim())}`);
@@ -78,17 +79,8 @@ function InventoryPage() {
       }
 
       setResults(result.data);
-      
-      // 🌟 提取這支商品的基本資訊 (只要陣列裡有資料，隨便抓第一筆的商品資訊即可)
-      if (result.data && result.data.length > 0) {
-          const firstItem = result.data[0];
-          setProductInfo({
-              Name: firstItem.Name || '未知商品名稱',
-              SKU: firstItem.SKU || '-',
-              Barcode: firstItem.UPC || firstItem.Barcode || '-', // DEAR 通常存在 UPC 欄位
-              UOM: firstItem.UOM || '個'
-          });
-      }
+      if (result.product_info) setProductInfo(result.product_info);
+      if (result.components_inventory) setComponentsInventory(result.components_inventory);
 
     } catch (err) {
       setError(err.message);
@@ -97,64 +89,46 @@ function InventoryPage() {
     }
   };
 
-  const targetLocation = "HKTV SD4";
-  const filteredData = results ? results.filter(item => {
-    if (!item.Location) return false;
-    if (item.Location.trim().toUpperCase() !== targetLocation.toUpperCase()) return false;
-    
-    // 剔除幽靈數據
-    const soh = item.OnHand || 0;
-    const allocated = item.Allocated || 0;
-    const onOrder = item.OnOrder || 0;
-    
-    if (soh === 0 && allocated === 0 && onOrder === 0) {
-      return false;
-    }
-    
-    return true;
-  }) : [];
+  const processInventoryData = (invArray) => {
+    const targetLocation = "HKTV SD4";
+    const filtered = invArray ? invArray.filter(item => {
+      if (!item.Location || item.Location.trim().toUpperCase() !== targetLocation) return false;
+      if ((item.OnHand || 0) === 0 && (item.Allocated || 0) === 0 && (item.OnOrder || 0) === 0 && (item.Available || 0) === 0) return false;
+      return true;
+    }) : [];
 
-  const groupedData = {};
-  let totalSOH = 0;
-  let totalAllocated = 0;
-  let totalAvailable = 0;
+    let tSOH = 0, tAlloc = 0, tAvail = 0;
+    const grouped = {};
 
-  filteredData.forEach(item => {
-    totalSOH += (item.OnHand || 0);
-    totalAllocated += (item.Allocated || 0);
-    totalAvailable += (item.Available || 0);
+    filtered.forEach(item => {
+      tSOH += (item.OnHand || 0);
+      tAlloc += (item.Allocated || 0);
+      tAvail += (item.Available || 0);
 
-    let batchDisplay = item.Batch || '-';
-    let formattedDate = '';
-    
-    if (item.ExpiryDate && item.ExpiryDate !== "") {
-        const dateObj = new Date(item.ExpiryDate);
-        if (!isNaN(dateObj.getTime())) {
-            const year = dateObj.getFullYear();
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            formattedDate = `(${day}/${month}/${year})`;
-        }
-    }
+      let batchDisplay = item.Batch || '-';
+      let formattedDate = '';
+      if (item.ExpiryDate && item.ExpiryDate !== "") {
+          const dateObj = new Date(item.ExpiryDate);
+          if (!isNaN(dateObj.getTime())) {
+              formattedDate = `(${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()})`;
+          }
+      }
 
-    const groupKey = `${batchDisplay}_${formattedDate}`;
+      const groupKey = `${batchDisplay}_${formattedDate}`;
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = { Batch: batchDisplay, ExpiryStr: formattedDate, SOH: 0, Avail: 0, OnOrder: 0, Allocated: 0 };
+      }
+      grouped[groupKey].SOH += (item.OnHand || 0);
+      grouped[groupKey].Avail += (item.Available || 0);
+      grouped[groupKey].OnOrder += (item.OnOrder || 0);
+      grouped[groupKey].Allocated += (item.Allocated || 0);
+    });
 
-    if (!groupedData[groupKey]) {
-      groupedData[groupKey] = { 
-          Batch: batchDisplay, 
-          ExpiryStr: formattedDate,
-          SOH: 0, Avail: 0, OnOrder: 0, Allocated: 0 
-      };
-    }
-    groupedData[groupKey].SOH += (item.OnHand || 0);
-    groupedData[groupKey].Avail += (item.Available || 0);
-    groupedData[groupKey].OnOrder += (item.OnOrder || 0);
-    groupedData[groupKey].Allocated += (item.Allocated || 0);
-  });
+    const rows = Object.values(grouped).filter(r => r.SOH !== 0 || r.Avail !== 0 || r.OnOrder !== 0 || r.Allocated !== 0);
+    return { filtered, tSOH, tAlloc, tAvail, rows };
+  };
 
-  const displayRows = Object.values(groupedData).filter(row => 
-    row.SOH !== 0 || row.Avail !== 0 || row.OnOrder !== 0 || row.Allocated !== 0
-  );
+  const mainInv = processInventoryData(results);
 
   return (
     <div className="page-content">
@@ -165,13 +139,12 @@ function InventoryPage() {
 
       <div style={{ maxWidth: '800px', margin: '0 auto', background: '#ffffff', padding: '30px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
         
-        {/* 🌟 搜尋輸入框 */}
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <input 
             type="text" 
             value={sku} 
             onChange={(e) => setSku(e.target.value)} 
-            placeholder="掃描條碼或輸入 SKU (例: TEST-SKU-001)" 
+            placeholder="掃描條碼或輸入 SKU (例: LT10009829)" 
             required
             autoFocus
             style={{ flex: 1, padding: '16px', fontSize: '18px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }}
@@ -190,11 +163,14 @@ function InventoryPage() {
         {results && (
           <div style={{ marginTop: '30px' }}>
             
-            {/* 🌟 新增區塊：商品基本資訊卡片 */}
+            {/* 基本資訊卡片 */}
             {productInfo && (
                 <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '25px' }}>
-                    <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', marginBottom: '15px', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px' }}>
-                        {productInfo.Name}
+                    <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', marginBottom: '15px', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{productInfo.Name}</span>
+                        {productInfo.Components && productInfo.Components.length > 0 && (
+                            <span style={{ fontSize: '12px', background: '#dcfce7', color: '#166534', padding: '4px 8px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>📦 組合/多件裝商品</span>
+                        )}
                     </div>
                     <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                         <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', flex: 1, minWidth: '150px' }}>
@@ -203,53 +179,33 @@ function InventoryPage() {
                         </div>
                         <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', flex: 1, minWidth: '150px' }}>
                             <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>Barcode (UPC)</div>
-                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#10b981', fontFamily: 'monospace' }}>{productInfo.Barcode}</div>
-                        </div>
-                        <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', width: '100px' }}>
-                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>單位 UOM</div>
-                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#475569' }}>{productInfo.UOM}</div>
+                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#10b981', fontFamily: 'monospace' }}>{productInfo.UPC}</div>
                         </div>
                     </div>
                 </div>
             )}
 
+            {/* 🌟 1. 主商品庫存 */}
             <h3 style={{ paddingBottom: '10px', marginBottom: '20px', color: '#0f172a', fontWeight: 'bold', fontSize: '18px' }}>
-              {filteredData.length > 0 ? `✅ HKTV SD4 庫存明細` : `⚠️ 找不到此商品在 HKTV SD4 的實體庫存`}
+              {mainInv.filtered.length > 0 ? `✅ 主商品 HKTV SD4 庫存明細` : `⚠️ 主商品在 HKTV SD4 無實體庫存`}
             </h3>
 
-            {filteredData.length === 0 && results.length > 0 && (
-              <div style={{ background: '#fffbeb', color: '#b45309', padding: '15px', borderRadius: '12px', fontSize: '14px', border: '1px solid #fde047' }}>
-                💡 提示：此商品在 HKTV SD4 沒有實體庫存。但它在其他倉庫有紀錄：{Array.from(new Set(results.map(i => i.Location))).filter(Boolean).join(', ')}
-              </div>
-            )}
-
-            {filteredData.length > 0 && (
+            {mainInv.filtered.length > 0 && (
               <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
-                
                 <div style={{ padding: '20px 25px', background: 'linear-gradient(to right, #f8fafc, #ffffff)', borderBottom: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>
                     📍 HKTV SD4
                   </div>
                   <div style={{ display: 'flex', gap: '25px', textAlign: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>總 SOH</div>
-                      <div style={{ fontSize: '22px', fontWeight: '900', color: '#334155' }}>{totalSOH}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>總 Allocated</div>
-                      <div style={{ fontSize: '22px', fontWeight: '900', color: '#64748b' }}>{totalAllocated}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>總 Available</div>
-                      <div style={{ fontSize: '22px', fontWeight: '900', color: totalAvailable > 0 ? '#16a34a' : '#dc2626' }}>{totalAvailable}</div>
-                    </div>
+                    <div><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>總 SOH</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#334155' }}>{mainInv.tSOH}</div></div>
+                    <div><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>總 Allocated</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#64748b' }}>{mainInv.tAlloc}</div></div>
+                    <div><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>總 Available</div><div style={{ fontSize: '22px', fontWeight: '900', color: mainInv.tAvail > 0 ? '#16a34a' : '#dc2626' }}>{mainInv.tAvail}</div></div>
                   </div>
                 </div>
-
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
                     <thead>
-                      <tr style={{ background: '#f1f5f9', color: '#475569', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <tr style={{ background: '#f1f5f9', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>
                         <th style={{ padding: '12px 20px', fontWeight: '700' }}>BATCH/ SERIAL#</th>
                         <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>SOH</th>
                         <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>AVAIL</th>
@@ -258,17 +214,10 @@ function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {displayRows.map((item, idx) => (
+                      {mainInv.rows.map((item, idx) => (
                         <tr key={idx} style={{ borderTop: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
                           <td style={{ padding: '12px 20px', fontFamily: 'monospace', fontWeight: '600', color: '#0f172a' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span>{item.Batch}</span>
-                                {item.ExpiryStr && (
-                                    <span style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>
-                                        {item.ExpiryStr}
-                                    </span>
-                                )}
-                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}><span>{item.Batch}</span>{item.ExpiryStr && <span style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>{item.ExpiryStr}</span>}</div>
                           </td>
                           <td style={{ padding: '12px 20px', fontWeight: '600', color: '#334155', textAlign: 'right' }}>{item.SOH}</td>
                           <td style={{ padding: '12px 20px', fontWeight: 'bold', color: item.Avail > 0 ? '#16a34a' : '#dc2626', textAlign: 'right' }}>{item.Avail}</td>
@@ -279,9 +228,76 @@ function InventoryPage() {
                     </tbody>
                   </table>
                 </div>
-
               </div>
             )}
+
+            {/* 🌟 2. 智慧偵測：直接顯示子商品 (單件) 庫存表格 */}
+            {componentsInventory && Object.keys(componentsInventory).length > 0 && (
+                <div style={{ marginTop: '35px' }}>
+                    
+                    <h3 style={{ paddingBottom: '10px', marginBottom: '20px', color: '#065f46', fontWeight: 'bold', fontSize: '18px' }}>
+                      🔗 單件商品 HKTV SD4 庫存明細 (組合/多件裝子件)
+                    </h3>
+
+                    {Object.entries(componentsInventory).map(([compSku, compData]) => {
+                        const detail = compData.detail;
+                        const compInv = processInventoryData(compData.inventory);
+
+                        return (
+                            <div key={compSku} style={{ background: '#ffffff', borderRadius: '16px', border: '2px solid #10b981', overflow: 'hidden', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.1)', marginBottom: '25px' }}>
+                                <div style={{ padding: '20px 25px', background: '#ecfdf5', borderBottom: '1px solid #a7f3d0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', fontWeight: 'bold', color: '#065f46' }}>
+                                            🔗 {detail.Name}
+                                        </div>
+                                        <div style={{ fontSize: '14px', color: '#047857', marginTop: '5px', fontWeight: 'bold' }}>
+                                            SKU: {compSku} <span style={{ background: '#34d399', color: 'white', padding: '2px 6px', borderRadius: '4px', marginLeft: '5px' }}>每組需 {detail.Quantity} 件</span>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '25px', textAlign: 'center' }}>
+                                        <div><div style={{ fontSize: '11px', color: '#065f46', fontWeight: 'bold', textTransform: 'uppercase' }}>總 SOH</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#065f46' }}>{compInv.tSOH}</div></div>
+                                        <div><div style={{ fontSize: '11px', color: '#065f46', fontWeight: 'bold', textTransform: 'uppercase' }}>總 Available</div><div style={{ fontSize: '22px', fontWeight: '900', color: compInv.tAvail > 0 ? '#16a34a' : '#dc2626' }}>{compInv.tAvail}</div></div>
+                                    </div>
+                                </div>
+
+                                {compInv.filtered.length > 0 ? (
+                                    <div style={{ overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                                        <thead>
+                                        <tr style={{ background: '#f8fafc', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>
+                                            <th style={{ padding: '12px 20px', fontWeight: '700' }}>BATCH/ SERIAL#</th>
+                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>SOH</th>
+                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>AVAIL</th>
+                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ON ORDER</th>
+                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ALLOCATED</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {compInv.rows.map((item, idx) => (
+                                            <tr key={idx} style={{ borderTop: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                                            <td style={{ padding: '12px 20px', fontFamily: 'monospace', fontWeight: '600', color: '#0f172a' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column' }}><span>{item.Batch}</span>{item.ExpiryStr && <span style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>{item.ExpiryStr}</span>}</div>
+                                            </td>
+                                            <td style={{ padding: '12px 20px', fontWeight: '600', color: '#334155', textAlign: 'right' }}>{item.SOH}</td>
+                                            <td style={{ padding: '12px 20px', fontWeight: 'bold', color: item.Avail > 0 ? '#16a34a' : '#dc2626', textAlign: 'right' }}>{item.Avail}</td>
+                                            <td style={{ padding: '12px 20px', fontWeight: '600', color: '#2563eb', textAlign: 'right' }}>{item.OnOrder}</td>
+                                            <td style={{ padding: '12px 20px', color: '#64748b', textAlign: 'right' }}>{item.Allocated}</td>
+                                            </tr>
+                                        ))}
+                                        </tbody>
+                                    </table>
+                                    </div>
+                                ) : (
+                                    <div style={{ padding: '20px', textAlign: 'center', color: '#ef4444', fontWeight: 'bold' }}>
+                                        ⚠️ 單件商品 {compSku} 在 HKTV SD4 目前也無庫存
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
           </div>
         )}
       </div>
@@ -289,458 +305,6 @@ function InventoryPage() {
   );
 }
 
-// ----------------- ScannerPage (掃碼出庫系統 - UI 專業升級版) -----------------
-function ScannerPage() {
-  const [orderId, setOrderId] = useState('');
-  const [orderData, setOrderData] = useState(null);
-  const [inputVal, setInputVal] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false); 
-  
-  const inputRef = useRef(null);
-  const lastCameraScan = useRef(""); 
-  const isProcessingRef = useRef(false); 
-  
-  const orderIdRef = useRef('');
-  const hasOrderRef = useRef(false);
-  useEffect(() => { orderIdRef.current = orderId; }, [orderId]);
-  useEffect(() => { hasOrderRef.current = !!orderData; }, [orderData]);
-
-  // 🌟 效能優化：集中處理數學計算
-  const orderStats = useMemo(() => {
-    if (!orderData) return { totalQty: 0, totalScanned: 0, fullyScanned: false };
-    
-    let t_q = 0, t_s = 0;
-    (orderData.products || []).forEach(p => {
-        if (p.products && p.products.length > 0) {
-            // 如果有子單，總進度「只加子單的數量」
-            p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
-        } else {
-            // 沒子單，才算自己
-            t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
-        }
-    });
-    
-    return {
-        totalQty: t_q,
-        totalScanned: t_s,
-        fullyScanned: t_q > 0 && t_s >= t_q,
-        progressPercent: t_q === 0 ? 0 : Math.min((t_s / t_q) * 100, 100)
-    };
-  }, [orderData]);
-
-  // 🌟 核彈級踢出監聽器
-  useEffect(() => {
-      if (orderData && (orderStats.fullyScanned || orderData.status === true || orderData.status === "Completed")) {
-          setIsCompleted(true);
-          setIsCameraOpen(false); 
-          setSuccessMsg(`🎉 完美！訂單已全數出庫完成。即將返回...`);
-          
-          const timer = setTimeout(() => forceResetToHome(), 1500);
-          return () => clearTimeout(timer);
-      }
-  }, [orderData, orderStats.fullyScanned]);
-
-  useEffect(() => {
-    if (inputRef.current && !isCameraOpen && !isCompleted && !loading) {
-      inputRef.current.focus();
-    }
-  }, [orderData, loading, isCameraOpen, isCompleted]);
-
-  const handleFocusLoss = () => {
-    if (!isCameraOpen && !isCompleted) {
-      setTimeout(() => { if (inputRef.current) inputRef.current.focus(); }, 100);
-    }
-  };
-
-  const playSound = (type) => {
-    if (navigator.vibrate) navigator.vibrate(type === 'success' ? 100 : [300, 100, 300]);
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      const audioCtx = new AudioContext();
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      if (type === 'success') {
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime); 
-        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.1);
-      } else {
-        oscillator.type = 'sawtooth';
-        oscillator.frequency.setValueAtTime(300, audioCtx.currentTime);
-        gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.3);
-      }
-    } catch (err) {}
-  };
-
-  const forceResetToHome = () => {
-      setOrderData(null); setOrderId(''); setInputVal(''); 
-      setSuccessMsg(''); setErrorMsg(''); setIsCameraOpen(false); setIsCompleted(false);
-  };
-
-  const submitOrder = async (targetOrderId, autoStartCamera = false) => {
-    if (!targetOrderId.trim()) return;
-    setLoading(true); setErrorMsg(''); setSuccessMsg(''); setIsCompleted(false);
-    try {
-      const res = await fetch(`https://letech-pro.onrender.com/api/scanner/order/${targetOrderId.trim()}`);
-      if (!res.ok) throw new Error((await res.json()).detail);
-      const data = await res.json();
-      
-      let t_q = 0, t_s = 0;
-      (data.products || []).forEach(p => {
-          if (p.products && p.products.length > 0) {
-              p.products.forEach(sp => { t_q += Number(sp.quantity || 0); t_s += Number(sp.scanQty || 0); });
-          } else {
-              t_q += Number(p.quantity || 0); t_s += Number(p.scanQty || 0);
-          }
-      });
-
-      if (data.status === true || data.status === "Completed" || (t_q > 0 && t_s >= t_q)) {
-          throw new Error(`🚫 訂單 ${targetOrderId} 已出庫！請勿重複作業。`);
-      }
-      
-      setOrderData(data);
-      setOrderId(targetOrderId.trim());
-      setInputVal('');
-      playSound('success');
-      
-      if (autoStartCamera) {
-          setTimeout(() => setIsCameraOpen(true), 500);
-      }
-    } catch (err) { setErrorMsg(err.message); playSound('error'); setInputVal(''); } 
-    finally { setLoading(false); }
-  };
-
-  const submitBarcode = async (barcode) => {
-    if (!barcode.trim()) return;
-    setInputVal('');
-    setLoading(true); setErrorMsg(''); setSuccessMsg('');
-    
-    const currentOrderId = orderIdRef.current;
-    
-    try {
-      const res = await fetch('https://letech-pro.onrender.com/api/scanner/barcode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: currentOrderId, barcode: barcode.trim() })
-      });
-      
-      if (!res.ok) throw new Error((await res.json()).detail);
-      const data = await res.json();
-      
-      setOrderData(data.order_data);
-      playSound('success');
-      
-      if (!data.is_done) {
-          setSuccessMsg(`✅ ${data.message || '掃描成功！請繼續...'}`);
-      }
-
-    } catch (err) { 
-        setErrorMsg(err.message); 
-        playSound('error'); 
-        setIsCameraOpen(false); 
-    } 
-    finally { setLoading(false); }
-  };
-
-  const handleOrderKeyDown = (e) => { if (e.key === 'Enter') submitOrder(inputVal); };
-  const handleBarcodeKeyDown = (e) => { if (e.key === 'Enter') submitBarcode(inputVal); };
-  
-  // 🌟 修改：清空並作廢進度 (呼叫 Cancel API，並加上防呆警告)
-  const handleReset = async () => {
-    if (window.confirm("⚠️ 警告：確定要「重置」這筆訂單的掃描進度嗎？\n這將會清除您剛才在 Letech 掃描的所有紀錄，必須重新掃描！")) {
-        setLoading(true);
-        try { 
-            await fetch(`https://letech-pro.onrender.com/api/scanner/cancel/${orderIdRef.current}`, { method: 'POST' }); 
-            playSound('success');
-            forceResetToHome();
-        } catch (e) {
-            console.error("取消訂單發生錯誤:", e);
-            setErrorMsg("重置失敗，請稍後再試");
-            playSound('error');
-        } finally {
-            setLoading(false);
-        }
-    }
-  };
-
-  const handleForceComplete = async () => {
-    if (window.confirm("🚨 警告：確定要「強制出庫」此訂單嗎？\n這將忽略未掃描的數量並直接過帳！")) {
-      setLoading(true); setErrorMsg(''); setSuccessMsg('');
-      try {
-        const res = await fetch(`https://letech-pro.onrender.com/api/scanner/force_complete/${orderIdRef.current}`, { method: 'POST' });
-        if (!res.ok) throw new Error((await res.json()).detail);
-        
-        playSound('success');
-        setSuccessMsg(`🚨 訂單 ${orderIdRef.current} 已成功強制出庫！`);
-        setIsCompleted(true); 
-        setIsCameraOpen(false);
-        setTimeout(() => forceResetToHome(), 1500);
-      } catch (err) { setErrorMsg(err.message); playSound('error'); } 
-      finally { setLoading(false); }
-    }
-  };
-
-  useEffect(() => {
-    let html5QrCode;
-    if (isCameraOpen && !isCompleted) {
-      // 🌟 保護機制：確保 Html5Qrcode 已載入
-      if (typeof window.Html5Qrcode === 'undefined') {
-        setErrorMsg("相機模組載入異常，請確保已安裝 html5-qrcode");
-        setIsCameraOpen(false);
-        return;
-      }
-
-      html5QrCode = new window.Html5Qrcode("reader");
-      const cameraConfig = { facingMode: "environment" }; 
-      const scanConfig = { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 };
-      
-      html5QrCode.start(
-        cameraConfig,
-        scanConfig,
-        (decodedText) => {
-          if (isProcessingRef.current) return;
-          if (lastCameraScan.current === decodedText) return;
-
-          isProcessingRef.current = true;
-          lastCameraScan.current = decodedText;
-          setTimeout(() => { lastCameraScan.current = ""; }, 2000);
-          
-          if (!hasOrderRef.current) {
-              setIsCameraOpen(false);
-              if (html5QrCode && html5QrCode.isScanning) {
-                 html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
-              }
-              submitOrder(decodedText, true).finally(() => { isProcessingRef.current = false; });
-          } else {
-              submitBarcode(decodedText).finally(() => { isProcessingRef.current = false; });
-          }
-        },
-        (error) => { }
-      ).catch(err => {
-         setIsCameraOpen(false);
-      });
-    }
-    return () => {
-      if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().then(() => html5QrCode.clear()).catch(e => console.log(e));
-      }
-    };
-  }, [isCameraOpen, isCompleted]); 
-
-  // ----- UI: 未輸入訂單前的畫面 -----
-  if (!orderData) {
-    return (
-      <div className="page-content" onClick={handleFocusLoss}>
-        <div className="page-header" style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <h2 style={{ fontSize: '32px', color: '#0f172a', fontWeight: '800' }}>📦 出庫作業台</h2>
-            <p style={{ color: '#64748b', fontSize: '16px' }}>請使用實體掃描槍或相機掃描訂單</p>
-        </div>
-        
-        {successMsg && <div style={{ background: '#dcfce7', color: '#166534', padding: '15px', borderRadius: '12px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px', border: '1px solid #bbf7d0', boxShadow: '0 4px 6px rgba(22, 101, 52, 0.1)' }}>{successMsg}</div>}
-        {errorMsg && <div style={{ background: '#fef2f2', color: '#991b1b', padding: '15px', borderRadius: '12px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px', border: '1px solid #fecaca', boxShadow: '0 4px 6px rgba(153, 27, 27, 0.1)' }}>{errorMsg}</div>}
-
-        <div style={{ maxWidth: '480px', margin: '0 auto', background: '#ffffff', padding: '40px 30px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', textAlign: 'center', border: '1px solid #f1f5f9' }}>
-            {isCameraOpen ? (
-                <div style={{ marginBottom: '25px' }}>
-                    <div id="reader" style={{ width: '100%', borderRadius: '16px', overflow: 'hidden', border: '2px solid #e2e8f0' }}></div>
-                    <button onClick={() => setIsCameraOpen(false)} style={{ marginTop: '15px', background: '#fef2f2', color: '#ef4444', padding: '12px 20px', borderRadius: '10px', border: '1px solid #fca5a5', fontWeight: 'bold', cursor: 'pointer', width: '100%', transition: 'all 0.2s' }}>❌ 關閉相機</button>
-                </div>
-            ) : (
-                <button onClick={() => setIsCameraOpen(true)} style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', color: 'white', padding: '16px 20px', fontSize: '18px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: 'pointer', width: '100%', marginBottom: '25px', boxShadow: '0 6px 12px rgba(37, 99, 235, 0.2)', transition: 'transform 0.1s' }}>
-                    📷 啟用手機相機掃描
-                </button>
-            )}
-
-            <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>
-                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-                <span style={{ padding: '0 15px', color: '#94a3b8', fontSize: '14px', fontWeight: '500' }}>或使用實體掃描槍</span>
-                <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-            </div>
-            
-            <input 
-                ref={inputRef} type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={handleOrderKeyDown}
-                placeholder="在此掃描單號..." disabled={loading || isCameraOpen}
-                style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '14px', border: '2px solid #cbd5e1', outline: 'none', fontWeight: 'bold', backgroundColor: (loading || isCameraOpen) ? '#f8fafc' : '#ffffff', color: '#334155', transition: 'border-color 0.2s', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
-            />
-            {loading && <p style={{ color: '#2563eb', fontWeight: 'bold', marginTop: '15px', fontSize: '15px' }}>⏳ 連線伺服器中...</p>}
-        </div>
-      </div>
-    );
-  }
-
-  // ----- UI: 訂單處理中畫面 -----
-  return (
-    <div className="page-content" onClick={handleFocusLoss}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px', background: '#ffffff', padding: '20px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
-            <div>
-                <h2 style={{ fontSize: '24px', margin: '0 0 5px 0', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '8px', fontSize: '14px' }}>處理中</span>
-                    {orderId}
-                </h2>
-                <div style={{ color: '#d97706', fontWeight: '700', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    📍 目的地：{orderData.order?.deliver_to_warehouse || '未指定'}
-                </div>
-            </div>
-            
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <button onClick={handleForceComplete} disabled={loading || isCompleted} style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    ⚠️ 強制出庫
-                </button>
-                <button onClick={handleReset} disabled={loading || isCompleted} style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde047', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: (loading || isCompleted) ? 'not-allowed' : 'pointer', fontSize: '14px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '6px' }} title="清除目前掃描紀錄，全部重來">
-                    🔄 重置
-                </button>
-            </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '25px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-            <div style={{ flex: '1.5', minWidth: '320px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
-                <div style={{ padding: '20px 25px', borderBottom: '1px solid #f1f5f9' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontWeight: '700', color: '#334155', fontSize: '15px' }}>
-                        <span>📦 出庫進度</span>
-                        <span style={{ color: orderStats.progressPercent === 100 ? '#10b981' : '#2563eb' }}>{orderStats.totalScanned} / {orderStats.totalQty}</span>
-                    </div>
-                    <div style={{ width: '100%', background: '#f1f5f9', borderRadius: '999px', height: '10px', overflow: 'hidden', boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)' }}>
-                        <div style={{ width: `${orderStats.progressPercent}%`, background: orderStats.progressPercent === 100 ? '#10b981' : '#3b82f6', height: '100%', transition: 'width 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}></div>
-                    </div>
-                </div>
-                
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-                      <thead>
-                          <tr style={{ background: '#f8fafc', color: '#64748b', borderBottom: '1px solid #e2e8f0', textTransform: 'uppercase', fontSize: '12px', letterSpacing: '0.5px' }}>
-                              <th style={{ padding: '16px 20px', minWidth: '200px', fontWeight: '700' }}>商品名稱</th>
-                              <th style={{ padding: '16px 20px', fontWeight: '700' }}>條碼</th>
-                              <th style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700' }}>應出</th>
-                              <th style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700' }}>已掃</th>
-                              <th style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700' }}>狀態</th>
-                          </tr>
-                      </thead>
-                      <tbody>
-                          {(orderData.products || []).map((p, idx) => {
-                              const hasChildren = p.products && p.products.length > 0;
-                              const isDone = hasChildren ? false : (p.quantity - p.scanQty) <= 0;
-                              
-                              let allChildrenDone = false;
-                              let bundleScanned = 0; 
-                              
-                              if (hasChildren) {
-                                  const c_tq = p.products.reduce((sum, sp) => sum + Number(sp.quantity || 0), 0);
-                                  const c_ts = p.products.reduce((sum, sp) => sum + Number(sp.scanQty || 0), 0);
-                                  allChildrenDone = c_tq > 0 && c_ts >= c_tq;
-                                  
-                                  // 🌟 動態比例換算計算：母單進度
-                                  if (p.quantity > 0) {
-                                      const ratios = p.products.map(sp => {
-                                          const reqPerBundle = Number(sp.quantity) / Number(p.quantity);
-                                          return reqPerBundle > 0 ? Math.floor(Number(sp.scanQty || 0) / reqPerBundle) : 0;
-                                      });
-                                      bundleScanned = Math.min(...ratios);
-                                  }
-                              }
-                              const parentBg = hasChildren ? (allChildrenDone ? '#f0fdf4' : '#f8fafc') : (isDone ? '#f0fdf4' : '#ffffff');
-
-                              return (
-                                  <React.Fragment key={idx}>
-                                      {/* 母單行 */}
-                                      <tr style={{ borderBottom: '1px solid #f1f5f9', background: parentBg, transition: 'background 0.2s' }}>
-                                          <td style={{ padding: '16px 20px', fontWeight: '600', color: '#0f172a', lineHeight: '1.4' }}>{p.skuNameZh}</td>
-                                          <td style={{ padding: '16px 20px', color: '#475569', fontSize: '13px', fontFamily: '"Courier New", Courier, monospace', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{p.barcode}</td>
-                                          
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
-                                              {p.quantity}
-                                          </td>
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', fontWeight: '700', color: (hasChildren ? bundleScanned === p.quantity : isDone) ? '#15803d' : '#2563eb' }}>
-                                              {hasChildren ? bundleScanned : p.scanQty}
-                                          </td>
-                                          <td style={{ padding: '16px 20px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                              {hasChildren ? (
-                                                  <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: allChildrenDone ? '#dcfce7' : '#e2e8f0', color: allChildrenDone ? '#166534' : '#475569' }}>
-                                                      {allChildrenDone ? '✅ 組合完成' : `📦 母單 (${bundleScanned}/${p.quantity})`}
-                                                  </span>
-                                              ) : (
-                                                  <span style={{ padding: '6px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: isDone ? '#dcfce7' : '#fef3c7', color: isDone ? '#166534' : '#b45309' }}>
-                                                      {isDone ? '✅ 已完成' : `缺 ${p.quantity - p.scanQty}`}
-                                                  </span>
-                                              )}
-                                          </td>
-                                      </tr>
-                                      
-                                      {/* 子單行 */}
-                                      {(p.products || []).map((sp, sidx) => {
-                                          const sDone = (sp.quantity - sp.scanQty) <= 0;
-                                          return (
-                                              <tr key={`${idx}-${sidx}`} style={{ borderBottom: '1px solid #f1f5f9', background: sDone ? '#f0fdf4' : '#fafafa' }}>
-                                                  <td style={{ padding: '12px 20px 12px 40px', color: '#475569', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                      <span style={{ color: '#cbd5e1' }}>↳</span> {sp.skuNameZh}
-                                                  </td>
-                                                  <td style={{ padding: '12px 20px', color: '#64748b', fontSize: '12px', fontFamily: '"Courier New", Courier, monospace', whiteSpace: 'nowrap' }}>{sp.barcode}</td>
-                                                  <td style={{ padding: '12px 20px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>{sp.quantity}</td>
-                                                  <td style={{ padding: '12px 20px', textAlign: 'center', fontWeight: '600', color: sDone ? '#15803d' : '#2563eb', fontSize: '13px' }}>{sp.scanQty}</td>
-                                                  <td style={{ padding: '12px 20px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                                      <span style={{ padding: '4px 8px', borderRadius: '999px', fontSize: '11px', fontWeight: '700', background: sDone ? '#dcfce7' : '#fef3c7', color: sDone ? '#166534' : '#b45309' }}>
-                                                          {sDone ? '✅ 完成' : `缺 ${sp.quantity - sp.scanQty}`}
-                                                      </span>
-                                                  </td>
-                                              </tr>
-                                          )
-                                      })}
-                                  </React.Fragment>
-                              )
-                          })}
-                      </tbody>
-                  </table>
-                </div>
-            </div>
-
-            <div style={{ flex: '1', minWidth: '300px', position: 'sticky', top: '20px' }}>
-                {successMsg && <div style={{ background: '#dcfce7', color: '#166534', padding: '16px', borderRadius: '14px', textAlign: 'center', fontWeight: '700', marginBottom: '15px', border: '1px solid #bbf7d0', boxShadow: '0 4px 6px rgba(22, 101, 52, 0.1)' }}>{successMsg}</div>}
-                {errorMsg && <div style={{ background: '#fef2f2', color: '#991b1b', padding: '16px', borderRadius: '14px', textAlign: 'center', fontWeight: '700', marginBottom: '15px', border: '1px solid #fecaca', boxShadow: '0 4px 6px rgba(153, 27, 27, 0.1)' }}>{errorMsg}</div>}
-
-                <div style={{ background: '#ffffff', padding: '30px 25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                    <div style={{ background: '#f8fafc', width: '60px', height: '60px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 15px auto', fontSize: '24px' }}>🛒</div>
-                    <h3 style={{ margin: '0 0 25px 0', fontSize: '20px', color: '#0f172a', fontWeight: '800' }}>連續掃描貨品</h3>
-
-                    {isCameraOpen ? (
-                        <div style={{ marginBottom: '20px' }}>
-                            <div id="reader" style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', border: '2px solid #e2e8f0' }}></div>
-                            <button onClick={() => setIsCameraOpen(false)} style={{ marginTop: '15px', background: '#fef2f2', color: '#ef4444', padding: '12px 20px', borderRadius: '10px', border: '1px solid #fca5a5', fontWeight: 'bold', cursor: 'pointer', width: '100%', transition: 'all 0.2s' }}>❌ 關閉相機</button>
-                        </div>
-                    ) : (
-                        <button onClick={() => setIsCameraOpen(true)} disabled={isCompleted} style={{ background: isCompleted ? '#cbd5e1' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: 'white', padding: '16px 20px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: isCompleted ? 'not-allowed' : 'pointer', width: '100%', marginBottom: '25px', boxShadow: isCompleted ? 'none' : '0 6px 12px rgba(16, 185, 129, 0.2)', transition: 'transform 0.1s' }}>
-                            📷 開啟手機相機
-                        </button>
-                    )}
-
-                    <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0' }}>
-                        <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-                        <span style={{ padding: '0 10px', color: '#94a3b8', fontSize: '13px', fontWeight: '500' }}>或使用實體掃描槍</span>
-                        <div style={{ flex: 1, height: '1px', background: '#e2e8f0' }}></div>
-                    </div>
-
-                    <input 
-                        ref={inputRef} type="text" value={inputVal} onChange={(e) => setInputVal(e.target.value)} onKeyDown={handleBarcodeKeyDown}
-                        placeholder="掃描商品條碼..." disabled={loading || isCameraOpen || isCompleted}
-                        style={{ width: '100%', padding: '16px', fontSize: '20px', textAlign: 'center', borderRadius: '12px', border: '2px solid #10b981', outline: 'none', fontWeight: 'bold', backgroundColor: (loading || isCameraOpen || isCompleted) ? '#f8fafc' : '#ffffff', color: '#334155', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.02)' }}
-                    />
-                    <p style={{ color: '#64748b', fontSize: '13px', marginTop: '15px', fontWeight: '500' }}>
-                        {isCompleted ? '🎉 訂單已完成，即將返回...' : isCameraOpen ? '🎯 鏡頭持續掃描中...' : '🔒 游標已鎖定，可直接刷條碼'}
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-  );
-}
 function SearchPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -1455,19 +1019,18 @@ function ChatPage() {
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)' }}>
       <div className="page-header" style={{ marginBottom: '15px' }}>
-        <h2 style={{ fontSize: '30px' }}>💬 查詢不到訂單記錄</h2>
-        <p>這裡是專屬的溝通頻道，遇到找不到訂單的狀況請在此回報。</p>
+        <h2 style={{ fontSize: '30px', color: '#0f172a', fontWeight: '800', margin: 0 }}>💬 查詢不到訂單記錄</h2>
+        <p style={{ color: '#64748b', fontSize: '16px', marginTop: '10px' }}>這裡是專屬的溝通頻道，遇到找不到訂單的狀況請在此回報。</p>
         <div style={{ background: '#f0fdf4', color: '#166534', padding: '12px 15px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '14px', marginTop: '10px' }}>
           💡 <strong>填寫範例</strong>：<br/>
-          <strong>查詢不到訂單：H260225512645-H0956006</strong><br/>
-          <span style={{ opacity: 0.8 }}>(提示：您在下方只需輸入「訂單號碼」即可，發送時系統會自動幫您加上「查詢不到訂單：」的前綴)</span>
+          <strong>H260225512645-H0956006</strong>
         </div>
       </div>
 
       <div style={{ marginBottom: '15px' }}>
         <input 
           type="text" placeholder="👤 請輸入名字 (必填)" value={userName} onChange={(e) => setUserName(e.target.value)} 
-          style={{ padding: '10px 15px', borderRadius: '8px', border: '2px solid #e2e8f0', outline: 'none', width: '250px', fontSize: '15px', fontWeight: 'bold' }}
+          style={{ padding: '10px 15px', borderRadius: '8px', border: '2px solid #e2e8f0', outline: 'none', width: '250px', fontSize: '15px', fontWeight: 'bold', boxSizing: 'border-box' }}
         />
       </div>
 
@@ -1533,7 +1096,6 @@ function HomePage() {
   const navigate = useNavigate();
 
   const features = [
-    { id: 'scanner', title: '📦 掃碼出庫作業', desc: '支援相機與實體掃描槍，光速讀取條碼並同步至 Letech 伺服器，自動核對出庫明細，防止漏發與錯發。', path: '/scanner', icon: '🛒', bgGradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', shadow: 'rgba(16, 185, 129, 0.25)', status: '🟢 系統正常' },
     { id: 'inventory', title: '📦 DEAR 庫存查詢', desc: '即時連線 DEAR Systems，快速查詢商品在 HKTV SD4 倉庫的可用庫存與總量。', path: '/inventory', icon: '📦', bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', shadow: 'rgba(139, 92, 246, 0.25)', status: '🟢 系統正常' },
     { id: 'inspection', title: '🕵️‍♂️ 3PL 貨品檢測', desc: '上傳各平台 PDF 生成專屬檢測任務，支援手機即時掃碼核對，精準控管包裝數量，杜絕出貨錯誤。', path: '/inspection', icon: '🕵️‍♂️', bgGradient: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', shadow: 'rgba(14, 165, 233, 0.25)', status: '🟢 系統正常' },
     { id: 'search', title: '🔍 條碼搜尋系統', desc: '極速檢索全站商品資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，一秒定位商品詳細資訊。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
@@ -1652,7 +1214,6 @@ function App() {
             <Route path="/yummy" element={<YummyPage />} />
             <Route path="/anymall" element={<AnymallPage />} />
             <Route path="/hellobear" element={<HelloBearPage />} />
-            <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/homey" element={<HomeyPage />} />
             <Route path="/label" element={<FoodLabelPage />} />
             <Route path="/chat" element={<ChatPage />} />
