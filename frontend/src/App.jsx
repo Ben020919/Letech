@@ -1123,95 +1123,158 @@ function ChatPage() {
 }
 
 function HomePage() {
-  const navigate = useNavigate();
-
-  // 👇 新增：用來儲存從後端抓到的 HKTVmall 訂單資料
   const [orderData, setOrderData] = useState(null);
+  const [cancelInputs, setCancelInputs] = useState({ today: '', tomorrow: '' });
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 👇 新增：組件載入時，去後端抓取資料，並每 30 秒自動更新一次
-  useEffect(() => {
-    const fetchOrderData = async () => {
-      try {
-        const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/');
-        if (res.ok) {
-          const data = await res.json();
-          setOrderData(data);
-        }
-      } catch (err) {
-        console.error("無法取得訂單資料", err);
+  // 從 Render 後端抓取最新資料
+  const fetchOrderData = async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/');
+      if (res.ok) {
+        const data = await res.json();
+        setOrderData(data);
       }
-    };
-    
+    } catch (err) {
+      console.error("無法取得訂單資料", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
     fetchOrderData();
-    const interval = setInterval(fetchOrderData, 30000); // 30秒更新一次
+    const interval = setInterval(fetchOrderData, 30000); // 30秒自動更新
     return () => clearInterval(interval);
   }, []);
 
-  const features = [
-    { id: 'search', title: '🔍 智能查詢中心', desc: '一鍵檢索本地商品庫存與資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，並同步查閱 DEAR 即時庫存。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
-    { id: 'inspection', title: '🕵️‍♂️ 3PL 貨品檢測', desc: '上傳各平台 PDF 生成專屬檢測任務，支援手機即時掃碼核對，精準控管包裝數量，杜絕出貨錯誤。', path: '/inspection', icon: '🕵️‍♂️', bgGradient: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', shadow: 'rgba(14, 165, 233, 0.25)', status: '🟢 系統正常' },
-    { id: 'label', title: '🏷️ 智能標籤列印', desc: '輸入關鍵字自動從資料庫抓取營養標示、蟲蟲警語，一鍵排版並支援自訂數量快速列印食品標籤。', path: '/label', icon: '🖨️', bgGradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: 'rgba(59, 130, 246, 0.25)', status: '🟢 系統正常' },
-    { id: 'yummy', title: '🍔 Yummy 3PL', desc: '專屬 HKTVmall Yummy Delivery Note 解析引擎，自動清洗無效資料並偵測重複訂單，快速產出列印清單。', path: '/yummy', icon: '🍔', bgGradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', shadow: 'rgba(249, 115, 22, 0.25)', status: '🟢 系統正常' },
-    { id: 'anymall', title: '🛍️ Anymall 3PL', desc: 'Anymall PDF 智能解析模組，自動抓取商品編號與數量，智能判定是否需要列印標籤。', path: '/anymall', icon: '🛍️', bgGradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', shadow: 'rgba(236, 72, 153, 0.25)', status: '🟢 系統正常' },
-    { id: 'hellobear', title: '🐻 Hello Bear 3PL', desc: '針對 Hello Bear 的訂單結構優化，專門判定 T06 特殊條碼，支援高效率批量資料轉換。', path: '/hellobear', icon: '🐻', bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', shadow: 'rgba(139, 92, 246, 0.25)', status: '🟢 系統正常' },
-    { id: 'homey', title: '🏠 Homey 3PL', desc: 'Homey 專用處理中心，具備多重標籤判定邏輯，自動切換蟲蟲、食品、Repack 等特殊標籤排版。', path: '/homey', icon: '🏠', bgGradient: 'linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)', shadow: 'rgba(20, 184, 166, 0.25)', status: '🟢 系統正常' },
-    { id: 'chat', title: '💬 異常訂單回報', desc: '專屬的即時通訊頻道，遇到查無訂單、包裝異常等狀況，支援圖片上傳與文字回報，1分鐘內可撤回。', path: '/chat', icon: '🚨', bgGradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: 'rgba(245, 158, 11, 0.25)', status: '🟢 系統正常' },
-  ];
+  // 處理前端手動增加取消訂單，並同步回 Render 伺服器
+  const handleCancelSubmit = async (dayKey) => {
+    const qty = parseInt(cancelInputs[dayKey] || 0, 10);
+    if (qty <= 0) return;
+
+    // 複製一份當前的資料來修改
+    const newData = JSON.parse(JSON.stringify(orderData));
+    if (!newData[dayKey]) return;
+    
+    const currentCanceled = parseInt(newData[dayKey].CANCELED || "0", 10);
+    newData[dayKey].CANCELED = (currentCanceled + qty).toString();
+
+    try {
+      // 傳送更新後的整包資料給後端
+      const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newData)
+      });
+      if (res.ok) {
+        setOrderData(newData);
+        setCancelInputs({ ...cancelInputs, [dayKey]: '' }); // 清空輸入框
+        alert(`✅ 已成功記錄 ${qty} 筆取消訂單，並同步至系統！`);
+      }
+    } catch (err) {
+      alert("更新失敗：" + err.message);
+    }
+  };
+
+  // 渲染訂單區塊 (今日 / 明日) 的模組化函數
+  const renderOrderSection = (titlePrefix, dayKey, dayData) => {
+    if (!dayData || Object.keys(dayData).length === 0) return null;
+
+    const totalTarget = parseInt(dayData.TOTAL_TARGET || "0", 10);
+    const picked = parseInt(dayData.PICKED || "0", 10);
+    const pickedPct = totalTarget > 0 ? Math.min((picked / totalTarget) * 100, 100) : 0;
+
+    return (
+      <div style={{ background: '#ffffff', padding: '30px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 30px rgba(0,0,0,0.03)', marginBottom: '30px' }}>
+        <h3 style={{ color: '#0f172a', borderBottom: '2px solid #f1f5f9', paddingBottom: '15px', marginBottom: '25px', fontSize: '22px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span>{titlePrefix}</span>
+          <span style={{ fontSize: '16px', color: '#64748b', fontWeight: 'normal' }}>📅 {dayData.date || '--'}</span>
+        </h3>
+        
+        {/* 四個核心數據方塊 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+          <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+            <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>📝 已建立</div>
+            <div style={{ fontSize: '32px', color: '#0f172a', fontWeight: '900' }}>{dayData.CONFIRMED || '--'}</div>
+          </div>
+          <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+            <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>⏳ 已確認</div>
+            <div style={{ fontSize: '32px', color: '#0f172a', fontWeight: '900' }}>{dayData.ACKNOWLEDGED || '--'}</div>
+          </div>
+          <div style={{ background: '#eff6ff', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '2px solid #bfdbfe', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.1)' }}>
+            <div style={{ color: '#2563eb', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>📦 已出貨 / 總目標</div>
+            <div style={{ fontSize: '32px', color: '#1e3a8a', fontWeight: '900' }}>{picked} / {totalTarget}</div>
+          </div>
+          <div style={{ background: '#fef2f2', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '1px solid #fecaca' }}>
+            <div style={{ color: '#ef4444', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>❌ 已取消</div>
+            <div style={{ fontSize: '32px', color: '#b91c1c', fontWeight: '900' }}>{dayData.CANCELED || '0'}</div>
+          </div>
+        </div>
+
+        {/* 綠色出貨進度條 */}
+        <div style={{ marginBottom: '30px', background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#334155', marginBottom: '12px' }}>
+            <span>📦 出貨進度</span>
+            <span style={{ color: pickedPct === 100 ? '#10b981' : '#334155' }}>{Math.round(pickedPct)}%</span>
+          </div>
+          <div style={{ width: '100%', background: '#cbd5e1', borderRadius: '999px', height: '16px', overflow: 'hidden' }}>
+            <div style={{ width: `${pickedPct}%`, background: '#10b981', height: '100%', transition: 'width 0.8s ease-in-out' }}></div>
+          </div>
+        </div>
+
+        {/* 手動紀錄取消區塊 */}
+        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#0f172a', marginBottom: '8px' }}>⚙️ 手動紀錄取消訂單</div>
+          <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '15px', marginTop: 0 }}>如果發現客人取消訂單，您可以在此手動紀錄取消的數量（總目標數會自動跟隨系統校正）：</p>
+          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+            <input 
+              type="number" min="1" step="1" placeholder="請輸入數量..."
+              value={cancelInputs[dayKey]} 
+              onChange={(e) => setCancelInputs({...cancelInputs, [dayKey]: e.target.value})}
+              style={{ padding: '12px 15px', borderRadius: '10px', border: '2px solid #cbd5e1', outline: 'none', width: '150px', fontSize: '16px' }}
+            />
+            <button onClick={() => handleCancelSubmit(dayKey)} style={{ background: '#0f172a', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.target.style.background = '#334155'} onMouseOut={(e) => e.target.style.background = '#0f172a'}>
+              📝 記錄取消
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="page-content">
-      <style>{`
-        .feature-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); transform: translateY(0); }
-        .feature-card:hover { transform: translateY(-8px); }
-        .feature-card:hover .card-icon-wrapper { transform: scale(1.1) rotate(5deg); }
-        .card-icon-wrapper { transition: all 0.3s ease; }
-      `}</style>
+    <div className="page-content" style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '50px' }}>
+      
+      {/* 標題與更新按鈕 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px', flexWrap: 'wrap', gap: '15px' }}>
+        <h1 style={{ fontSize: '36px', color: '#ea580c', margin: 0, fontWeight: '900', letterSpacing: '-0.5px' }}>🛍️ HKTVmall 智慧訂單監控儀表板</h1>
+        <button onClick={fetchOrderData} disabled={isRefreshing} style={{ background: '#ffffff', color: '#0f172a', border: '1px solid #cbd5e1', padding: '12px 24px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: isRefreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>
+          {isRefreshing ? '🔄 從伺服器載入中...' : '🔄 從伺服器同步最新數據'}
+        </button>
+      </div>
 
-      <div style={{ background: '#ffffff', borderRadius: '24px', padding: '40px', marginBottom: '30px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-          <div>
-              <h1 style={{ fontSize: '36px', color: '#0f172a', margin: '0 0 10px 0', fontWeight: '800', letterSpacing: '-0.5px' }}>歡迎使用 Letech 智能管理系統</h1>
-              <p style={{ color: '#64748b', fontSize: '18px', margin: 0 }}>選擇下方功能模組以開始今日的工作流程。</p>
-          </div>
+      {/* 判斷資料是否還沒載入 */}
+      {(!orderData || !orderData.today || Object.keys(orderData.today).length === 0) ? (
+        <div style={{ textAlign: 'center', padding: '80px 20px', background: '#f8fafc', borderRadius: '24px', border: '2px dashed #cbd5e1', color: '#64748b' }}>
+          <div style={{ fontSize: '48px', marginBottom: '15px' }}>🤖</div>
+          <h2 style={{ margin: '0 0 10px 0', color: '#0f172a' }}>等待機器人傳送資料中...</h2>
+          <p style={{ fontSize: '16px', margin: 0 }}>請確認您本地電腦上的 `app.py` 爬蟲已經啟動，並成功將資料推送至伺服器。</p>
+        </div>
+      ) : (
+        <>
+          {renderOrderSection("今日訂單", "today", orderData.today)}
+          {renderOrderSection("明日訂單", "tomorrow", orderData.tomorrow)}
           
-          {/* 👇 新增：右側狀態區塊 (包含 HKTVmall 訂單與系統狀態) */}
-          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-              {orderData && orderData.today && orderData.today.TOTAL_TARGET && (
-                <div style={{ background: '#eff6ff', padding: '15px 25px', borderRadius: '16px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <div style={{ fontSize: '32px' }}>🛍️</div>
-                    <div>
-                        <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 'bold' }}>HKTVmall 今日待出貨</div>
-                        <div style={{ fontSize: '20px', color: '#1e3a8a', fontWeight: '900' }}>
-                            {orderData.today.PICKED || '0'} / {orderData.today.TOTAL_TARGET} 
-                            <span style={{ fontSize: '14px', marginLeft: '8px', color: '#64748b', fontWeight: 'normal' }}>件</span>
-                        </div>
-                    </div>
-                </div>
-              )}
-              
-              <div style={{ background: '#f8fafc', padding: '15px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px #10b981', animation: 'pulse 2s infinite' }}></div>
-                  <div>
-                      <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>System Status</div>
-                      <div style={{ fontSize: '16px', color: '#0f172a', fontWeight: '800' }}>All Services Online</div>
-                  </div>
-              </div>
+          {/* 頁尾最後更新時間 */}
+          <div style={{ textAlign: 'right', color: '#64748b', fontSize: '15px', marginTop: '30px', background: '#f8fafc', padding: '15px 25px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'inline-block', float: 'right' }}>
+            <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>🕒 最後更新時間：{orderData.last_updated || '--'}</p>
+            <p style={{ margin: 0 }}>{orderData.status_msg || ''}</p>
           </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px' }}>
-          {features.map((item) => (
-              <div key={item.id} className="feature-card" onClick={() => navigate(item.path)} style={{ background: '#ffffff', borderRadius: '24px', padding: '30px', cursor: 'pointer', border: '1px solid #e2e8f0', boxShadow: `0 10px 30px ${item.shadow}`, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '6px', background: item.bgGradient }}></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                      <div className="card-icon-wrapper" style={{ width: '64px', height: '64px', borderRadius: '16px', background: item.bgGradient, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', boxShadow: `0 8px 16px ${item.shadow}` }}>{item.icon}</div>
-                      <span style={{ background: '#f1f5f9', color: '#475569', padding: '6px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: 'bold' }}>{item.status}</span>
-                  </div>
-                  <h3 style={{ fontSize: '22px', color: '#0f172a', margin: '0 0 12px 0', fontWeight: '800' }}>{item.title}</h3>
-                  <p style={{ color: '#64748b', fontSize: '15px', lineHeight: '1.6', margin: '0 0 25px 0', flex: 1 }}>{item.desc}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', color: '#3b82f6', fontWeight: 'bold', fontSize: '15px' }}>進入系統 <span style={{ marginLeft: '8px', fontSize: '18px' }}>→</span></div>
-              </div>
-          ))}
-      </div>
+          <div style={{ clear: 'both' }}></div>
+        </>
+      )}
     </div>
   );
 }
