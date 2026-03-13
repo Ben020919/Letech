@@ -1281,7 +1281,7 @@ function HomePage() {
             {isRefreshing ? '🔄 載入中...' : '🔄 重新整理畫面'}
           </button>
           <button onClick={handleRemoteTrigger} disabled={isTriggering} style={{ background: isTriggering ? '#94a3b8' : '#ea580c', color: '#ffffff', border: 'none', padding: '12px 20px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: isTriggering ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(234,88,12,0.2)', transition: 'all 0.2s' }}>
-            {isTriggering ? '🚀 發送指令中...' : '🚀 遠端觸發本地爬蟲'}
+            {isTriggering ? '🚀 發送指令中...' : '🚀 遠端手動更新'}
           </button>
         </div>
       </div>
