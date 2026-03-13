@@ -1126,6 +1126,7 @@ function HomePage() {
   const [orderData, setOrderData] = useState(null);
   const [cancelInputs, setCancelInputs] = useState({ today: '', tomorrow: '' });
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isTriggering, setIsTriggering] = useState(false); // 🌟 新增：遠端觸發狀態
 
   // 從 Render 後端抓取最新資料
   const fetchOrderData = async () => {
@@ -1148,6 +1149,25 @@ function HomePage() {
     const interval = setInterval(fetchOrderData, 30000); // 30秒自動更新
     return () => clearInterval(interval);
   }, []);
+
+  // 🌟 新增：發送遠端指令給 Render 伺服器
+  const handleRemoteTrigger = async () => {
+    setIsTriggering(true);
+    try {
+      const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/trigger', {
+        method: 'POST'
+      });
+      if (res.ok) {
+        alert("📡 遠端指令已成功發送！\n\n只要您本地的電腦程式 (app.py) 有開著，它將在 10 秒內接收指令並開始抓取。請稍候約 1~2 分鐘，本畫面會自動更新！");
+      } else {
+        alert("❌ 發送指令失敗，請檢查伺服器。");
+      }
+    } catch (err) {
+      alert("❌ 連線失敗：" + err.message);
+    } finally {
+      setIsTriggering(false);
+    }
+  };
 
   // 處理前端手動增加取消訂單，並同步回 Render 伺服器
   const handleCancelSubmit = async (dayKey) => {
@@ -1224,22 +1244,26 @@ function HomePage() {
           </div>
         </div>
 
-        {/* 手動紀錄取消區塊 */}
-        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
-          <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#0f172a', marginBottom: '8px' }}>⚙️ 手動紀錄取消訂單</div>
-          <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '15px', marginTop: 0 }}>如果發現客人取消訂單，您可以在此手動紀錄取消的數量（總目標數會自動跟隨系統校正）：</p>
-          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-            <input 
-              type="number" min="1" step="1" placeholder="請輸入數量..."
-              value={cancelInputs[dayKey]} 
-              onChange={(e) => setCancelInputs({...cancelInputs, [dayKey]: e.target.value})}
-              style={{ padding: '12px 15px', borderRadius: '10px', border: '2px solid #cbd5e1', outline: 'none', width: '150px', fontSize: '16px' }}
-            />
-            <button onClick={() => handleCancelSubmit(dayKey)} style={{ background: '#0f172a', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.target.style.background = '#334155'} onMouseOut={(e) => e.target.style.background = '#0f172a'}>
-              📝 記錄取消
-            </button>
+        {/* 手動紀錄取消區塊 (改用 details 摺疊面板，大幅節省空間) */}
+        <details style={{ background: '#ffffff', padding: '15px 20px', borderRadius: '16px', border: '1px dashed #cbd5e1', cursor: 'pointer' }}>
+          <summary style={{ fontSize: '16px', fontWeight: 'bold', color: '#0f172a', outline: 'none', userSelect: 'none' }}>
+            ⚙️ 手動紀錄取消訂單 <span style={{ fontSize: '13px', color: '#3b82f6', fontWeight: 'normal', marginLeft: '10px' }}>(點擊展開 ▼)</span>
+          </summary>
+          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #f1f5f9', cursor: 'default' }}>
+            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '15px', marginTop: 0 }}>如果發現客人取消訂單，您可以在此手動紀錄取消的數量（總目標數會自動跟隨系統校正）：</p>
+            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+              <input 
+                type="number" min="1" step="1" placeholder="請輸入數量..."
+                value={cancelInputs[dayKey] || ''} 
+                onChange={(e) => setCancelInputs({...cancelInputs, [dayKey]: e.target.value})}
+                style={{ padding: '12px 15px', borderRadius: '10px', border: '2px solid #cbd5e1', outline: 'none', width: '150px', fontSize: '16px' }}
+              />
+              <button onClick={() => handleCancelSubmit(dayKey)} style={{ background: '#0f172a', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.target.style.background = '#334155'} onMouseOut={(e) => e.target.style.background = '#0f172a'}>
+                📝 記錄取消
+              </button>
+            </div>
           </div>
-        </div>
+        </details>
       </div>
     );
   };
@@ -1250,9 +1274,16 @@ function HomePage() {
       {/* 標題與更新按鈕 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px', flexWrap: 'wrap', gap: '15px' }}>
         <h1 style={{ fontSize: '36px', color: '#ea580c', margin: 0, fontWeight: '900', letterSpacing: '-0.5px' }}>🛍️ HKTVmall 智慧訂單監控儀表板</h1>
-        <button onClick={fetchOrderData} disabled={isRefreshing} style={{ background: '#ffffff', color: '#0f172a', border: '1px solid #cbd5e1', padding: '12px 24px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: isRefreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>
-          {isRefreshing ? '🔄 從伺服器載入中...' : '🔄 從伺服器同步最新數據'}
-        </button>
+        
+        {/* 🌟 修改：新增了遠端觸發按鈕 */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={fetchOrderData} disabled={isRefreshing} style={{ background: '#ffffff', color: '#0f172a', border: '1px solid #cbd5e1', padding: '12px 20px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: isRefreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>
+            {isRefreshing ? '🔄 載入中...' : '🔄 重新整理畫面'}
+          </button>
+          <button onClick={handleRemoteTrigger} disabled={isTriggering} style={{ background: isTriggering ? '#94a3b8' : '#ea580c', color: '#ffffff', border: 'none', padding: '12px 20px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: isTriggering ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(234,88,12,0.2)', transition: 'all 0.2s' }}>
+            {isTriggering ? '🚀 發送指令中...' : '🚀 遠端觸發本地爬蟲'}
+          </button>
+        </div>
       </div>
 
       {/* 判斷資料是否還沒載入 */}
