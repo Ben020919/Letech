@@ -6,8 +6,6 @@ import shutil # 🌟 引入檔案清理工具
 from routers import inspection 
 
 # 匯入各個模組
-from services.search_tool import router as search_router
-from services.stats_api import router as stats_router
 from services.yummy_api import router as yummy_router
 from services.anymall_api import router as anymall_router
 from services.hello_api import router as hellobear_router
@@ -15,7 +13,8 @@ from services.homey_api import router as homey_router
 from services.food_label_api import router as food_label_router
 from services.chat_api import router as chat_router
 from services.master_api import router as master_router
-from services.inventory_api import router as inventory_router # 👇 新增這行：匯入我們剛寫好的 DEAR 庫存 API
+# 👇 這是唯一需要修改的地方！把原本的兩個 import 換成這一個
+from services.unified_api import search_router, inventory_router 
 
 app = FastAPI()
 
@@ -41,7 +40,6 @@ app.mount("/generated_pdfs", StaticFiles(directory=PDF_DIR), name="generated_pdf
 
 
 # 註冊路由
-app.include_router(stats_router, prefix="/api/stats", tags=["Stats"])
 app.include_router(search_router, prefix="/api/search", tags=["Search"])
 app.include_router(yummy_router, prefix="/api/yummy", tags=["Yummy"])
 app.include_router(anymall_router, prefix="/api/anymall", tags=["Anymall"])
@@ -51,7 +49,7 @@ app.include_router(food_label_router, prefix="/api/food_label", tags=["FoodLabel
 app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
 app.include_router(master_router, prefix="/api/master", tags=["MasterDB"])
 app.include_router(inspection.router, prefix="/api/inspection", tags=["Inspection"])
-app.include_router(inventory_router, prefix="/api/inventory", tags=["Inventory"]) # 👇 新增這行：註冊庫存路由
+app.include_router(inventory_router, prefix="/api/inventory", tags=["Inventory"]) 
 
 @app.get("/")
 def read_root():

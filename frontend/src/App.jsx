@@ -12,14 +12,13 @@ function Sidebar() {
 
   const menuItems = [
     { path: '/', icon: '🏠', label: '系統首頁' }, 
-    { path: '/inventory', icon: '📦', label: 'DEAR 庫存查詢' },
+    { path: '/search', icon: '🔍', label: '智能查詢中心' }, // 👈 整合後的新選單
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
     { path: '/anymall', icon: '🛍️', label: 'Anymall 3PL' },
     { path: '/hellobear', icon: '🐻', label: 'Hello Bear 3PL' },
     { path: '/homey', icon: '🏠', label: 'Homey 3PL' },
     { path: '/label', icon: '🏷️', label: '標籤列印系統' },
-    { path: '/search', icon: '🔍', label: '條碼搜尋系統' },
     { path: '/chat', icon: '💬', label: '異常訂單問題' },
   ];
 
@@ -51,44 +50,27 @@ function Sidebar() {
   );
 }
 
-// ----------------- InventoryPage (DEAR 庫存查詢系統 - 專業表格版) -----------------
-function InventoryPage() {
-  const [sku, setSku] = useState('');
-  const [results, setResults] = useState(null);
+// ================= 分離式設計：條碼搜尋 + DEAR 庫存查詢 =================
+function UnifiedSearchInventoryPage() {
+  // --- 搜尋系統 State ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // --- 庫存系統 State ---
+  const [invQuery, setInvQuery] = useState(''); // 下方獨立的輸入框
+  const [invSku, setInvSku] = useState('');     // 當前顯示庫存結果的 SKU
+  const [invResults, setInvResults] = useState(null);
   const [productInfo, setProductInfo] = useState(null); 
   const [componentsInventory, setComponentsInventory] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [invLoading, setInvLoading] = useState(false);
+  const [invError, setInvError] = useState('');
+  
+  const inventorySectionRef = useRef(null);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!sku.trim()) return;
-
-    setLoading(true);
-    setError('');
-    setResults(null);
-    setProductInfo(null);
-    setComponentsInventory(null);
-
-    try {
-      const response = await fetch(`https://letech-pro.onrender.com/api/inventory/?sku=${encodeURIComponent(sku.trim())}`);
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || result.detail || '查詢失敗');
-      }
-
-      setResults(result.data);
-      if (result.product_info) setProductInfo(result.product_info);
-      if (result.components_inventory) setComponentsInventory(result.components_inventory);
-
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // 處理 DEAR 庫存資料的輔助函數
   const processInventoryData = (invArray) => {
     const targetLocation = "HKTV SD4";
     const filtered = invArray ? invArray.filter(item => {
@@ -128,256 +110,292 @@ function InventoryPage() {
     return { filtered, tSOH, tAlloc, tAvail, rows };
   };
 
-  const mainInv = processInventoryData(results);
-
-  return (
-    <div className="page-content">
-      <div className="page-header" style={{ textAlign: 'center', marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '32px', color: '#0f172a', fontWeight: '800', margin: 0 }}>📦 HKTV SD4 庫存查詢</h2>
-        <p style={{ color: '#64748b', fontSize: '16px', marginTop: '10px' }}>支援掃描 Barcode 或輸入 SKU 進行即時查詢</p>
-      </div>
-
-      <div style={{ maxWidth: '800px', margin: '0 auto', background: '#ffffff', padding: '30px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', border: '1px solid #f1f5f9' }}>
-        
-        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          <input 
-            type="text" 
-            value={sku} 
-            onChange={(e) => setSku(e.target.value)} 
-            placeholder="掃描條碼或輸入 SKU (例: LT10009829)" 
-            required
-            autoFocus
-            style={{ flex: 1, padding: '16px', fontSize: '18px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }}
-          />
-          <button 
-            type="submit" 
-            disabled={loading}
-            style={{ background: '#3b82f6', color: 'white', padding: '0 24px', fontSize: '18px', borderRadius: '12px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
-          >
-            {loading ? '查詢中...' : '🔍 查詢'}
-          </button>
-        </form>
-
-        {error && <div style={{ background: '#fef2f2', color: '#991b1b', padding: '15px', borderRadius: '12px', fontWeight: 'bold', border: '1px solid #fecaca' }}>❌ {error}</div>}
-
-        {results && (
-          <div style={{ marginTop: '30px' }}>
-            
-            {/* 基本資訊卡片 */}
-            {productInfo && (
-                <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '25px' }}>
-                    <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', marginBottom: '15px', borderBottom: '1px solid #cbd5e1', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{productInfo.Name}</span>
-                        {productInfo.Components && productInfo.Components.length > 0 && (
-                            <span style={{ fontSize: '12px', background: '#dcfce7', color: '#166534', padding: '4px 8px', borderRadius: '6px', border: '1px solid #bbf7d0' }}>📦 組合/多件裝商品</span>
-                        )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                        <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', flex: 1, minWidth: '150px' }}>
-                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>SKU</div>
-                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#3b82f6', fontFamily: 'monospace' }}>{productInfo.SKU}</div>
-                        </div>
-                        <div style={{ background: 'white', padding: '10px 15px', borderRadius: '8px', border: '1px solid #e2e8f0', flex: 1, minWidth: '150px' }}>
-                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '4px' }}>Barcode (UPC)</div>
-                            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#10b981', fontFamily: 'monospace' }}>{productInfo.UPC}</div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* 🌟 1. 主商品庫存 */}
-            <h3 style={{ paddingBottom: '10px', marginBottom: '20px', color: '#0f172a', fontWeight: 'bold', fontSize: '18px' }}>
-              {mainInv.filtered.length > 0 ? `✅ 主商品 HKTV SD4 庫存明細` : `⚠️ 主商品在 HKTV SD4 無實體庫存`}
-            </h3>
-
-            {mainInv.filtered.length > 0 && (
-              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.03)' }}>
-                <div style={{ padding: '20px 25px', background: 'linear-gradient(to right, #f8fafc, #ffffff)', borderBottom: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '20px', fontWeight: 'bold', color: '#0f172a' }}>
-                    📍 HKTV SD4
-                  </div>
-                  <div style={{ display: 'flex', gap: '25px', textAlign: 'center' }}>
-                    <div><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>總 SOH</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#334155' }}>{mainInv.tSOH}</div></div>
-                    <div><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>總 Allocated</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#64748b' }}>{mainInv.tAlloc}</div></div>
-                    <div><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>總 Available</div><div style={{ fontSize: '22px', fontWeight: '900', color: mainInv.tAvail > 0 ? '#16a34a' : '#dc2626' }}>{mainInv.tAvail}</div></div>
-                  </div>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-                    <thead>
-                      <tr style={{ background: '#f1f5f9', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>
-                        <th style={{ padding: '12px 20px', fontWeight: '700' }}>BATCH/ SERIAL#</th>
-                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>SOH</th>
-                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>AVAIL</th>
-                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ON ORDER</th>
-                        <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ALLOCATED</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mainInv.rows.map((item, idx) => (
-                        <tr key={idx} style={{ borderTop: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                          <td style={{ padding: '12px 20px', fontFamily: 'monospace', fontWeight: '600', color: '#0f172a' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}><span>{item.Batch}</span>{item.ExpiryStr && <span style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>{item.ExpiryStr}</span>}</div>
-                          </td>
-                          <td style={{ padding: '12px 20px', fontWeight: '600', color: '#334155', textAlign: 'right' }}>{item.SOH}</td>
-                          <td style={{ padding: '12px 20px', fontWeight: 'bold', color: item.Avail > 0 ? '#16a34a' : '#dc2626', textAlign: 'right' }}>{item.Avail}</td>
-                          <td style={{ padding: '12px 20px', fontWeight: '600', color: '#2563eb', textAlign: 'right' }}>{item.OnOrder}</td>
-                          <td style={{ padding: '12px 20px', color: '#64748b', textAlign: 'right' }}>{item.Allocated}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* 🌟 2. 智慧偵測：直接顯示子商品 (單件) 庫存表格 */}
-            {componentsInventory && Object.keys(componentsInventory).length > 0 && (
-                <div style={{ marginTop: '35px' }}>
-                    
-                    <h3 style={{ paddingBottom: '10px', marginBottom: '20px', color: '#065f46', fontWeight: 'bold', fontSize: '18px' }}>
-                      🔗 單件商品 HKTV SD4 庫存明細 (組合/多件裝子件)
-                    </h3>
-
-                    {Object.entries(componentsInventory).map(([compSku, compData]) => {
-                        const detail = compData.detail;
-                        const compInv = processInventoryData(compData.inventory);
-
-                        return (
-                            <div key={compSku} style={{ background: '#ffffff', borderRadius: '16px', border: '2px solid #10b981', overflow: 'hidden', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.1)', marginBottom: '25px' }}>
-                                <div style={{ padding: '20px 25px', background: '#ecfdf5', borderBottom: '1px solid #a7f3d0', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
-                                    <div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '18px', fontWeight: 'bold', color: '#065f46' }}>
-                                            🔗 {detail.Name}
-                                        </div>
-                                        <div style={{ fontSize: '14px', color: '#047857', marginTop: '5px', fontWeight: 'bold' }}>
-                                            SKU: {compSku} <span style={{ background: '#34d399', color: 'white', padding: '2px 6px', borderRadius: '4px', marginLeft: '5px' }}>每組需 {detail.Quantity} 件</span>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '25px', textAlign: 'center' }}>
-                                        <div><div style={{ fontSize: '11px', color: '#065f46', fontWeight: 'bold', textTransform: 'uppercase' }}>總 SOH</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#065f46' }}>{compInv.tSOH}</div></div>
-                                        <div><div style={{ fontSize: '11px', color: '#065f46', fontWeight: 'bold', textTransform: 'uppercase' }}>總 Available</div><div style={{ fontSize: '22px', fontWeight: '900', color: compInv.tAvail > 0 ? '#16a34a' : '#dc2626' }}>{compInv.tAvail}</div></div>
-                                    </div>
-                                </div>
-
-                                {compInv.filtered.length > 0 ? (
-                                    <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-                                        <thead>
-                                        <tr style={{ background: '#f8fafc', color: '#475569', fontSize: '12px', textTransform: 'uppercase' }}>
-                                            <th style={{ padding: '12px 20px', fontWeight: '700' }}>BATCH/ SERIAL#</th>
-                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>SOH</th>
-                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>AVAIL</th>
-                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ON ORDER</th>
-                                            <th style={{ padding: '12px 20px', fontWeight: '700', textAlign: 'right' }}>ALLOCATED</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        {compInv.rows.map((item, idx) => (
-                                            <tr key={idx} style={{ borderTop: '1px solid #e2e8f0', transition: 'background 0.2s' }} onMouseOver={e => e.currentTarget.style.background = '#f8fafc'} onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                                            <td style={{ padding: '12px 20px', fontFamily: 'monospace', fontWeight: '600', color: '#0f172a' }}>
-                                                <div style={{ display: 'flex', flexDirection: 'column' }}><span>{item.Batch}</span>{item.ExpiryStr && <span style={{ color: '#64748b', fontSize: '12px', marginTop: '2px' }}>{item.ExpiryStr}</span>}</div>
-                                            </td>
-                                            <td style={{ padding: '12px 20px', fontWeight: '600', color: '#334155', textAlign: 'right' }}>{item.SOH}</td>
-                                            <td style={{ padding: '12px 20px', fontWeight: 'bold', color: item.Avail > 0 ? '#16a34a' : '#dc2626', textAlign: 'right' }}>{item.Avail}</td>
-                                            <td style={{ padding: '12px 20px', fontWeight: '600', color: '#2563eb', textAlign: 'right' }}>{item.OnOrder}</td>
-                                            <td style={{ padding: '12px 20px', color: '#64748b', textAlign: 'right' }}>{item.Allocated}</td>
-                                            </tr>
-                                        ))}
-                                        </tbody>
-                                    </table>
-                                    </div>
-                                ) : (
-                                    <div style={{ padding: '20px', textAlign: 'center', color: '#ef4444', fontWeight: 'bold' }}>
-                                        ⚠️ 單件商品 {compSku} 在 HKTV SD4 目前也無庫存
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SearchPage() {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [hasSearched, setHasSearched] = useState(false);
-
-  const handleSearch = async (e) => {
-    if (e.key === 'Enter') {
-      if (!query.trim()) return;
-      setLoading(true); setError(''); setHasSearched(true);
-      try {
-        const response = await fetch(`https://letech-pro.onrender.com/api/search/?q=${encodeURIComponent(query)}`);
-        if (!response.ok) { const errData = await response.json(); setError(errData.detail || '發生未知錯誤'); setResults([]); return; }
-        const data = await response.json(); setResults(data);
-      } catch (err) { setError('連線失敗！'); setResults([]); } finally { setLoading(false); }
+  // 1. 執行本地資料庫搜尋
+  const handleSearchSubmit = async (e) => {
+    e?.preventDefault();
+    if (!searchQuery.trim()) return;
+    
+    setSearchLoading(true); setSearchError(''); setHasSearched(true);
+    try {
+      const response = await fetch(`https://letech-pro.onrender.com/api/search/?q=${encodeURIComponent(searchQuery.trim())}`);
+      if (!response.ok) { 
+        const errData = await response.json(); 
+        setSearchError(errData.detail || '搜尋發生未知錯誤'); 
+        setSearchResults([]); 
+        return; 
+      }
+      const data = await response.json(); 
+      setSearchResults(data);
+    } catch (err) { 
+      setSearchError('資料庫連線失敗！'); 
+      setSearchResults([]); 
+    } finally { 
+      setSearchLoading(false); 
     }
   };
 
+  // 2. 執行 DEAR 庫存查詢
+  const fetchInventory = async (skuTarget) => {
+    setInvLoading(true); setInvError('');
+    setInvResults(null); setProductInfo(null); setComponentsInventory(null);
+    setInvSku(skuTarget);
+
+    try {
+      const response = await fetch(`https://letech-pro.onrender.com/api/inventory/?sku=${encodeURIComponent(skuTarget)}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || result.detail || result.message || '查詢失敗');
+      }
+
+      setInvResults(result.data);
+      if (result.product_info) setProductInfo(result.product_info);
+      if (result.components_inventory) setComponentsInventory(result.components_inventory);
+
+    } catch (err) {
+      setInvError(err.message);
+    } finally {
+      setInvLoading(false);
+    }
+  };
+
+  const handleInvSubmit = (e) => {
+    e.preventDefault();
+    if (!invQuery.trim()) return;
+    fetchInventory(invQuery.trim());
+  };
+
+  // 3. 從搜尋結果點擊「查庫存」按鈕
+  const handleCheckStockFromSearch = (sku) => {
+    setInvQuery(sku); 
+    fetchInventory(sku);
+    setTimeout(() => {
+        inventorySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
+
+  const mainInv = invResults ? processInventoryData(invResults) : { filtered: [], tSOH: 0, tAlloc: 0, tAvail: 0, rows: [] };
+
   return (
-    <div className="page-content">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div><h2>🔍 條碼搜尋系統</h2><p>請輸入 SKU / Barcode / Name 關鍵字，並按下 Enter 搜尋</p></div>
+    <div className="page-content" style={{ paddingBottom: '60px', maxWidth: '1000px', margin: '0 auto' }}>
+      <div className="page-header" style={{ textAlign: 'center', marginBottom: '30px' }}>
+        <h2 style={{ fontSize: '30px', color: '#0f172a', fontWeight: '800', margin: 0 }}>🔍 智能查詢中心</h2>
+        <p style={{ color: '#64748b', fontSize: '15px', marginTop: '10px' }}>先搜尋商品，再確認庫存，雙管齊下更高效率。</p>
       </div>
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        
-        {/* 左側：搜尋區塊 */}
-        <div style={{ flex: '1', minWidth: '300px', maxWidth: '700px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <div style={{ position: 'relative', width: '100%', marginBottom: '20px' }}>
-             <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋..." 
-                style={{ width: '100%', padding: '16px', paddingRight: '40px', borderRadius: '10px', border: '2px solid #e2e8f0', fontSize: '16px', outline: 'none', boxSizing: 'border-box' }} 
-             />
-             {query && (
-               <button 
-                 onClick={() => { setQuery(''); setResults([]); setHasSearched(false); }} 
-                 style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer', padding: '5px' }}>
-                 ✕
-               </button>
-             )}
-          </div>
 
-          {loading && <p style={{ color: '#64748b', fontWeight: 'bold' }}>⏳ 檔案檢索中，請稍候...</p>}
-          {error && <p style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ {error}</p>}
-          {!loading && !error && hasSearched && results.length === 0 && <p style={{ color: '#f59e0b', fontWeight: 'bold' }}>❌ 找不到相符的資料</p>}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '35px' }}>
           
-          {!loading && !error && results.length > 0 && (
-            <div>
-              <p style={{ color: '#10b981', fontWeight: 'bold', marginBottom: '15px' }}>✅ 找到 {results.length} 筆資料</p>
-              {results.map((item, index) => (
-                <div key={index} style={{ display: 'flex', alignItems: 'center', background: '#fff', border: '1px solid #eef0f2', borderRadius: '12px', padding: '15px', marginBottom: '15px', boxShadow: '0 2px 5px rgba(0,0,0,0.03)' }}>
-                  <div style={{ width: '90px', height: '90px', background: '#f8fafc', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '20px', flexShrink: 0 }}>
-                    <a href={item.SearchUrl} target="_blank" rel="noreferrer" style={{ background: '#10b981', color: 'white', padding: '8px 12px', borderRadius: '8px', textDecoration: 'none', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>🔍 查看</a>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold' }}>商品編號 (Product Code)</div>
-                    <div style={{ fontSize: '15px', fontFamily: 'monospace', marginBottom: '8px', fontWeight: 'bold' }}>{item.ProductCode}</div>
-                    <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 'bold' }}>商品條碼 (Barcode)</div>
-                    <div style={{ fontSize: '15px', fontFamily: 'monospace', marginBottom: '8px', fontWeight: 'bold' }}>{item.Barcode}</div>
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#334155', borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '5px' }}>{item.Name}</div>
-                  </div>
-                </div>
-              ))}
+        {/* 上層：資料庫搜尋專區 */}
+        <div style={{ background: '#ffffff', padding: '25px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 8px 25px rgba(59, 130, 246, 0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '12px', display: 'flex' }}>📚</div>
+                <h3 style={{ margin: 0, color: '#1e293b', fontSize: '20px', fontWeight: 'bold' }}>本地資料庫搜尋</h3>
             </div>
-          )}
-        </div>
-        
-        {/* 右側：插入萬用資料庫上傳面板 */}
-        <DatabaseUploader 
-            title="⚙️ 搜尋專用資料庫"
-            infoUrl="https://letech-pro.onrender.com/api/search/info"
-            uploadUrl="https://letech-pro.onrender.com/api/search/upload"
-        />
 
+            <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
+                    <input 
+                        type="text" 
+                        value={searchQuery} 
+                        onChange={(e) => setSearchQuery(e.target.value)} 
+                        placeholder="輸入 SKU / Barcode / 中英文名稱..." 
+                        style={{ width: '100%', padding: '15px 18px', fontSize: '16px', borderRadius: '14px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s' }}
+                        onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                        onBlur={(e) => e.target.style.borderColor = '#cbd5e1'}
+                    />
+                    {searchQuery && (
+                        <button type="button" onClick={() => { setSearchQuery(''); setSearchResults([]); setHasSearched(false); }} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
+                    )}
+                </div>
+                <button type="submit" disabled={searchLoading} style={{ background: searchLoading ? '#94a3b8' : '#3b82f6', color: 'white', padding: '15px 25px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: searchLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
+                    {searchLoading ? '⏳ 搜尋中...' : '🔍 搜尋商品'}
+                </button>
+            </form>
+
+            {searchError && <p style={{ color: '#ef4444', fontWeight: 'bold', padding: '10px', background: '#fef2f2', borderRadius: '10px' }}>❌ {searchError}</p>}
+            {!searchLoading && !searchError && hasSearched && searchResults.length === 0 && <p style={{ color: '#d97706', fontWeight: 'bold', background: '#fef3c7', padding: '12px 15px', borderRadius: '12px', margin: 0 }}>⚠️ 找不到相符的商品資料</p>}
+
+            {!searchLoading && searchResults.length > 0 && (
+                <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '5px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {searchResults.map((item, index) => (
+                    <div key={index} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '15px', gap: '15px' }}>
+                        <div style={{ flex: '1', minWidth: '200px' }}>
+                            <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', marginBottom: '8px', lineHeight: '1.4' }}>{item.Name}</div>
+                            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '13px' }}>
+                                <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>SKU:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#3b82f6' }}>{item.ProductCode}</span></div>
+                                <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>Barcode:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#10b981' }}>{item.Barcode}</span></div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', flexShrink: 0, width: '100%', justifyContent: 'flex-end', '@media (minWidth: 500px)': { width: 'auto' } }}>
+                            {item.SearchUrl && item.SearchUrl !== '#' && (
+                                <a href={item.SearchUrl} target="_blank" rel="noreferrer" style={{ background: '#ffffff', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 15px', borderRadius: '10px', textDecoration: 'none', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🔗 查圖片</a>
+                            )}
+                            <button onClick={() => handleCheckStockFromSearch(item.ProductCode)} style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 10px rgba(16, 185, 129, 0.2)' }}>
+                                📦 查庫存
+                            </button>
+                        </div>
+                    </div>
+                    ))}
+                </div>
+            )}
+        </div>
+
+        {/* 下層：DEAR 庫存專區 */}
+        <div ref={inventorySectionRef} style={{ background: '#ffffff', padding: '25px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 8px 25px rgba(16, 185, 129, 0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                <div style={{ background: '#ecfdf5', padding: '10px', borderRadius: '12px', display: 'flex' }}>📦</div>
+                <h3 style={{ margin: 0, color: '#064e3b', fontSize: '20px', fontWeight: 'bold' }}>DEAR 即時庫存查詢</h3>
+            </div>
+
+            <form onSubmit={handleInvSubmit} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
+                    <input 
+                        type="text" 
+                        value={invQuery} 
+                        onChange={(e) => setInvQuery(e.target.value)} 
+                        placeholder="請輸入精確的 SKU (如: LT10009829)" 
+                        style={{ width: '100%', padding: '15px 18px', fontSize: '16px', borderRadius: '14px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s' }}
+                        onFocus={(e) => e.target.style.borderColor = '#10b981'}
+                        onBlur={(e) => e.target.style.borderColor = '#cbd5e1'}
+                    />
+                    {invQuery && (
+                        <button type="button" onClick={() => { setInvQuery(''); }} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
+                    )}
+                </div>
+                <button type="submit" disabled={invLoading} style={{ background: invLoading ? '#94a3b8' : '#10b981', color: 'white', padding: '15px 25px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: invLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
+                    {invLoading ? '⏳ 連線中...' : '📦 查詢庫存'}
+                </button>
+            </form>
+
+            {!invSku && !invLoading && (
+                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '20px', background: '#f8fafc', borderRadius: '14px', border: '1px dashed #cbd5e1' }}>
+                    請輸入 SKU 或從上方搜尋結果點擊「查庫存」帶入資料。
+                </div>
+            )}
+            
+            {invError && (
+                <div style={{ background: '#fef2f2', color: '#991b1b', padding: '15px', borderRadius: '14px', fontWeight: 'bold', border: '1px solid #fecaca' }}>
+                    ❌ 查詢失敗：{invError} 
+                    <div style={{ fontSize: '13px', marginTop: '6px', color: '#b91c1c', fontWeight: 'normal' }}>(注意：DEAR 查詢僅支援精確的 SKU，不支援中文名稱)</div>
+                </div>
+            )}
+
+            {!invLoading && !invError && invResults && (
+              <div style={{ marginTop: '20px' }}>
+                {productInfo && (
+                    <div style={{ background: '#f8fafc', padding: '15px 20px', borderRadius: '14px', border: '1px solid #e2e8f0', marginBottom: '20px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+                        <div style={{ flex: '1', minWidth: '200px' }}>
+                            <div style={{ fontSize: '18px', fontWeight: '900', color: '#0f172a', marginBottom: '6px', lineHeight: '1.3' }}>{productInfo.Name}</div>
+                            {productInfo.Components && productInfo.Components.length > 0 && (
+                                <span style={{ fontSize: '12px', background: '#dcfce7', color: '#166534', padding: '4px 8px', borderRadius: '6px', border: '1px solid #bbf7d0', display: 'inline-block' }}>📦 組合/多件裝商品</span>
+                            )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ background: 'white', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>SKU</div>
+                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#3b82f6', fontFamily: 'monospace' }}>{productInfo.SKU}</div>
+                            </div>
+                            <div style={{ background: 'white', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>Barcode</div>
+                                <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#10b981', fontFamily: 'monospace' }}>{productInfo.UPC}</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <h4 style={{ color: '#0f172a', fontWeight: 'bold', fontSize: '16px', marginBottom: '12px' }}>
+                  {mainInv.filtered.length > 0 ? `📍 主商品 HKTV SD4 庫存` : `⚠️ 主商品在 HKTV SD4 無實體庫存`}
+                </h4>
+
+                {mainInv.filtered.length > 0 && (
+                  <div style={{ borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: '25px', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+                    <div style={{ padding: '15px', background: '#f1f5f9', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center', borderBottom: '1px solid #e2e8f0' }}>
+                        <div style={{ flex: '1', textAlign: 'center' }}><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>總 SOH</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#334155' }}>{mainInv.tSOH}</div></div>
+                        <div style={{ flex: '1', textAlign: 'center', borderLeft: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1' }}><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>Allocated</div><div style={{ fontSize: '22px', fontWeight: '900', color: '#64748b' }}>{mainInv.tAlloc}</div></div>
+                        <div style={{ flex: '1', textAlign: 'center' }}><div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>Available</div><div style={{ fontSize: '22px', fontWeight: '900', color: mainInv.tAvail > 0 ? '#16a34a' : '#dc2626' }}>{mainInv.tAvail}</div></div>
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', minWidth: '350px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
+                        <thead>
+                          <tr style={{ background: '#ffffff', color: '#475569', borderBottom: '2px solid #e2e8f0' }}>
+                            <th style={{ padding: '12px 15px' }}>批號 / 效期</th>
+                            <th style={{ padding: '12px 15px', textAlign: 'right' }}>SOH</th>
+                            <th style={{ padding: '12px 15px', textAlign: 'right' }}>AVAIL</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mainInv.rows.map((item, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                              <td style={{ padding: '12px 15px', fontFamily: 'monospace', fontWeight: '600', color: '#1e293b' }}>
+                                {item.Batch} {item.ExpiryStr && <><br/><span style={{ color: '#64748b', fontSize: '12px' }}>{item.ExpiryStr}</span></>}
+                              </td>
+                              <td style={{ padding: '12px 15px', fontWeight: '600', textAlign: 'right', color: '#334155' }}>{item.SOH}</td>
+                              <td style={{ padding: '12px 15px', fontWeight: 'bold', color: item.Avail > 0 ? '#16a34a' : '#dc2626', textAlign: 'right' }}>{item.Avail}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {componentsInventory && Object.keys(componentsInventory).length > 0 && (
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '30px', marginBottom: '15px' }}>
+                            <div style={{ height: '2px', flex: '1', background: '#dcfce7' }}></div>
+                            <h4 style={{ color: '#065f46', fontWeight: 'bold', fontSize: '15px', margin: 0 }}>🔗 單件商品 HKTV SD4 庫存 (組合子件)</h4>
+                            <div style={{ height: '2px', flex: '1', background: '#dcfce7' }}></div>
+                        </div>
+
+                        {Object.entries(componentsInventory).map(([compSku, compData]) => {
+                            const detail = compData.detail;
+                            const compInv = processInventoryData(compData.inventory);
+
+                            return (
+                                <div key={compSku} style={{ borderRadius: '16px', border: '1px solid #10b981', overflow: 'hidden', marginBottom: '15px', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.05)' }}>
+                                    <div style={{ padding: '15px', background: '#ecfdf5', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'center' }}>
+                                        <div style={{ flex: '1', minWidth: '150px' }}>
+                                            <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#065f46', lineHeight: '1.3' }}>{detail.Name}</div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                                                <span style={{ fontSize: '13px', color: '#047857', fontFamily: 'monospace', fontWeight: 'bold' }}>{compSku}</span>
+                                                <span style={{ background: '#10b981', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>每組 {detail.Quantity} 件</span>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '20px', textAlign: 'center', background: 'white', padding: '8px 15px', borderRadius: '10px' }}>
+                                            <div><div style={{ fontSize: '11px', color: '#64748b' }}>SOH</div><div style={{ fontSize: '18px', fontWeight: '900', color: '#065f46' }}>{compInv.tSOH}</div></div>
+                                            <div><div style={{ fontSize: '11px', color: '#64748b' }}>可用</div><div style={{ fontSize: '18px', fontWeight: '900', color: compInv.tAvail > 0 ? '#16a34a' : '#dc2626' }}>{compInv.tAvail}</div></div>
+                                        </div>
+                                    </div>
+                                    {compInv.filtered.length > 0 && (
+                                        <div style={{ overflowX: 'auto', borderTop: '1px solid #a7f3d0' }}>
+                                        <table style={{ width: '100%', minWidth: '350px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                                            <thead style={{ background: '#f8fafc' }}>
+                                            <tr>
+                                                <th style={{ padding: '10px 15px', color: '#475569' }}>批號/效期</th>
+                                                <th style={{ padding: '10px 15px', textAlign: 'right', color: '#475569' }}>SOH</th>
+                                                <th style={{ padding: '10px 15px', textAlign: 'right', color: '#475569' }}>AVAIL</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {compInv.rows.map((item, idx) => (
+                                                <tr key={idx} style={{ borderTop: '1px solid #e2e8f0', background: 'white' }}>
+                                                <td style={{ padding: '10px 15px', fontFamily: 'monospace', color: '#1e293b' }}>{item.Batch} {item.ExpiryStr}</td>
+                                                <td style={{ padding: '10px 15px', textAlign: 'right', color: '#334155' }}>{item.SOH}</td>
+                                                <td style={{ padding: '10px 15px', textAlign: 'right', fontWeight: 'bold', color: item.Avail > 0 ? '#16a34a' : '#dc2626' }}>{item.Avail}</td>
+                                                </tr>
+                                            ))}
+                                            </tbody>
+                                        </table>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+              </div>
+            )}
+        </div>
       </div>
     </div>
   );
@@ -1096,9 +1114,8 @@ function HomePage() {
   const navigate = useNavigate();
 
   const features = [
-    { id: 'inventory', title: '📦 DEAR 庫存查詢', desc: '即時連線 DEAR Systems，快速查詢商品在 HKTV SD4 倉庫的可用庫存與總量。', path: '/inventory', icon: '📦', bgGradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)', shadow: 'rgba(139, 92, 246, 0.25)', status: '🟢 系統正常' },
+    { id: 'search', title: '🔍 智能查詢中心', desc: '一鍵檢索本地商品庫存與資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，並同步查閱 DEAR 即時庫存。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
     { id: 'inspection', title: '🕵️‍♂️ 3PL 貨品檢測', desc: '上傳各平台 PDF 生成專屬檢測任務，支援手機即時掃碼核對，精準控管包裝數量，杜絕出貨錯誤。', path: '/inspection', icon: '🕵️‍♂️', bgGradient: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', shadow: 'rgba(14, 165, 233, 0.25)', status: '🟢 系統正常' },
-    { id: 'search', title: '🔍 條碼搜尋系統', desc: '極速檢索全站商品資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，一秒定位商品詳細資訊。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
     { id: 'label', title: '🏷️ 智能標籤列印', desc: '輸入關鍵字自動從資料庫抓取營養標示、蟲蟲警語，一鍵排版並支援自訂數量快速列印食品標籤。', path: '/label', icon: '🖨️', bgGradient: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: 'rgba(59, 130, 246, 0.25)', status: '🟢 系統正常' },
     { id: 'yummy', title: '🍔 Yummy 3PL', desc: '專屬 HKTVmall Yummy Delivery Note 解析引擎，自動清洗無效資料並偵測重複訂單，快速產出列印清單。', path: '/yummy', icon: '🍔', bgGradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)', shadow: 'rgba(249, 115, 22, 0.25)', status: '🟢 系統正常' },
     { id: 'anymall', title: '🛍️ Anymall 3PL', desc: 'Anymall PDF 智能解析模組，自動抓取商品編號與數量，智能判定是否需要列印標籤。', path: '/anymall', icon: '🛍️', bgGradient: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', shadow: 'rgba(236, 72, 153, 0.25)', status: '🟢 系統正常' },
@@ -1198,10 +1215,6 @@ function DatabaseUploader({ title, infoUrl, uploadUrl }) {
   );
 }
 
-
-
-
-
 function App() {
   return (
     <Router>
@@ -1210,14 +1223,13 @@ function App() {
         <div className="main-content">
           <Routes>
             <Route path="/" element={<HomePage />} /> 
-            <Route path="/search" element={<SearchPage />} />
+            <Route path="/search" element={<UnifiedSearchInventoryPage />} />
             <Route path="/yummy" element={<YummyPage />} />
             <Route path="/anymall" element={<AnymallPage />} />
             <Route path="/hellobear" element={<HelloBearPage />} />
             <Route path="/homey" element={<HomeyPage />} />
             <Route path="/label" element={<FoodLabelPage />} />
             <Route path="/chat" element={<ChatPage />} />
-            <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/inspection" element={<InspectionHub />} />
             <Route path="/inspection/anymall" element={<InspectionZone zoneName="Anymall" />} />
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />
