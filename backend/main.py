@@ -41,6 +41,7 @@ app.mount("/generated_pdfs", StaticFiles(directory=PDF_DIR), name="generated_pdf
 
 
 # 註冊路由
+# 註冊路由
 app.include_router(search_router, prefix="/api/search", tags=["Search"])
 app.include_router(yummy_router, prefix="/api/yummy", tags=["Yummy"])
 app.include_router(anymall_router, prefix="/api/anymall", tags=["Anymall"])
