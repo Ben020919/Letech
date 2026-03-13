@@ -1125,6 +1125,28 @@ function ChatPage() {
 function HomePage() {
   const navigate = useNavigate();
 
+  // 👇 新增：用來儲存從後端抓到的 HKTVmall 訂單資料
+  const [orderData, setOrderData] = useState(null);
+
+  // 👇 新增：組件載入時，去後端抓取資料，並每 30 秒自動更新一次
+  useEffect(() => {
+    const fetchOrderData = async () => {
+      try {
+        const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/');
+        if (res.ok) {
+          const data = await res.json();
+          setOrderData(data);
+        }
+      } catch (err) {
+        console.error("無法取得訂單資料", err);
+      }
+    };
+    
+    fetchOrderData();
+    const interval = setInterval(fetchOrderData, 30000); // 30秒更新一次
+    return () => clearInterval(interval);
+  }, []);
+
   const features = [
     { id: 'search', title: '🔍 智能查詢中心', desc: '一鍵檢索本地商品庫存與資料庫。支援 SKU、條碼、名稱關鍵字模糊比對，並同步查閱 DEAR 即時庫存。', path: '/search', icon: '🔍', bgGradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', shadow: 'rgba(99, 102, 241, 0.25)', status: '🟢 系統正常' },
     { id: 'inspection', title: '🕵️‍♂️ 3PL 貨品檢測', desc: '上傳各平台 PDF 生成專屬檢測任務，支援手機即時掃碼核對，精準控管包裝數量，杜絕出貨錯誤。', path: '/inspection', icon: '🕵️‍♂️', bgGradient: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', shadow: 'rgba(14, 165, 233, 0.25)', status: '🟢 系統正常' },
@@ -1150,11 +1172,28 @@ function HomePage() {
               <h1 style={{ fontSize: '36px', color: '#0f172a', margin: '0 0 10px 0', fontWeight: '800', letterSpacing: '-0.5px' }}>歡迎使用 Letech 智能管理系統</h1>
               <p style={{ color: '#64748b', fontSize: '18px', margin: 0 }}>選擇下方功能模組以開始今日的工作流程。</p>
           </div>
-          <div style={{ background: '#f8fafc', padding: '15px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '15px' }}>
-              <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px #10b981', animation: 'pulse 2s infinite' }}></div>
-              <div>
-                  <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>System Status</div>
-                  <div style={{ fontSize: '16px', color: '#0f172a', fontWeight: '800' }}>All Services Online</div>
+          
+          {/* 👇 新增：右側狀態區塊 (包含 HKTVmall 訂單與系統狀態) */}
+          <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+              {orderData && orderData.today && orderData.today.TOTAL_TARGET && (
+                <div style={{ background: '#eff6ff', padding: '15px 25px', borderRadius: '16px', border: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <div style={{ fontSize: '32px' }}>🛍️</div>
+                    <div>
+                        <div style={{ fontSize: '12px', color: '#3b82f6', fontWeight: 'bold' }}>HKTVmall 今日待出貨</div>
+                        <div style={{ fontSize: '20px', color: '#1e3a8a', fontWeight: '900' }}>
+                            {orderData.today.PICKED || '0'} / {orderData.today.TOTAL_TARGET} 
+                            <span style={{ fontSize: '14px', marginLeft: '8px', color: '#64748b', fontWeight: 'normal' }}>件</span>
+                        </div>
+                    </div>
+                </div>
+              )}
+              
+              <div style={{ background: '#f8fafc', padding: '15px 25px', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                  <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px #10b981', animation: 'pulse 2s infinite' }}></div>
+                  <div>
+                      <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>System Status</div>
+                      <div style={{ fontSize: '16px', color: '#0f172a', fontWeight: '800' }}>All Services Online</div>
+                  </div>
               </div>
           </div>
       </div>

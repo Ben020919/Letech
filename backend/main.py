@@ -15,6 +15,7 @@ from services.chat_api import router as chat_router
 from services.master_api import router as master_router
 # 👇 這是唯一需要修改的地方！把原本的兩個 import 換成這一個
 from services.unified_api import search_router, inventory_router 
+from services.hktvmall_api import router as hktvmall_router 
 
 app = FastAPI()
 
@@ -50,6 +51,8 @@ app.include_router(chat_router, prefix="/api/chat", tags=["Chat"])
 app.include_router(master_router, prefix="/api/master", tags=["MasterDB"])
 app.include_router(inspection.router, prefix="/api/inspection", tags=["Inspection"])
 app.include_router(inventory_router, prefix="/api/inventory", tags=["Inventory"]) 
+app.include_router(hktvmall_router, prefix="/api/hktvmall", tags=["HKTVmall"])
+
 
 @app.get("/")
 def read_root():
