@@ -120,7 +120,8 @@ def format_expiry_date(expiry_value):
 
     return english, chinese
 
-def create_label_html_on_the_fly(item, matched_data, qty):
+# 🌟 將 font_css 直接當作參數傳入
+def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
     data = matched_data if matched_data else {}
     
     excel_name = clean_val(data.get('Name', ''))
@@ -147,15 +148,15 @@ def create_label_html_on_the_fly(item, matched_data, qty):
     mfr_text = f"{clean_val(data.get('Madeby_Prefix', ''))} {clean_val(data.get('Madeby', ''))}".strip()
     if mfr_text and "Manufacturer" not in mfr_text: mfr_text = "Manufacturer: " + mfr_text
 
-    # 動態取得日期格式
-    expiry_raw = data.get('AD', '')
+    # 動態取得日期格式 (使用 Expiry_Date_Format 作為 Key)
+    expiry_raw = data.get('Expiry_Date_Format', data.get('AD', ''))
     en_expiry, ch_expiry = format_expiry_date(expiry_raw)
 
     single_label_html = f"""
     <html><head><style>
-        /* FONT_CSS_PLACEHOLDER */
+        {font_css}
         @page {{ size: auto; margin: 0mm; }}
-        body {{ margin: 0; padding: 0; }}
+        body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }}
         .label-container {{ width: 70mm; height: 50mm; position: relative; box-sizing: border-box; border: 1px solid #ddd; page-break-after: always; overflow: hidden; font-weight: bold; }}
         .barcode-text {{ position: absolute; left: 2mm; top: 2mm; font-size: 5pt; font-weight: bold; }}
         .desc-text {{ position: absolute; left: 2mm; top: 4.5mm; width: 59mm; font-size: 5pt; line-height: 1.2; font-weight: bold; }}

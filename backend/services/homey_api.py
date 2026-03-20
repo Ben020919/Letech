@@ -48,7 +48,7 @@ def font_to_base64_css(font_path):
     try:
         with open(font_path, "rb") as f:
             b64_str = base64.b64encode(f.read()).decode('utf-8')
-        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: bold; font-style: normal; }} body, .label-container, div, span {{ font-family: 'CustomLabelFont', Helvetica, Arial, sans-serif !important; }}"
+        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: bold; font-style: normal; }} body, .label-container, .label-box, div, span {{ font-family: 'CustomLabelFont', Helvetica, Arial, sans-serif !important; }}"
     except: return ""
 
 def generate_barcode_b64(data: str):
@@ -84,17 +84,18 @@ def format_expiry_date(expiry_value):
 
     return english, chinese
 
-def create_homey_repack_label_html(p_name, barcode_val, qty):
+# 🌟 將 font_css 直接當作參數傳入，確保每種標籤都能載入自訂粗體
+def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
     barcode_img_src = generate_barcode_b64(barcode_val)
     single_label = f"""
-    <div style="width: 70mm; height: 50mm; box-sizing: border-box; page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; padding-top: 3mm; overflow: hidden; text-align: center;">
+    <div class="label-container" style="width: 70mm; height: 50mm; box-sizing: border-box; page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; padding-top: 3mm; overflow: hidden; text-align: center;">
         <img src="{barcode_img_src}" style="height: 18mm; width: 90%; object-fit: contain;">
         <div style="font-family: monospace; font-weight: bold; font-size: 14pt; margin-top: 2px; letter-spacing: 1px; color: black;">{barcode_val}</div>
         <div style="font-size: 10pt; font-weight: bold; margin-top: 6px; width: 95%; word-wrap: break-word; line-height: 1.2; color: black;">{p_name}</div>
     </div>"""
-    return f"<html><head><style>@page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; background-color: white; }}</style></head><body>{single_label * qty}</body></html>"
+    return f"<html><head><style>{font_css} @page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; background-color: white; }} .label-container, .label-container * {{ font-weight: 900 !important; }}</style></head><body>{single_label * qty}</body></html>"
 
-def create_insects_label_html(matched_data, qty):
+def create_insects_label_html(matched_data, qty, font_css=""):
     data = matched_data if matched_data else {}
     barcode = clean_val(data.get('Barcode', ''))         
     desc = clean_val(data.get('Description', ''))        
@@ -118,10 +119,10 @@ def create_insects_label_html(matched_data, qty):
         <div style="word-wrap: break-word; font-weight: bold; min-height: 6pt;">{warnings}</div>
     </div>
     """
-    # 增加全局粗體 CSS
-    return f"<html><head><style>@page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: white;}} .label-box, .label-box * {{ font-weight: 900 !important; }}</style></head><body>{single_label_html * qty}</body></html>"
+    # 增加 font_css 與全局粗體 CSS
+    return f"<html><head><style>{font_css} @page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: white;}} .label-box, .label-box * {{ font-weight: 900 !important; }}</style></head><body>{single_label_html * qty}</body></html>"
 
-def create_food_label_html(item_name, barcode_text, matched_data, qty):
+def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=""):
     data = matched_data if matched_data else {}
     excel_name = clean_val(data.get('Name', ''))
     if not excel_name: excel_name = clean_val(data.get('Description', ''))
@@ -146,8 +147,8 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty):
     mfr_text = f"{clean_val(data.get('Madeby_Prefix', ''))} {clean_val(data.get('Madeby', ''))}".strip()
     if mfr_text and "Manufacturer" not in mfr_text: mfr_text = "Manufacturer: " + mfr_text
 
-    # 動態取得日期格式
-    expiry_raw = data.get('AD', '')
+    # 動態取得日期格式 (使用 Expiry_Date_Format 作為 Key)
+    expiry_raw = data.get('Expiry_Date_Format', data.get('AD', ''))
     en_expiry, ch_expiry = format_expiry_date(expiry_raw)
 
     single_label_html = f"""
@@ -176,8 +177,8 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty):
         <div class="bb-box" style="position: absolute; left: 47mm; top: 40mm; width: 27mm; font-size: 4.2pt; line-height: 1.2; font-weight: bold; white-space: nowrap;">Best before({en_expiry}):<br>此日期前最佳({ch_expiry})<br>Show on package(見包裝)</div>
     </div>
     """
-    # 增加全局粗體 CSS
-    return f"<html><head><style>/* FONT_CSS_PLACEHOLDER */ @page {{ size: auto; margin: 0mm; }} body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }} .label-container, .label-container * {{ font-weight: 900 !important; }}</style></head><body>{single_label_html * qty}</body></html>"
+    # 增加 font_css 與全局粗體 CSS
+    return f"<html><head><style>{font_css} @page {{ size: auto; margin: 0mm; }} body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }} .label-container, .label-container * {{ font-weight: 900 !important; }}</style></head><body>{single_label_html * qty}</body></html>"
 
 
 def process_homey_pdf(file_bytes):
@@ -187,6 +188,9 @@ def process_homey_pdf(file_bytes):
     temp_items = []
     product_no_tracker = {}
     df_master = load_master_db()
+    
+    # 🌟 取得 Base64 自訂字體，一次性生成好供後續所有標籤使用
+    font_css = font_to_base64_css(DEFAULT_FONT_PATH)
     
     for i, page in enumerate(reader.pages):
         text = page.extract_text()
@@ -277,14 +281,14 @@ def process_homey_pdf(file_bytes):
         
         if final_label == "Food Label":
             needs_print = True
-            final_html = create_food_label_html(p_name, barcode_val, matched_data, qty)
+            final_html = create_food_label_html(p_name, barcode_val, matched_data, qty, font_css)
         elif final_label == "蟲蟲Label": 
             needs_print = True
-            final_html = create_insects_label_html(matched_data, qty)
+            final_html = create_insects_label_html(matched_data, qty, font_css)
         elif final_label == "Repack Lable":
             needs_print = True
             print_barcode = p_no if not barcode_val or barcode_val == "(N/A)" else barcode_val
-            final_html = create_homey_repack_label_html(p_name, print_barcode, qty)
+            final_html = create_homey_repack_label_html(p_name, print_barcode, qty, font_css)
             
         data_status = 'print' if needs_print else 'no_print'
 
@@ -319,12 +323,10 @@ async def upload_homey_pdf(background_tasks: BackgroundTasks, file: UploadFile =
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
         log_action("Homey_Upload")
         
-        font_css = font_to_base64_css(DEFAULT_FONT_PATH)
-        
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
-            "download_url": f"/generated_pdfs/{out_filename}", "font_css": font_css
+            "download_url": f"/generated_pdfs/{out_filename}", "font_css": ""
         }
     except Exception as e: 
         gc.collect()

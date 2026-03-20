@@ -167,8 +167,8 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty):
     mfr_text = f"{clean_val(data.get('Madeby_Prefix', ''))} {clean_val(data.get('Madeby', ''))}".strip()
     if mfr_text and "Manufacturer" not in mfr_text: mfr_text = "Manufacturer: " + mfr_text
 
-    # 動態取得日期格式 (對應 Excel 裡的 AD 欄位)
-    expiry_raw = data.get('AD', '')
+    # 動態取得日期格式 (使用 Expiry_Date_Format 作為 Key)
+    expiry_raw = data.get('Expiry_Date_Format', data.get('AD', ''))
     en_expiry, ch_expiry = format_expiry_date(expiry_raw)
 
     single_label_html = f"""
