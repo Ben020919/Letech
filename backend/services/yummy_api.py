@@ -96,6 +96,30 @@ def get_best_results(results_df):
         results_df = results_df.drop_duplicates(subset=[target_col], keep='first')
     return results_df
 
+# ================= 新增：日期格式化函數 =================
+def format_expiry_date(expiry_value):
+    if pd.isna(expiry_value) or str(expiry_value).lower() == 'nan':
+        return 'YY-MM', '年-月'
+        
+    raw = str(expiry_value).strip().upper()
+    if not raw:
+        return 'YY-MM', '年-月'
+
+    # 將中文年月日或斜線替換為 '-' 以利判斷
+    raw = re.sub(r'[年月日./]', '-', raw)
+    raw = re.sub(r'\s+', '', raw)
+    raw = re.sub(r'-+', '-', raw)
+    raw = raw.strip('-')
+
+    parts = [p for p in raw.split('-') if p]
+    has_day = 'DD' in raw or len(parts) >= 3
+    has_full_year = 'YYYY' in raw
+
+    english = ('YYYY-MM-DD' if has_day else 'YYYY-MM') if has_full_year else ('YY-MM-DD' if has_day else 'YY-MM')
+    chinese = '年-月-日' if has_day else '年-月'
+
+    return english, chinese
+
 def create_label_html_on_the_fly(item, matched_data, qty):
     data = matched_data if matched_data else {}
     
@@ -123,6 +147,10 @@ def create_label_html_on_the_fly(item, matched_data, qty):
     mfr_text = f"{clean_val(data.get('Madeby_Prefix', ''))} {clean_val(data.get('Madeby', ''))}".strip()
     if mfr_text and "Manufacturer" not in mfr_text: mfr_text = "Manufacturer: " + mfr_text
 
+    # 動態取得日期格式
+    expiry_raw = data.get('AD', '')
+    en_expiry, ch_expiry = format_expiry_date(expiry_raw)
+
     single_label_html = f"""
     <html><head><style>
         /* FONT_CSS_PLACEHOLDER */
@@ -141,6 +169,9 @@ def create_label_html_on_the_fly(item, matched_data, qty):
         .line2 {{ position: absolute; left: 0; top: 38mm; width: 70mm; border-top: 1.42pt solid black; }}
         .mfr-box {{ position: absolute; left: 2mm; top: 40mm; width: 35mm; font-size: 4.76pt; line-height: 1.2; font-weight: bold; }}
         .bb-box {{ position: absolute; left: 47mm; top: 40mm; width: 27mm; font-size: 4.2pt; line-height: 1.2; font-weight: bold; white-space: nowrap; }}
+        
+        /* 強制全域粗體 */
+        .label-container, .label-container * {{ font-weight: 900 !important; }}
     </style></head><body>
         <div class="label-container">
             <div class="barcode-text">{barcode_text}</div>
@@ -164,7 +195,7 @@ def create_label_html_on_the_fly(item, matched_data, qty):
             <div class="ing-box">Ingredients: {ing_text}</div>
             <div class="line2"></div>
             <div class="mfr-box">{mfr_text}</div>
-            <div class="bb-box">Best before(Date Format):<br>Show on package(見包裝)<br>此日期前最佳(Format CHI)</div>
+            <div class="bb-box">Best before({en_expiry}):<br>此日期前最佳({ch_expiry})<br>Show on package(見包裝)</div>
         </div>
     </body></html>
     """
@@ -185,6 +216,9 @@ def create_caution_html(text, qty):
         body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }}
         .label-container {{ width: 70mm; height: 50mm; box-sizing: border-box; padding: 2mm; page-break-after: always; display: flex; align-items: center; justify-content: center; text-align: center; }}
         .caution-text {{ font-size: 15pt; font-weight: 900; line-height: 1.2; word-wrap: break-word; color: black; }}
+        
+        /* 強制全域粗體 */
+        .label-container, .label-container * {{ font-weight: 900 !important; }}
     </style></head><body>
         <div class="label-container"><div class="caution-text">{formatted}</div></div>
     </body></html>

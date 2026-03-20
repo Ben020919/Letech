@@ -5,6 +5,11 @@ import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
 import './App.css';
 
+// 🌟 自動切換測試與正式環境的 API 網址 (本地跑 npm run dev 時會是 127.0.0.1，上線時會是 render)
+const API_BASE_URL = import.meta.env.DEV 
+  ? "http://127.0.0.1:8000" 
+  : "https://letech-pro.onrender.com";
+
 // 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
   const location = useLocation();
@@ -117,7 +122,7 @@ function UnifiedSearchInventoryPage() {
     
     setSearchLoading(true); setSearchError(''); setHasSearched(true);
     try {
-      const response = await fetch(`https://letech-pro.onrender.com/api/search/?q=${encodeURIComponent(searchQuery.trim())}`);
+      const response = await fetch(`${API_BASE_URL}/api/search/?q=${encodeURIComponent(searchQuery.trim())}`);
       if (!response.ok) { 
         const errData = await response.json(); 
         setSearchError(errData.detail || '搜尋發生未知錯誤'); 
@@ -141,7 +146,7 @@ function UnifiedSearchInventoryPage() {
     setInvSku(skuTarget);
 
     try {
-      const response = await fetch(`https://letech-pro.onrender.com/api/inventory/?sku=${encodeURIComponent(skuTarget)}`);
+      const response = await fetch(`${API_BASE_URL}/api/inventory/?sku=${encodeURIComponent(skuTarget)}`);
       const result = await response.json();
 
       if (!response.ok || !result.success) {
@@ -244,11 +249,11 @@ function UnifiedSearchInventoryPage() {
               )}
           </div>
 
-          {/* 右側：插入資料庫上傳面板 (把按鈕加回來了！) */}
+          {/* 右側：插入資料庫上傳面板 */}
           <DatabaseUploader 
               title="⚙️ 搜尋專用資料庫"
-              infoUrl="https://letech-pro.onrender.com/api/search/info"
-              uploadUrl="https://letech-pro.onrender.com/api/search/upload"
+              infoUrl={`${API_BASE_URL}/api/search/info`}
+              uploadUrl={`${API_BASE_URL}/api/search/upload`}
           />
         </div>
 
@@ -427,7 +432,7 @@ function YummyPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch('https://letech-pro.onrender.com/api/yummy/upload', { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE_URL}/api/yummy/upload`, { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -435,13 +440,13 @@ function YummyPage() {
 
   const handleDownloadPDF = () => {
     if (resultData && resultData.download_url) {
-        window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank');
+        window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank');
     }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
+    fetch(`${API_BASE_URL}/api/stats/log_print`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Yummy_Print' })
     }).catch(e => console.log(e));
 
@@ -460,7 +465,7 @@ function YummyPage() {
             </button>
             {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
           </div>
-          <DatabaseUploader title="⚙️ 3PL 主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
+          <DatabaseUploader title="⚙️ 3PL 主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
       </div>
       {resultData && (
         <>
@@ -523,19 +528,19 @@ function AnymallPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch('https://letech-pro.onrender.com/api/anymall/upload', { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE_URL}/api/anymall/upload`, { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
   const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) { window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank'); }
+    if (resultData && resultData.download_url) { window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank'); }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
+    fetch(`${API_BASE_URL}/api/stats/log_print`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Anymall_Print' }) 
     }).catch(e => console.log(e));
 
@@ -611,19 +616,19 @@ function HelloBearPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch('https://letech-pro.onrender.com/api/hellobear/upload', { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE_URL}/api/hellobear/upload`, { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
   const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) { window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank'); }
+    if (resultData && resultData.download_url) { window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank'); }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
+    fetch(`${API_BASE_URL}/api/stats/log_print`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'HelloBear_Print' }) 
     }).catch(e => console.log(e));
     
@@ -643,7 +648,7 @@ function HelloBearPage() {
           {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
         </div>
 
-        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
+        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
       </div>
       {resultData && (
         <>
@@ -721,19 +726,19 @@ function HomeyPage() {
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch('https://letech-pro.onrender.com/api/homey/upload', { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE_URL}/api/homey/upload`, { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
   const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) { window.open(`https://letech-pro.onrender.com${resultData.download_url}`, '_blank'); }
+    if (resultData && resultData.download_url) { window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank'); }
   };
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-    fetch('https://letech-pro.onrender.com/api/stats/log_print', {
+    fetch(`${API_BASE_URL}/api/stats/log_print`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Homey_Print' }) 
     }).catch(e => console.log(e));
 
@@ -760,7 +765,7 @@ function HomeyPage() {
           {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
         </div>
 
-        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
+        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
       </div>
       {resultData && (
         <>
@@ -827,7 +832,7 @@ function FoodLabelPage() {
       if (!query.trim()) return;
       setLoading(true); setError(''); setHasSearched(true);
       try {
-        const response = await fetch(`https://letech-pro.onrender.com/api/food_label/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`${API_BASE_URL}/api/food_label/search?q=${encodeURIComponent(query)}`);
         if (!response.ok) { const errData = await response.json(); setError(errData.detail || '發生未知錯誤'); setResults([]); return; }
         const data = await response.json(); 
         setResults(data);
@@ -841,7 +846,7 @@ function FoodLabelPage() {
   const handlePrint = async (item) => {
     const qty = quantities[item.Product_No] || 1;
     try {
-      const response = await fetch('https://letech-pro.onrender.com/api/food_label/generate_html', {
+      const response = await fetch(`${API_BASE_URL}/api/food_label/generate_html`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item: { Product_No: item.Product_No, Barcode: item.Barcode, Name: item.Name }, matched_data: item.matched_data, qty: parseInt(qty), status: item.status })
@@ -879,7 +884,7 @@ function FoodLabelPage() {
            {!loading && !error && hasSearched && results.length === 0 && <p style={{ color: '#f59e0b', fontWeight: 'bold', marginTop: '15px' }}>❌ 找不到相符的商品資料</p>}
         </div>
 
-        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl="https://letech-pro.onrender.com/api/master/info" uploadUrl="https://letech-pro.onrender.com/api/master/upload" />
+        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
       </div>
       
       {error && <p style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ {error}</p>}
@@ -947,7 +952,7 @@ function ChatPage() {
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch('https://letech-pro.onrender.com/api/chat/messages');
+      const res = await fetch(`${API_BASE_URL}/api/chat/messages`);
       const data = await res.json();
       if (data.status === 'success') {
         setMessages(data.messages);
@@ -1015,7 +1020,7 @@ function ChatPage() {
     if (fileToSend) formData.append('file', fileToSend);
 
     try {
-      const res = await fetch('https://letech-pro.onrender.com/api/chat/message', { method: 'POST', body: formData });
+      const res = await fetch(`${API_BASE_URL}/api/chat/message`, { method: 'POST', body: formData });
       if (res.ok) {
         setInputText('');
         setSelectedImage(null);
@@ -1034,7 +1039,7 @@ function ChatPage() {
   const handleDelete = async (msgId) => {
     if (!window.confirm("確定要撤回這則訊息嗎？")) return;
     try {
-      const res = await fetch(`https://letech-pro.onrender.com/api/chat/message/${msgId}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/api/chat/message/${msgId}`, { method: 'DELETE' });
       if (res.ok) { fetchMessages(); } else { alert("撤回失敗，請稍後再試。"); }
     } catch (err) { alert("連線失敗！"); }
   };
@@ -1132,7 +1137,7 @@ function HomePage() {
   const fetchOrderData = async () => {
     setIsRefreshing(true);
     try {
-      const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/');
+      const res = await fetch(`${API_BASE_URL}/api/hktvmall/`);
       if (res.ok) {
         const data = await res.json();
         setOrderData(data);
@@ -1154,7 +1159,7 @@ function HomePage() {
   const handleRemoteTrigger = async () => {
     setIsTriggering(true);
     try {
-      const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/trigger', {
+      const res = await fetch(`${API_BASE_URL}/api/hktvmall/trigger`, {
         method: 'POST'
       });
       if (res.ok) {
@@ -1183,7 +1188,7 @@ function HomePage() {
 
     try {
       // 傳送更新後的整包資料給後端
-      const res = await fetch('https://letech-pro.onrender.com/api/hktvmall/update', {
+      const res = await fetch(`${API_BASE_URL}/api/hktvmall/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newData)
