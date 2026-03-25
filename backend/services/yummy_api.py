@@ -156,23 +156,130 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
     <html><head><style>
         {font_css}
         @page {{ size: auto; margin: 0mm; }}
-        body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }}
-        .label-container {{ width: 70mm; height: 50mm; position: relative; box-sizing: border-box; border: 1px solid #ddd; page-break-after: always; overflow: hidden; font-weight: bold; }}
-        .barcode-text {{ position: absolute; left: 2mm; top: 2mm; font-size: 5pt; font-weight: bold; }}
-        .desc-text {{ position: absolute; left: 2mm; top: 4.5mm; width: 59mm; font-size: 5pt; line-height: 1.2; font-weight: bold; }}
-        .line1 {{ position: absolute; left: 0; top: 9mm; width: 70mm; border-top: 1.42pt solid black; }}
-        .nutri-box {{ position: absolute; left: 2mm; top: 10mm; width: 23mm; font-size: 3.5pt; line-height: 4.5pt; font-weight: bold; }}
-        .nutri-title {{ font-weight: bold; margin-bottom: 1px; }}
-        .nutri-row {{ display: flex; justify-content: space-between; }}
-        .indent {{ padding-left: 3px; }}
-        .vline {{ position: absolute; left: 26mm; top: 9mm; height: 29mm; border-left: 1.42pt solid black; }}
-        .ing-box {{ position: absolute; left: 27mm; top: 10mm; width: 41mm; height: 28mm; font-size: 3.5pt; line-height: 1.1; overflow: hidden; text-align: justify; font-weight: bold; }}
-        .line2 {{ position: absolute; left: 0; top: 38mm; width: 70mm; border-top: 1.42pt solid black; }}
-        .mfr-box {{ position: absolute; left: 2mm; top: 40mm; width: 35mm; font-size: 4.76pt; line-height: 1.2; font-weight: bold; }}
-        .bb-box {{ position: absolute; left: 47mm; top: 40mm; width: 27mm; font-size: 4.2pt; line-height: 1.2; font-weight: bold; white-space: nowrap; }}
         
+        body {{ 
+            margin: 0; 
+            padding: 0; 
+            font-family: Helvetica, Arial, sans-serif; 
+        }}
+        
+        .label-container {{ 
+            width: 70mm; 
+            height: 50mm; 
+            position: relative; 
+            box-sizing: border-box; 
+            border: 1px solid #ddd; 
+            page-break-after: always; 
+            overflow: hidden; 
+            font-weight: bold; 
+        }}
+        
+        .barcode-text {{ 
+            position: absolute; 
+            left: 2mm; 
+            top: 2mm; 
+            font-size: 5pt; 
+            font-weight: bold; 
+        }}
+        
+        .desc-text {{ 
+            position: absolute; 
+            left: 2mm; 
+            top: 4.5mm; 
+            width: 59mm; 
+            font-size: 5pt; 
+            line-height: 1.2; 
+            font-weight: bold; 
+        }}
+        
+        .line1 {{ 
+            position: absolute; 
+            left: 0; 
+            top: 9mm; 
+            width: 70mm; 
+            border-top: 1.42pt solid black; 
+        }}
+        
+        .nutri-box {{   
+            position: absolute; 
+            left: 2mm; 
+            top: 10mm; 
+            width: 23mm; 
+            font-size: 4.5pt; /*  统一改字体大小 */
+            line-height: 1.25; /* 统一改行距 */
+            font-weight: bold; 
+        }}
+        
+        .nutri-title {{ 
+            font-weight: bold; 
+            margin-bottom: 1px; 
+        }}
+        
+        .nutri-row {{ 
+            display: flex; 
+            justify-content: space-between; 
+        }}
+        
+        .indent {{ 
+            padding-left: 3px; 
+        }}
+        
+        .vline {{ 
+            position: absolute; 
+            left: 26mm; 
+            top: 9mm; 
+            height: 29mm; 
+            border-left: 1.42pt solid black; 
+        }}
+        
+        .line2 {{ 
+            position: absolute; 
+            left: 0; 
+            top: 38mm; 
+            width: 70mm; 
+            border-top: 1.42pt solid black; 
+        }}
+        
+        .mfr-box {{ 
+            position: absolute; 
+            left: 2mm; 
+            top: 40mm; 
+            width: 35mm; 
+            font-size: 4.76pt; 
+            line-height: 1.2; 
+            font-weight: bold; 
+        }}
+        
+        .bb-box {{ 
+            position: absolute; 
+            left: 47mm; 
+            top: 40mm; 
+            width: 27mm; 
+            font-size: 4.2pt; 
+            line-height: 1.2; 
+            font-weight: bold; 
+            white-space: nowrap; 
+        }}
+        
+        .ing-box {{ 
+            position: absolute; 
+            left: 27mm; 
+            top: 10mm; 
+            width: 41mm; 
+            height: 28mm; 
+            font-size: 3.5pt; 
+            line-height: 1.1; 
+            overflow: hidden; 
+            text-align: left; /* 🌟 1. 改成靠左對齊，避免單字被亂拉長 */
+            font-weight: bold; 
+            letter-spacing: 0.2pt; /* 🌟 2. 調整字母與字母之間的距離 (可調 0.1pt ~ 0.5pt) */
+            word-spacing: 0.5pt;   /* 🌟 3. (可選) 調整英文單字與單字之間的距離 */
+        }}
+
         /* 強制全域粗體 */
-        .label-container, .label-container * {{ font-weight: 900 !important; }}
+        .label-container, .label-container * {{ 
+            font-weight: 900 !important; 
+        }}
     </style></head><body>
         <div class="label-container">
             <div class="barcode-text">{barcode_text}</div>
@@ -180,6 +287,7 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             <div class="line1"></div>
             <div class="nutri-box">
                 <div class="nutri-title">Nutrition Information</div>
+                <br>
                 <div class="nutri-row"><span>Serving Size:</span><span>{nutri['Serving_Size']}</span></div>
                 <div class="nutri-row"><span>Energy:</span><span>{nutri['Energy']}</span></div>
                 <div class="nutri-row"><span>Protein:</span><span>{nutri['Protein']}</span></div>
@@ -193,7 +301,7 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
                 <div class="nutri-row"><span>Country Of Origin:</span><span>{nutri['Country_Of_Origin']}</span></div>
             </div>
             <div class="vline"></div>
-            <div class="ing-box">Ingredients: {ing_text}</div>
+            <div class="ing-box">{ing_text}</div>
             <div class="line2"></div>
             <div class="mfr-box">{mfr_text}</div>
             <div class="bb-box">Best before({en_expiry}):<br>此日期前最佳({ch_expiry})<br>Show on package(見包裝)</div>
@@ -214,12 +322,37 @@ def create_caution_html(text, qty):
     single = f"""
     <html><head><style>
         @page {{ size: auto; margin: 0mm; }}
-        body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }}
-        .label-container {{ width: 70mm; height: 50mm; box-sizing: border-box; padding: 2mm; page-break-after: always; display: flex; align-items: center; justify-content: center; text-align: center; }}
-        .caution-text {{ font-size: 15pt; font-weight: 900; line-height: 1.2; word-wrap: break-word; color: black; }}
+        
+        body {{ 
+            margin: 0; 
+            padding: 0; 
+            font-family: Helvetica, Arial, sans-serif; 
+        }}
+        
+        .label-container {{ 
+            width: 70mm; 
+            height: 50mm; 
+            box-sizing: border-box; 
+            padding: 2mm; 
+            page-break-after: always; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            text-align: center; 
+        }}
+        
+        .caution-text {{ 
+            font-size: 15pt; 
+            font-weight: 900; 
+            line-height: 1.2; 
+            word-wrap: break-word; 
+            color: black; 
+        }}
         
         /* 強制全域粗體 */
-        .label-container, .label-container * {{ font-weight: 900 !important; }}
+        .label-container, .label-container * {{ 
+            font-weight: 900 !important; 
+        }}
     </style></head><body>
         <div class="label-container"><div class="caution-text">{formatted}</div></div>
     </body></html>
