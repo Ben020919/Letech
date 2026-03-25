@@ -18,7 +18,7 @@ except ImportError:
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 # 🌟 修改預設字體為 msyh.ttf
-DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
+DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font1.ttf")
 # ======================================================
 
 router = APIRouter()

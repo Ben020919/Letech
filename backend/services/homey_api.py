@@ -22,7 +22,7 @@ router = APIRouter()
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
 # 🌟 修改預設字體為 msyh.ttf
-DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
+DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font1.ttf")
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)

@@ -22,7 +22,7 @@ PDF_OUT_DIR = "generated_pdfs"
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
 
-DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
+DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font1.ttf")
 
 router = APIRouter()
 
