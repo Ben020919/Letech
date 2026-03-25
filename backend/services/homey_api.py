@@ -21,6 +21,7 @@ except ImportError:
 router = APIRouter()
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
+# 🌟 修改預設字體為 msyh.ttf
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font.ttf")
 
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -48,7 +49,8 @@ def font_to_base64_css(font_path):
     try:
         with open(font_path, "rb") as f:
             b64_str = base64.b64encode(f.read()).decode('utf-8')
-        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: bold; font-style: normal; }} body, .label-container, .label-box, div, span {{ font-family: 'CustomLabelFont', Helvetica, Arial, sans-serif !important; }}"
+        # 🌟 加上微軟雅黑與蘋方作為 Fallback 字型
+        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: bold; font-style: normal; }} body, .label-container, .label-box, div, span {{ font-family: 'CustomLabelFont', 'Microsoft YaHei', 'PingFang SC', 'Heiti SC', Helvetica, Arial, sans-serif !important; }}"
     except: return ""
 
 def generate_barcode_b64(data: str):
@@ -87,13 +89,68 @@ def format_expiry_date(expiry_value):
 # 🌟 將 font_css 直接當作參數傳入，確保每種標籤都能載入自訂粗體
 def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
     barcode_img_src = generate_barcode_b64(barcode_val)
-    single_label = f"""
-    <div class="label-container" style="width: 70mm; height: 50mm; box-sizing: border-box; page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; padding-top: 3mm; overflow: hidden; text-align: center;">
-        <img src="{barcode_img_src}" style="height: 18mm; width: 90%; object-fit: contain;">
-        <div style="font-family: monospace; font-weight: bold; font-size: 14pt; margin-top: 2px; letter-spacing: 1px; color: black;">{barcode_val}</div>
-        <div style="font-size: 10pt; font-weight: bold; margin-top: 6px; width: 95%; word-wrap: break-word; line-height: 1.2; color: black;">{p_name}</div>
-    </div>"""
-    return f"<html><head><style>{font_css} @page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; background-color: white; }} .label-container, .label-container * {{ font-weight: 900 !important; }}</style></head><body>{single_label * qty}</body></html>"
+    single_label_html = f"""
+    <html><head><style>
+        {font_css}
+        @page {{ size: 70mm 50mm; margin: 0; }}
+        
+        body {{ 
+            margin: 0; 
+            padding: 0; 
+            background-color: white; 
+        }}
+        
+        .label-container {{
+            width: 70mm; 
+            height: 50mm; 
+            box-sizing: border-box; 
+            page-break-after: always; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            padding-top: 3mm; 
+            overflow: hidden; 
+            text-align: center;
+        }}
+        
+        .barcode-text {{
+            font-family: monospace; 
+            font-weight: bold; 
+            font-size: 14pt; 
+            margin-top: 2px; 
+            letter-spacing: 1px; 
+            color: black;
+        }}
+        
+        .name-text {{
+            font-size: 10pt; 
+            font-weight: bold; 
+            margin-top: 6px; 
+            width: 95%; 
+            word-wrap: break-word; 
+            line-height: 1.2; 
+            color: black;
+        }}
+
+        .label-container, .label-container * {{ 
+            font-weight: 900 !important; 
+        }}
+    </style></head><body>
+        <div class="label-container">
+            <img src="{barcode_img_src}" style="height: 18mm; width: 90%; object-fit: contain;">
+            <div class="barcode-text">{barcode_val}</div>
+            <div class="name-text">{p_name}</div>
+        </div>
+    </body></html>
+    """
+    import re as regex
+    match = regex.search(r'<body>(.*?)</body>', single_label_html, regex.DOTALL)
+    if match:
+        div_content = match.group(1)
+        full_body = div_content * qty
+        return single_label_html.replace(div_content, full_body)
+    return single_label_html
 
 def create_insects_label_html(matched_data, qty, font_css=""):
     data = matched_data if matched_data else {}
@@ -107,20 +164,61 @@ def create_insects_label_html(matched_data, qty, font_css=""):
     warnings = clean_val(data.get('警告字眼', ''))         
     
     single_label_html = f"""
-    <div class="label-box" style="width: 70mm; height: 50mm; box-sizing: border-box; padding: 3mm 4mm; overflow: hidden; background-color: white; color: black; font-size: 4pt; line-height: 1.1; page-break-after: always;">
-        <div style="margin-bottom: 6pt; word-wrap: break-word; font-weight: bold; min-height: 6pt;">
-            <div>{barcode}</div>
-            <div>{desc}</div>
+    <html><head><style>
+        {font_css}
+        @page {{ size: 70mm 50mm; margin: 0; }}
+        
+        body {{ 
+            margin: 0; 
+            padding: 0; 
+            font-family: Helvetica, Arial, sans-serif; 
+            background-color: white;
+        }}
+        
+        .label-box {{
+            width: 70mm; 
+            height: 50mm; 
+            box-sizing: border-box; 
+            padding: 3mm 4mm; 
+            overflow: hidden; 
+            background-color: white; 
+            color: black; 
+            font-size: 4pt; 
+            line-height: 1.1; 
+            page-break-after: always;
+        }}
+        
+        .insect-row {{
+            margin-bottom: 6pt; 
+            word-wrap: break-word; 
+            font-weight: bold; 
+            min-height: 6pt;
+        }}
+
+        .label-box, .label-box * {{ 
+            font-weight: 900 !important; 
+        }}
+    </style></head><body>
+        <div class="label-box">
+            <div class="insect-row">
+                <div>{barcode}</div>
+                <div>{desc}</div>
+            </div>
+            <div class="insect-row">{features}</div>
+            <div class="insect-row">{cautions}</div>
+            <div class="insect-row">{net_content}</div>
+            <div class="insect-row">{ingredients}</div>
+            <div style="word-wrap: break-word; font-weight: bold; min-height: 6pt;">{warnings}</div>
         </div>
-        <div style="margin-bottom: 6pt; word-wrap: break-word; font-weight: bold; min-height: 6pt;">{features}</div>
-        <div style="margin-bottom: 6pt; word-wrap: break-word; font-weight: bold; min-height: 6pt;">{cautions}</div>
-        <div style="margin-bottom: 6pt; word-wrap: break-word; font-weight: bold; min-height: 6pt;">{net_content}</div>
-        <div style="margin-bottom: 6pt; word-wrap: break-word; font-weight: bold; min-height: 6pt;">{ingredients}</div>
-        <div style="word-wrap: break-word; font-weight: bold; min-height: 6pt;">{warnings}</div>
-    </div>
+    </body></html>
     """
-    # 增加 font_css 與全局粗體 CSS
-    return f"<html><head><style>{font_css} @page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: white;}} .label-box, .label-box * {{ font-weight: 900 !important; }}</style></head><body>{single_label_html * qty}</body></html>"
+    import re as regex
+    match = regex.search(r'<body>(.*?)</body>', single_label_html, regex.DOTALL)
+    if match:
+        div_content = match.group(1)
+        full_body = div_content * qty
+        return single_label_html.replace(div_content, full_body)
+    return single_label_html
 
 def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=""):
     data = matched_data if matched_data else {}
@@ -152,33 +250,168 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
     en_expiry, ch_expiry = format_expiry_date(expiry_raw)
 
     single_label_html = f"""
-    <div class="label-container" style="width: 70mm; height: 50mm; position: relative; box-sizing: border-box; border: 1px solid #ddd; page-break-after: always; overflow: hidden; font-weight: bold;">
-        <div class="barcode-text" style="position: absolute; left: 2mm; top: 2mm; font-size: 5pt; font-weight: bold;">{b_text}</div>
-        <div class="desc-text" style="position: absolute; left: 2mm; top: 4.5mm; width: 59mm; font-size: 5pt; line-height: 1.2; font-weight: bold;">{desc_text}</div>
-        <div class="line1" style="position: absolute; left: 0; top: 9mm; width: 70mm; border-top: 1.42pt solid black;"></div>
-        <div class="nutri-box" style="position: absolute; left: 2mm; top: 10mm; width: 23mm; font-size: 3.5pt; line-height: 4.5pt; font-weight: bold;">
-            <div class="nutri-title" style="font-weight: bold; margin-bottom: 1px;">Nutrition Information</div>
-            <div style="display: flex; justify-content: space-between;"><span>Serving Size:</span><span>{nutri['Serving_Size']}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span>Energy:</span><span>{nutri['Energy']}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span>Protein:</span><span>{nutri['Protein']}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span>Total fat:</span><span>{nutri['Total_Fat']}</span></div>
-            <div style="display: flex; justify-content: space-between; padding-left: 3px;"><span>- Saturated fat:</span><span>{nutri['Sat_Fat']}</span></div>
-            <div style="display: flex; justify-content: space-between; padding-left: 3px;"><span>- Trans fat:</span><span>{nutri['Trans_Fat']}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span>Carbohydrates:</span><span>{nutri['Carb']}</span></div>
-            <div style="display: flex; justify-content: space-between; padding-left: 3px;"><span>- Sugars:</span><span>{nutri['Sugar']}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span>Sodium:</span><span>{nutri['Sodium']}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span>Net Content:</span><span>{nutri['Net_Content']}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span>Country Of Origin:</span><span>{nutri['Country_Of_Origin']}</span></div>
+    <html><head><style>
+        {font_css}
+        @page {{ size: auto; margin: 0mm; }}
+        
+        body {{ 
+            margin: 0; 
+            padding: 0; 
+            font-family: Helvetica, Arial, sans-serif; 
+        }}
+        
+        .label-container {{ 
+            width: 70mm; 
+            height: 50mm; 
+            position: relative; 
+            box-sizing: border-box; 
+            border: 1px solid #ddd; 
+            page-break-after: always; 
+            overflow: hidden; 
+            font-weight: bold; 
+        }}
+        
+        .barcode-text {{ 
+            position: absolute; 
+            left: 2mm; 
+            top: 2mm; 
+            font-size: 5pt; 
+            font-weight: bold; 
+        }}
+        
+        .desc-text {{ 
+            position: absolute; 
+            left: 2mm; 
+            top: 4.5mm; 
+            width: 59mm; 
+            font-size: 5pt; 
+            line-height: 1.2; 
+            font-weight: bold; 
+        }}
+        
+        .line1 {{ 
+            position: absolute; 
+            left: 0; 
+            top: 9mm; 
+            width: 70mm; 
+            border-top: 1.42pt solid black; 
+        }}
+        
+        .nutri-box {{   
+            position: absolute; 
+            left: 2mm; 
+            top: 10mm; 
+            width: 23mm; 
+            font-size: 4.5pt; /* 统一改字体大小 */
+            line-height: 1.25; /* 统一改行距 */
+            font-weight: bold; 
+        }}
+        
+        .nutri-title {{ 
+            font-weight: bold; 
+            margin-bottom: 1px; 
+        }}
+        
+        .nutri-row {{ 
+            display: flex; 
+            justify-content: space-between; 
+        }}
+        
+        .indent {{ 
+            padding-left: 3px; 
+        }}
+        
+        .vline {{ 
+            position: absolute; 
+            left: 26mm; 
+            top: 9mm; 
+            height: 29mm; 
+            border-left: 1.42pt solid black; 
+        }}
+        
+        .line2 {{ 
+            position: absolute; 
+            left: 0; 
+            top: 38mm; 
+            width: 70mm; 
+            border-top: 1.42pt solid black; 
+        }}
+        
+        .mfr-box {{ 
+            position: absolute; 
+            left: 2mm; 
+            top: 40mm; 
+            width: 35mm; 
+            font-size: 4.76pt; 
+            line-height: 1.2; 
+            font-weight: bold; 
+        }}
+        
+        .bb-box {{ 
+            position: absolute; 
+            left: 47mm; 
+            top: 40mm; 
+            width: 27mm; 
+            font-size: 4.2pt; 
+            line-height: 1.2; 
+            font-weight: bold; 
+            white-space: nowrap; 
+        }}
+        
+        .ing-box {{ 
+            position: absolute; 
+            left: 27mm; 
+            top: 10mm; 
+            width: 41mm; 
+            height: 28mm; 
+            font-size: 3.5pt; 
+            line-height: 1.1; 
+            overflow: hidden; 
+            text-align: left; /* 🌟 1. 改成靠左對齊，避免單字被亂拉長 */
+            font-weight: bold; 
+            letter-spacing: 0.2pt; /* 🌟 2. 調整字母與字母之間的距離 (可調 0.1pt ~ 0.5pt) */
+            word-spacing: 0.5pt;   /* 🌟 3. (可選) 調整英文單字與單字之間的距離 */
+        }}
+
+        /* 強制全域粗體 */
+        .label-container, .label-container * {{ 
+            font-weight: 900 !important; 
+        }}
+    </style></head><body>
+        <div class="label-container">
+            <div class="barcode-text">{b_text}</div>
+            <div class="desc-text">{desc_text}</div>
+            <div class="line1"></div>
+            <div class="nutri-box">
+                <div class="nutri-title">Nutrition Information</div>
+                <br>
+                <div class="nutri-row"><span>Serving Size:</span><span>{nutri['Serving_Size']}</span></div>
+                <div class="nutri-row"><span>Energy:</span><span>{nutri['Energy']}</span></div>
+                <div class="nutri-row"><span>Protein:</span><span>{nutri['Protein']}</span></div>
+                <div class="nutri-row"><span>Total fat:</span><span>{nutri['Total_Fat']}</span></div>
+                <div class="nutri-row indent"><span>- Saturated fat:</span><span>{nutri['Sat_Fat']}</span></div>
+                <div class="nutri-row indent"><span>- Trans fat:</span><span>{nutri['Trans_Fat']}</span></div>
+                <div class="nutri-row"><span>Carbohydrates:</span><span>{nutri['Carb']}</span></div>
+                <div class="nutri-row indent"><span>- Sugars:</span><span>{nutri['Sugar']}</span></div>
+                <div class="nutri-row"><span>Sodium:</span><span>{nutri['Sodium']}</span></div>
+                <div class="nutri-row"><span>Net Content:</span><span>{nutri['Net_Content']}</span></div>
+                <div class="nutri-row"><span>Country Of Origin:</span><span>{nutri['Country_Of_Origin']}</span></div>
+            </div>
+            <div class="vline"></div>
+            <div class="ing-box">{ing_text}</div>
+            <div class="line2"></div>
+            <div class="mfr-box">{mfr_text}</div>
+            <div class="bb-box">Best before({en_expiry}):<br>此日期前最佳({ch_expiry})<br>Show on package(見包裝)</div>
         </div>
-        <div class="vline" style="position: absolute; left: 26mm; top: 9mm; height: 29mm; border-left: 1.42pt solid black;"></div>
-        <div class="ing-box" style="position: absolute; left: 27mm; top: 10mm; width: 41mm; height: 28mm; font-size: 3.5pt; line-height: 1.1; overflow: hidden; text-align: justify; font-weight: bold;">Ingredients: {ing_text}</div>
-        <div class="line2" style="position: absolute; left: 0; top: 38mm; width: 70mm; border-top: 1.42pt solid black;"></div>
-        <div class="mfr-box" style="position: absolute; left: 2mm; top: 40mm; width: 35mm; font-size: 4.76pt; line-height: 1.2; font-weight: bold;">{mfr_text}</div>
-        <div class="bb-box" style="position: absolute; left: 47mm; top: 40mm; width: 27mm; font-size: 4.2pt; line-height: 1.2; font-weight: bold; white-space: nowrap;">Best before({en_expiry}):<br>此日期前最佳({ch_expiry})<br>Show on package(見包裝)</div>
-    </div>
+    </body></html>
     """
-    # 增加 font_css 與全局粗體 CSS
-    return f"<html><head><style>{font_css} @page {{ size: auto; margin: 0mm; }} body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }} .label-container, .label-container * {{ font-weight: 900 !important; }}</style></head><body>{single_label_html * qty}</body></html>"
+    import re as regex
+    match = regex.search(r'<body>(.*?)</body>', single_label_html, regex.DOTALL)
+    if match:
+        div_content = match.group(1)
+        full_body = div_content * qty
+        return single_label_html.replace(div_content, full_body)
+    return single_label_html
 
 
 def process_homey_pdf(file_bytes):
