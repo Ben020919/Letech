@@ -86,7 +86,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             if (data.status === "success" && data.task) {
                 setItems(data.task.items);
             } else {
-                // 🌟 防呆機制：如果後端找不到這個任務 (代表有人已經按了「結案清除」)，就自動重置所有人的畫面
+                // 如果後端找不到這個任務 (可能被別人結案了)，就自動清除本地紀錄
                 setItems([]); 
                 if (data.status === "no_task") {
                     setActiveTaskCode("");
@@ -232,9 +232,8 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         setTimeout(() => setAlertMsg(null), 2500); 
     };
 
-    // 🌟 結案並清除數據 (這會清空伺服器資料，並讓所有協作的人自動跳出)
     const clearTask = async () => {
-        if (window.confirm("確定要「結案並清除數據」嗎？\n這會把雲端上這個任務的所有資料徹底重置，所有人也會一起結束任務喔！")) {
+        if (window.confirm("確定要結案並清除資料嗎？")) {
             await fetch(`${API_BASE_URL}/api/inspection/clear/${apiZoneStr}/${activeTaskCode}`, { method: "POST" });
             setActiveTaskCode(""); 
             setFocusedItemId(null);
@@ -307,7 +306,6 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    {/* 🌟 真正的暫時離開，不清除 localStorage 進度 */}
                     <button onClick={() => window.location.href = '/inspection'} style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '10px 15px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
                         ⬅️ 暫時離開 (保留進度)
                     </button>
@@ -315,47 +313,48 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                 </div>
             </div>
 
-            {/* 🌟 頂部常駐醒目任務碼提示區塊 */}
-            <div style={{ background: '#eff6ff', border: '3px dashed #3b82f6', padding: '15px 25px', borderRadius: '16px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.1)' }}>
-                <div>
-                    <div style={{ fontSize: '15px', color: '#1e40af', fontWeight: 'bold', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span>當前協作任務碼</span>
-                        <span style={{ background: '#dbeafe', color: '#1e3a8a', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>系統已自動記憶，跳出不遺失</span>
+            {/* 🌟 頂部常駐任務碼提示區塊 (隱藏於專注模式中節省空間) */}
+            {!focusedItem && (
+                <div style={{ background: '#eff6ff', border: '3px dashed #3b82f6', padding: '15px 25px', borderRadius: '16px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.1)' }}>
+                    <div>
+                        <div style={{ fontSize: '15px', color: '#1e40af', fontWeight: 'bold', marginBottom: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span>當前協作任務碼</span>
+                            <span style={{ background: '#dbeafe', color: '#1e3a8a', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>自動記憶</span>
+                        </div>
+                        <div style={{ fontSize: '38px', fontWeight: '900', color: '#1e3a8a', letterSpacing: '6px', fontFamily: 'monospace' }}>
+                            {activeTaskCode}
+                        </div>
                     </div>
-                    <div style={{ fontSize: '38px', fontWeight: '900', color: '#1e3a8a', letterSpacing: '6px', fontFamily: 'monospace' }}>
-                        {activeTaskCode}
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <button 
+                            onClick={() => {
+                                const tempInput = document.createElement('input');
+                                tempInput.value = activeTaskCode;
+                                document.body.appendChild(tempInput);
+                                tempInput.select();
+                                document.execCommand('copy');
+                                document.body.removeChild(tempInput);
+                                alert(`✅ 任務碼 ${activeTaskCode} 已複製！`);
+                            }} 
+                            style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(59, 130, 246, 0.2)' }}
+                        >
+                            📋 複製
+                        </button>
+                        <button 
+                            onClick={() => {
+                                if(window.confirm("確定要退出這個任務碼嗎？\n(需要重新輸入號碼才能再次進入)")) {
+                                    setActiveTaskCode(""); 
+                                    setFocusedItemId(null); 
+                                    setItems([]);
+                                }
+                            }} 
+                            style={{ background: '#e2e8f0', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}
+                        >
+                            🔄 換號碼
+                        </button>
                     </div>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <button 
-                        onClick={() => {
-                            const tempInput = document.createElement('input');
-                            tempInput.value = activeTaskCode;
-                            document.body.appendChild(tempInput);
-                            tempInput.select();
-                            document.execCommand('copy');
-                            document.body.removeChild(tempInput);
-                            alert(`✅ 任務碼 ${activeTaskCode} 已複製！快貼給同事一起理貨吧！`);
-                        }} 
-                        style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(59, 130, 246, 0.2)' }}
-                    >
-                        📋 複製號碼給同事
-                    </button>
-                    {/* 🌟 獨立的換號碼按鈕，避免誤觸結案 */}
-                    <button 
-                        onClick={() => {
-                            if(window.confirm("確定要退出這個任務碼嗎？\n(伺服器上的資料不會消失，但您需要重新輸入號碼才能再次進入)")) {
-                                setActiveTaskCode(""); 
-                                setFocusedItemId(null); 
-                                setItems([]);
-                            }
-                        }} 
-                        style={{ background: '#e2e8f0', color: '#475569', border: '1px solid #cbd5e1', padding: '10px 15px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer' }}
-                    >
-                        🔄 更換任務碼
-                    </button>
-                </div>
-            </div>
+            )}
 
             {/* 全局進度與工具列 */}
             {!focusedItem && items.length > 0 && (
@@ -373,68 +372,70 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             )}
 
             {/* 🌟 永遠存在的掃碼引擎 */}
-            <div ref={topRef} style={{ marginBottom: '20px', background: '#f8fafc', padding: '15px', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+            <div ref={topRef} style={{ marginBottom: '15px', background: '#f8fafc', padding: '10px 15px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
                 <input 
-                    ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleKeyDown} disabled={isCameraOpen} placeholder={focusedItem ? "在此畫面直接掃描下一件商品..." : "在此掃描，或輸入條碼末幾碼..."}
-                    style={{ width: '100%', padding: '12px', fontSize: '18px', textAlign: 'center', borderRadius: '10px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: isCameraOpen ? '#e2e8f0' : '#ffffff', boxSizing: 'border-box' }}
+                    ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleKeyDown} disabled={isCameraOpen} placeholder={focusedItem ? "在此直接掃描下一件..." : "掃描條碼，或輸入末幾碼..."}
+                    style={{ width: '100%', padding: '10px', fontSize: '16px', textAlign: 'center', borderRadius: '8px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: isCameraOpen ? '#e2e8f0' : '#ffffff', boxSizing: 'border-box' }}
                 />
             </div>
 
             {alertMsg && (
-                <div style={{ position: 'fixed', top: '15%', left: '50%', transform: 'translateX(-50%)', backgroundColor: alertMsg.type === 'error' ? '#ef4444' : alertMsg.type === 'warning' ? '#f59e0b' : '#10b981', color: 'white', padding: '20px 30px', fontSize: '20px', fontWeight: '900', borderRadius: '12px', zIndex: 9999, boxShadow: '0 10px 25px rgba(0,0,0,0.3)', textAlign: 'center', width: '80%', maxWidth: '400px' }}>
+                <div style={{ position: 'fixed', top: '15%', left: '50%', transform: 'translateX(-50%)', backgroundColor: alertMsg.type === 'error' ? '#ef4444' : alertMsg.type === 'warning' ? '#f59e0b' : '#10b981', color: 'white', padding: '15px 20px', fontSize: '16px', fontWeight: '900', borderRadius: '12px', zIndex: 9999, boxShadow: '0 10px 25px rgba(0,0,0,0.3)', textAlign: 'center', width: '80%', maxWidth: '300px' }}>
                     {alertMsg.msg}
                 </div>
             )}
 
-            {/* ================= 🌟 沉浸式單品畫面 (Focused View) ================= */}
+            {/* ================= 🌟 沉浸式單品畫面 (Focused View - 緊湊版) ================= */}
             {focusedItem ? (
-                <div style={{ background: isFocusedCompleted ? '#dcfce7' : '#ffffff', borderRadius: '24px', padding: '40px 20px', border: `3px solid ${isFocusedCompleted ? '#22c55e' : '#3b82f6'}`, boxShadow: '0 20px 50px rgba(0,0,0,0.1)', textAlign: 'center', transition: 'background 0.3s' }}>
+                <div style={{ background: isFocusedCompleted ? '#dcfce7' : '#ffffff', borderRadius: '16px', padding: '20px 15px', border: `3px solid ${isFocusedCompleted ? '#22c55e' : '#3b82f6'}`, boxShadow: '0 10px 30px rgba(0,0,0,0.1)', textAlign: 'center', transition: 'background 0.3s' }}>
                     
-                    <button onClick={() => setFocusedItemId(null)} style={{ background: '#0f172a', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '12px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '30px', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
-                        🔙 確認完成，返回清單
+                    <button onClick={() => setFocusedItemId(null)} style={{ background: '#0f172a', color: 'white', border: 'none', padding: '8px 20px', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '15px', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
+                        🔙 返回清單
                     </button>
 
-                    <div style={{ fontSize: '24px', fontWeight: '900', color: '#475569', marginBottom: '10px', fontFamily: 'monospace' }}>
+                    <div style={{ fontSize: '16px', fontWeight: '900', color: '#475569', marginBottom: '5px', fontFamily: 'monospace' }}>
                         {focusedItem.Product_No}
                     </div>
                     
-                    <div style={{ fontSize: '36px', fontWeight: '900', color: '#0f172a', marginBottom: '20px', lineHeight: '1.3' }}>
+                    {/* 🌟 縮小商品名稱，避免多行 */}
+                    <div style={{ fontSize: '22px', fontWeight: '900', color: '#0f172a', marginBottom: '10px', lineHeight: '1.3' }}>
                         {focusedItem.Name}
                     </div>
 
-                    <div style={{ background: isFocusedCompleted ? '#22c55e' : '#f1f5f9', display: 'inline-block', padding: '10px 20px', borderRadius: '12px', fontSize: '22px', fontWeight: 'bold', fontFamily: 'monospace', color: isFocusedCompleted ? 'white' : '#3b82f6', marginBottom: '40px' }}>
+                    <div style={{ background: isFocusedCompleted ? '#22c55e' : '#f1f5f9', display: 'inline-block', padding: '6px 15px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', fontFamily: 'monospace', color: isFocusedCompleted ? 'white' : '#3b82f6', marginBottom: '15px' }}>
                         條碼: {focusedItem.Barcode}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '30px', marginBottom: '30px' }}>
+                    {/* 🌟 縮小進度數字，省去大量垂直空間 */}
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '20px' }}>
                         <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '18px', color: '#64748b', fontWeight: 'bold', marginBottom: '10px' }}>目前已拿</div>
-                            <div style={{ fontSize: '80px', fontWeight: '900', color: isFocusedCompleted ? '#166534' : '#2563eb', lineHeight: '1' }}>
+                            <div style={{ fontSize: '14px', color: '#64748b', fontWeight: 'bold', marginBottom: '5px' }}>目前已拿</div>
+                            <div style={{ fontSize: '48px', fontWeight: '900', color: isFocusedCompleted ? '#166534' : '#2563eb', lineHeight: '1' }}>
                                 {focusedItem.Scanned_Qty}
                             </div>
                         </div>
-                        <div style={{ fontSize: '60px', color: '#cbd5e1', fontWeight: '300' }}>/</div>
+                        <div style={{ fontSize: '40px', color: '#cbd5e1', fontWeight: '300' }}>/</div>
                         <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '18px', color: '#64748b', fontWeight: 'bold', marginBottom: '10px' }}>總共需要</div>
-                            <div style={{ fontSize: '80px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>
+                            <div style={{ fontSize: '14px', color: '#64748b', fontWeight: 'bold', marginBottom: '5px' }}>總共需要</div>
+                            <div style={{ fontSize: '48px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>
                                 {focusedItem.Target_Qty}
                             </div>
                         </div>
                     </div>
 
-                    {/* 🌟 升級版手動修改區：支援直接輸入、加1、一鍵加滿 */}
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', flexWrap: 'wrap', background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
+                    {/* 🌟 緊湊版的手動修改區 */}
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
                         
                         {/* 手動輸入框 */}
-                        <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', padding: '8px 12px', borderRadius: '12px', border: '2px solid #e2e8f0' }}>
-                            <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#64748b', marginRight: '10px' }}>自行輸入:</span>
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', padding: '5px 10px', borderRadius: '8px', border: '2px solid #e2e8f0' }}>
+                            <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#64748b', marginRight: '5px' }}>輸入:</span>
                             <input 
                                 type="number" 
                                 min="0" 
                                 max={focusedItem.Target_Qty}
                                 value={focusedItem.Scanned_Qty}
                                 onChange={(e) => updateItemQty(focusedItem.id, parseInt(e.target.value) || 0, false)}
-                                style={{ width: '80px', padding: '10px', textAlign: 'center', fontSize: '24px', fontWeight: 'bold', borderRadius: '8px', border: '2px solid #cbd5e1', outline: 'none' }}
+                                style={{ width: '50px', padding: '5px', textAlign: 'center', fontSize: '18px', fontWeight: 'bold', borderRadius: '6px', border: '2px solid #cbd5e1', outline: 'none' }}
                             />
                         </div>
 
@@ -442,7 +443,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                         <button 
                             onClick={() => updateItemQty(focusedItem.id, focusedItem.Scanned_Qty + 1, false)}
                             disabled={isFocusedCompleted}
-                            style={{ background: isFocusedCompleted ? '#cbd5e1' : '#3b82f6', color: 'white', border: 'none', padding: '15px 25px', borderRadius: '12px', fontSize: '20px', fontWeight: 'bold', cursor: isFocusedCompleted ? 'not-allowed' : 'pointer', boxShadow: isFocusedCompleted ? 'none' : '0 4px 15px rgba(59, 130, 246, 0.3)' }}
+                            style={{ background: isFocusedCompleted ? '#cbd5e1' : '#3b82f6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: isFocusedCompleted ? 'not-allowed' : 'pointer' }}
                         >
                             ➕ 加 1
                         </button>
@@ -451,15 +452,14 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                         <button 
                             onClick={() => updateItemQty(focusedItem.id, focusedItem.Target_Qty, false)}
                             disabled={isFocusedCompleted}
-                            style={{ background: isFocusedCompleted ? '#cbd5e1' : '#ea580c', color: 'white', border: 'none', padding: '15px 25px', borderRadius: '12px', fontSize: '20px', fontWeight: 'bold', cursor: isFocusedCompleted ? 'not-allowed' : 'pointer', boxShadow: isFocusedCompleted ? 'none' : '0 4px 15px rgba(234, 88, 12, 0.3)' }}
+                            style={{ background: isFocusedCompleted ? '#cbd5e1' : '#ea580c', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '8px', fontSize: '15px', fontWeight: 'bold', cursor: isFocusedCompleted ? 'not-allowed' : 'pointer' }}
                         >
-                            ⚡ 一鍵加滿
+                            ⚡ 滿
                         </button>
-
                     </div>
 
-                    <p style={{ marginTop: '30px', color: '#64748b', fontSize: '15px', fontWeight: 'bold' }}>
-                        💡 提示：在此畫面直接用掃描槍掃描「下一個商品」，系統會自動幫您跳轉！
+                    <p style={{ marginTop: '15px', color: '#64748b', fontSize: '13px', fontWeight: 'bold', marginBottom: '0' }}>
+                        💡 直接掃描「下個商品」會自動跳轉！
                     </p>
                 </div>
             ) : (
