@@ -171,13 +171,15 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
 
     const processBarcode = (scannedCode) => {
         if (itemsRef.current.length === 0) return;
-        const cleanScanned = String(scannedCode).trim();
+        // 🌟 強效防禦：將使用者掃出來的條碼也把 '-' 和空格清掉，全部轉大寫
+        const cleanScanned = String(scannedCode).trim().replace(/[\s-]/g, '').toUpperCase();
         
         let matchedItems = [];
 
         for (let item of itemsRef.current) {
-            const pdfBarcode = String(item.Barcode).trim();
-            const purePdfBarcode = pdfBarcode.replace(/[A-Za-z]+$/, ''); 
+            // 🌟 強效防禦：將資料庫裡的條碼也把 '-' 和空格清掉，全部轉大寫，確保雙方在同一個基準點比對
+            const pdfBarcode = String(item.Barcode).trim().replace(/[\s-]/g, '').toUpperCase();
+            const purePdfBarcode = pdfBarcode.replace(/[A-Z]+$/, ''); // 移除尾部字母
             
             if (pdfBarcode === cleanScanned || purePdfBarcode === cleanScanned) {
                 matchedItems.push(item);
@@ -191,7 +193,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
 
         if (matchedItems.length === 0) {
             playSound('error');
-            showAlert("❌ 拿錯貨了！找不到此條碼：" + cleanScanned, "error");
+            showAlert("❌ 拿錯貨了！找不到此條碼：" + scannedCode, "error");
         } else if (matchedItems.length > 1) {
             playSound('error');
             showAlert(`⚠️ 找到 ${matchedItems.length} 個符合的條碼，請輸入更長的尾數！`, "warning");
@@ -396,20 +398,16 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                     </div>
 
                     {/* 緊湊版的水平數字顯示區 */}
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '15px', background: isFocusedCompleted ? '#bbf7d0' : '#f1f5f9', padding: '10px', borderRadius: '10px' }}>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '2px' }}>目前已拿</div>
-                            <div style={{ fontSize: '40px', fontWeight: '900', color: isFocusedCompleted ? '#166534' : '#2563eb', lineHeight: '1' }}>
-                                {focusedItem.Scanned_Qty}
-                            </div>
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '15px', background: isFocusedCompleted ? '#bbf7d0' : '#f1f5f9', padding: '10px', borderRadius: '10px' }}>
+                        <div style={{ fontSize: '14px', color: '#64748b', fontWeight: 'bold' }}>目前已拿</div>
+                        <div style={{ fontSize: '40px', fontWeight: '900', color: isFocusedCompleted ? '#166534' : '#2563eb', lineHeight: '1' }}>
+                            {focusedItem.Scanned_Qty}
                         </div>
                         <div style={{ fontSize: '30px', color: '#94a3b8', fontWeight: '300' }}>/</div>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '2px' }}>總共需要</div>
-                            <div style={{ fontSize: '40px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>
-                                {focusedItem.Target_Qty}
-                            </div>
+                        <div style={{ fontSize: '40px', fontWeight: '900', color: '#0f172a', lineHeight: '1' }}>
+                            {focusedItem.Target_Qty}
                         </div>
+                        <div style={{ fontSize: '14px', color: '#64748b', fontWeight: 'bold' }}>總共需要</div>
                     </div>
 
                     {/* 水平並排的手動修改區 */}

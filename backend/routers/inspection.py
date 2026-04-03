@@ -105,14 +105,17 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
                 
                 if star_match:
                     extracted = star_match.group(1)
-                    clean_extracted = re.sub(r'[\s\-]', '', extracted)
+                    # 🌟 修正：只移除空白，保留橫線 (-)
+                    clean_extracted = re.sub(r'[\s]', '', extracted)
                     clean_extracted = re.sub(r'\(?N/?A\)?', '', clean_extracted, flags=re.IGNORECASE)
                     if clean_extracted:
                         barcode_val = clean_extracted
                 else:
-                     fallback_text = re.sub(r'[\s\-]', '', raw_text)
+                     # 🌟 修正：只移除空白，保留橫線 (-)
+                     fallback_text = re.sub(r'[\s]', '', raw_text)
                      fallback_text = re.sub(r'\(?N/?A\)?', '', fallback_text, flags=re.IGNORECASE)
-                     fallback_match = re.search(r'[A-Za-z0-9]{5,}', fallback_text)
+                     # 🌟 修正：允許匹配橫線 (-)
+                     fallback_match = re.search(r'[A-Za-z0-9\-]{5,}', fallback_text)
                      if fallback_match:
                          barcode_val = fallback_match.group(0)
 
