@@ -5,7 +5,8 @@ import io
 import re
 import uuid
 import os
-import gc  # 🌟 匯入強制記憶體回收工具
+import gc
+import random  # 🌟 新增：用於生成 5 位數任務碼
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -24,16 +25,17 @@ class UpdateQtyReq(BaseModel):
     item_id: str
     scanned_qty: int
 
-# ================= 1. 取得該區當前任務與明細 =================
-@router.get("/task/{zone}")
-async def get_task(zone: str):
-    zone_key = zone.lower().replace(" ", "")
+# ================= 1. 取得該區特定任務碼的當前任務 =================
+@router.get("/task/{zone}/{task_code}")
+async def get_task(zone: str, task_code: str):
+    # 🌟 巧妙融合：將 zone 和 task_code 結合成一個字串存入資料庫，無需修改 DB 欄位結構
+    task_zone_key = f"{zone.lower().replace(' ', '')}_{task_code}"
     
-    task_res = supabase.table("inspection_tasks").select("*").eq("zone", zone_key).execute()
+    task_res = supabase.table("inspection_tasks").select("*").eq("zone", task_zone_key).execute()
     if not task_res.data:
         return {"status": "no_task"}
         
-    items_res = supabase.table("inspection_items").select("*").eq("zone", zone_key).order("seq").execute()
+    items_res = supabase.table("inspection_items").select("*").eq("zone", task_zone_key).order("seq").execute()
     
     return {
         "status": "success", 
@@ -43,7 +45,7 @@ async def get_task(zone: str):
         }
     }
 
-# ================= 2. 上傳 PDF 並寫入兩張表 (🌟 強化記憶體管理 + 究極防禦條碼解析) =================
+# ================= 2. 上傳 PDF 並生成 5 位數任務碼 =================
 @router.post("/upload/{zone}")
 async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
     zone_key = zone.lower().replace(" ", "")
@@ -56,6 +58,10 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
         file_bytes = await file.read()
         pdf_file = io.BytesIO(file_bytes)
         reader = PdfReader(pdf_file)
+
+        # 🌟 生成 5 位數任務碼
+        task_code = str(random.randint(10000, 99999))
+        task_zone_key = f"{zone_key}_{task_code}"
 
         items_dict = {} 
         seq_counter = 1 
@@ -90,39 +96,26 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
             elif len(lines) > 1 and qty_line_idx == -1:
                 p_name = lines[1]
 
-            # ==========================================
-            # 🌟 究極防禦版：條碼萃取與淨化邏輯 (與 hello_api 相同)
-            # ==========================================
+            # 條碼萃取與淨化邏輯
             barcode_val = ""
-            
-            # 1. 取得數量行之後的所有文字
             if qty_line_idx != -1 and qty_line_idx < len(lines) - 1:
                 raw_lines_after_qty = lines[qty_line_idx+1:]
-                
-                # 2. 將這些行合併成一個字串
                 raw_text = "".join(raw_lines_after_qty)
-                
-                # 3. 尋找被星星包圍的內容
                 star_match = re.search(r'\*(.*?)\*', raw_text)
                 
                 if star_match:
                     extracted = star_match.group(1)
-                    # 4. 針對抓出來的內容進行暴力清洗
                     clean_extracted = re.sub(r'[\s\-]', '', extracted)
                     clean_extracted = re.sub(r'\(?N/?A\)?', '', clean_extracted, flags=re.IGNORECASE)
-                    
-                    # 5. 驗證清洗後的結果
                     if clean_extracted:
                         barcode_val = clean_extracted
                 else:
-                    # 6. 備用方案
                      fallback_text = re.sub(r'[\s\-]', '', raw_text)
                      fallback_text = re.sub(r'\(?N/?A\)?', '', fallback_text, flags=re.IGNORECASE)
                      fallback_match = re.search(r'[A-Za-z0-9]{5,}', fallback_text)
                      if fallback_match:
                          barcode_val = fallback_match.group(0)
 
-            # 🌟 絕對防線
             if not barcode_val or barcode_val.strip().upper() in ["N/A", "(N/A)", "NA", "-"] or len(barcode_val) < 4: 
                 barcode_val = p_no
 
@@ -132,7 +125,7 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
             else:
                 items_dict[p_no] = {
                     "id": str(uuid.uuid4()), 
-                    "zone": zone_key,          
+                    "zone": task_zone_key,  # 🌟 寫入專屬任務碼區塊
                     "seq": seq_counter,   
                     "Product_No": p_no,
                     "Name": p_name,
@@ -146,20 +139,20 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
 
         items_list = list(items_dict.values())
         
-        # 寫入資料庫
-        supabase.table("inspection_tasks").upsert({"zone": zone_key, "filename": file.filename}).execute()
+        # 寫入資料庫 (改用 insert 以支援同一區域有多個任務)
+        supabase.table("inspection_tasks").insert({"zone": task_zone_key, "filename": file.filename}).execute()
         
-        supabase.table("inspection_items").delete().eq("zone", zone_key).execute()
         if items_list:
             supabase.table("inspection_items").insert(items_list).execute()
 
-        # 🌟 核心防護：釋放記憶體
+        # 核心防護：釋放記憶體
         del file_bytes
         del pdf_file
         del reader
         gc.collect() 
 
-        return {"status": "success", "task": {"filename": file.filename, "items": items_list}}
+        # 🌟 回傳 task_code 給前端
+        return {"status": "success", "task_code": task_code, "task": {"filename": file.filename, "items": items_list}}
 
     except Exception as e:
         gc.collect() 
@@ -197,8 +190,9 @@ async def update_qty(zone: str, req: UpdateQtyReq):
 
 
 # ================= 4. 清除/完成任務 =================
-@router.post("/clear/{zone}")
-async def clear_task(zone: str):
-    zone_key = zone.lower().replace(" ", "")
-    supabase.table("inspection_tasks").delete().eq("zone", zone_key).execute()
+@router.post("/clear/{zone}/{task_code}")
+async def clear_task(zone: str, task_code: str):
+    task_zone_key = f"{zone.lower().replace(' ', '')}_{task_code}"
+    supabase.table("inspection_tasks").delete().eq("zone", task_zone_key).execute()
+    supabase.table("inspection_items").delete().eq("zone", task_zone_key).execute()
     return {"status": "success", "message": "任務已結案並從雲端清除"}
