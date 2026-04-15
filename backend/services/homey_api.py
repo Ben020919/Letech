@@ -49,8 +49,8 @@ def font_to_base64_css(font_path):
     try:
         with open(font_path, "rb") as f:
             b64_str = base64.b64encode(f.read()).decode('utf-8')
-        # 🌟 加上微軟雅黑與蘋方作為 Fallback 字型
-        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: bold; font-style: normal; }} body, .label-container, .label-box, div, span {{ font-family: 'CustomLabelFont', 'Microsoft YaHei', 'PingFang SC', 'Heiti SC', Helvetica, Arial, sans-serif !important; }}"
+        # 🌟 加上微軟雅黑與蘋方作為 Fallback 字型，並取消了粗體設定 (改為 normal)
+        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: normal; font-style: normal; }} body, .label-container, .label-box, div, span {{ font-family: 'CustomLabelFont', 'Microsoft YaHei', 'PingFang SC', 'Heiti SC', Helvetica, Arial, sans-serif !important; }}"
     except: return ""
 
 def generate_barcode_b64(data: str):
@@ -86,7 +86,7 @@ def format_expiry_date(expiry_value):
 
     return english, chinese
 
-# 🌟 將 font_css 直接當作參數傳入，確保每種標籤都能載入自訂粗體
+# 🌟 將 font_css 直接當作參數傳入，取消自訂粗體
 def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
     barcode_img_src = generate_barcode_b64(barcode_val)
     single_label_html = f"""
@@ -116,7 +116,6 @@ def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
         
         .barcode-text {{
             font-family: monospace; 
-            font-weight: bold; 
             font-size: 14pt; 
             margin-top: 2px; 
             letter-spacing: 1px; 
@@ -125,16 +124,11 @@ def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
         
         .name-text {{
             font-size: 10pt; 
-            font-weight: bold; 
             margin-top: 6px; 
             width: 95%; 
             word-wrap: break-word; 
             line-height: 1.2; 
             color: black;
-        }}
-
-        .label-container, .label-container * {{ 
-            font-weight: 900 !important; 
         }}
     </style></head><body>
         <div class="label-container">
@@ -191,12 +185,7 @@ def create_insects_label_html(matched_data, qty, font_css=""):
         .insect-row {{
             margin-bottom: 6pt; 
             word-wrap: break-word; 
-            font-weight: bold; 
             min-height: 6pt;
-        }}
-
-        .label-box, .label-box * {{ 
-            font-weight: 900 !important; 
         }}
     </style></head><body>
         <div class="label-box">
@@ -208,7 +197,7 @@ def create_insects_label_html(matched_data, qty, font_css=""):
             <div class="insect-row">{cautions}</div>
             <div class="insect-row">{net_content}</div>
             <div class="insect-row">{ingredients}</div>
-            <div style="word-wrap: break-word; font-weight: bold; min-height: 6pt;">{warnings}</div>
+            <div style="word-wrap: break-word; min-height: 6pt;">{warnings}</div>
         </div>
     </body></html>
     """
@@ -268,7 +257,6 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             border: 1px solid #ddd; 
             page-break-after: always; 
             overflow: hidden; 
-            font-weight: bold; 
         }}
         
         .barcode-text {{ 
@@ -276,7 +264,6 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             left: 2mm; 
             top: 2mm; 
             font-size: 5pt; 
-            font-weight: bold; 
         }}
         
         .desc-text {{ 
@@ -286,7 +273,6 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             width: 59mm; 
             font-size: 5pt; 
             line-height: 1.2; 
-            font-weight: bold; 
         }}
         
         .line1 {{ 
@@ -304,11 +290,9 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             width: 23mm; 
             font-size: 4.5pt; /* 统一改字体大小 */
             line-height: 1.25; /* 统一改行距 */
-            font-weight: bold; 
         }}
         
         .nutri-title {{ 
-            font-weight: bold; 
             margin-bottom: 1px; 
         }}
         
@@ -344,7 +328,6 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             width: 35mm; 
             font-size: 4.76pt; 
             line-height: 1.2; 
-            font-weight: bold; 
         }}
         
         .bb-box {{ 
@@ -354,7 +337,6 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             width: 27mm; 
             font-size: 4.2pt; 
             line-height: 1.2; 
-            font-weight: bold; 
             white-space: nowrap; 
         }}
         
@@ -368,14 +350,8 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             line-height: 1.1; 
             overflow: hidden; 
             text-align: left; /* 🌟 1. 改成靠左對齊，避免單字被亂拉長 */
-            font-weight: bold; 
             letter-spacing: 0.2pt; /* 🌟 2. 調整字母與字母之間的距離 (可調 0.1pt ~ 0.5pt) */
             word-spacing: 0.5pt;   /* 🌟 3. (可選) 調整英文單字與單字之間的距離 */
-        }}
-
-        /* 強制全域粗體 */
-        .label-container, .label-container * {{ 
-            font-weight: 900 !important; 
         }}
     </style></head><body>
         <div class="label-container">
