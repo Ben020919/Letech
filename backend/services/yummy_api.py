@@ -205,7 +205,7 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             left: 2mm; 
             top: 10mm; 
             width: 23mm; 
-            font-size: 4.5pt; /*  统一改字体大小 */
+            font-size: 4.5pt; /* 统一改字体大小 */
             line-height: 1.25; /* 统一改行距 */
             font-weight: bold; 
         }}
@@ -343,7 +343,8 @@ def create_caution_html(text, qty):
         
         .caution-text {{ 
             font-size: 15pt; 
-            font-weight: 900; 
+            font-weight: 900; /* 粗體 */
+            text-decoration: underline; /* 🌟 加上底線 */
             line-height: 1.2; 
             word-wrap: break-word; 
             color: black; 
@@ -364,6 +365,20 @@ def create_caution_html(text, qty):
         full_body = div_content * qty
         return single.replace(div_content, full_body)
     return single
+
+# ================= 新增：Jelly 警告標籤片段生成 (附加於主標籤內) =================
+def generate_jelly_html(cautions_text, qty):
+    formatted = str(cautions_text).replace('\n', '<br/>')
+    if not formatted or formatted == "nan": return ""
+    # 單純生成附帶 qty 數量的 DIV 片段，大小與主標籤(70mm x 50mm)一致，並設定 page-break-after 換頁
+    single = f"""
+    <div style="width: 70mm; height: 50mm; box-sizing: border-box; padding: 2mm; page-break-after: always; display: flex; align-items: center; justify-content: center; text-align: center; font-family: Helvetica, Arial, sans-serif; background: #fff; color: #000;">
+        <div style="font-size: 15pt; font-weight: 900; text-decoration: underline; line-height: 1.2; word-wrap: break-word;">
+            {formatted}
+        </div>
+    </div>
+    """
+    return single * qty
 
 def process_yummy_pdf(file_bytes):
     pdf_file = io.BytesIO(file_bytes)
@@ -444,7 +459,14 @@ def process_yummy_pdf(file_bytes):
                         matches = df_master[df_master['Barcode'].astype(str).str.strip() == barcode_val]
                 
                 if not matches.empty:
-                    best_match_df = get_best_results(matches).fillna("")
+                    # ====== 1. 優先抓出 Food Label 的紀錄 (排除 Label_Type 包含 Jelly 的) ======
+                    main_records = matches[~matches['Label_Type'].astype(str).str.lower().str.contains('jelly', na=False)]
+                    
+                    if not main_records.empty:
+                        best_match_df = get_best_results(main_records).fillna("")
+                    else:
+                        best_match_df = get_best_results(matches).fillna("")
+                        
                     matched_data = best_match_df.iloc[0].to_dict()
                     data_status = check_data_status(matched_data)
                     
@@ -453,6 +475,23 @@ def process_yummy_pdf(file_bytes):
                     elif data_status == 'caution':
                         caution_text = smart_get_caution_text(matched_data) or "Caution Column Empty"
                         final_html = create_caution_html(caution_text, qty)
+
+                    # ====== 2. 尋找 Jelly Label 並將它接在 HTML 後方 ======
+                    jelly_records = matches[matches['Label_Type'].astype(str).str.lower().str.contains('jelly', na=False)]
+                    if not jelly_records.empty:
+                        jelly_data = jelly_records.iloc[0].to_dict()
+                        cautions_text = smart_get_caution_text(jelly_data)
+                        
+                        if cautions_text:
+                            jelly_content = generate_jelly_html(cautions_text, qty)
+                            
+                            if final_html and "</body></html>" in final_html:
+                                # 將 Jelly 貼紙 HTML 完美插入 Food Label 的 </body> 前
+                                final_html = final_html.replace("</body></html>", "") + jelly_content + "</body></html>"
+                            elif not final_html:
+                                # 如果這個 Barcode 只有 Jelly 標籤 (沒有 Food Label)
+                                final_html = create_caution_html(cautions_text, qty)
+                                data_status = 'caution'
 
         if p_no not in product_no_tracker: product_no_tracker[p_no] = []
         product_no_tracker[p_no].append(i + 1)
