@@ -490,19 +490,32 @@ def process_homey_pdf(file_bytes):
             match_col = 'Product_No' if 'Product_No' in df_master.columns else 'ProductCode'
             if match_col not in df_master.columns and 'Product No' in df_master.columns: match_col = 'Product No'
                 
+            matches = pd.DataFrame()
             if match_col in df_master.columns:
                 matches = df_master[df_master[match_col].astype(str).str.strip() == p_no]
-                if not matches.empty:
-                    matched_data = matches.iloc[0].fillna("").to_dict()
-                    if 'Label_Type' in matched_data: excel_label = str(matched_data.get('Label_Type'))
-                    elif 'Label Type' in matched_data: excel_label = str(matched_data.get('Label Type'))
+            
+            # 🌟 新增：如果 Product_No 找不到，嘗試用 Barcode 找，確保能對接上 Excel 資料
+            if matches.empty and barcode_val and barcode_val != "(N/A)":
+                if 'Barcode' in df_master.columns:
+                    matches = df_master[df_master['Barcode'].astype(str).str.strip() == barcode_val]
+
+            if not matches.empty:
+                matched_data = matches.iloc[0].fillna("").to_dict()
+                # 🌟 增強：不區分大小寫與底線，自動尋找 Label Type 欄位
+                for key, val in matched_data.items():
+                    k_norm = str(key).strip().lower().replace("_", "").replace(" ", "")
+                    if k_norm == "labeltype":
+                        if pd.notna(val) and str(val).lower() != "nan":
+                            excel_label = str(val).strip()
+                        break
                         
         final_label = "普通Label"
         excel_label_lower = excel_label.lower()
         
         if "food" in excel_label_lower: 
             final_label = "Food Label"
-        elif "蟲" in excel_label or "insect" in excel_label_lower: 
+        # 🌟 增強：同時支援繁體「蟲」與簡體「虫」
+        elif "蟲" in excel_label or "虫" in excel_label or "insect" in excel_label_lower: 
             final_label = "蟲蟲Label"
         elif (barcode_val and barcode_val[-1].isalpha()) or (not barcode_val or barcode_val.strip() == "" or barcode_val == p_no or barcode_val == "(N/A)"): 
             final_label = "Repack Lable"
