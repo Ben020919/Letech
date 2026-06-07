@@ -266,31 +266,33 @@ export default function InspectionHub() {
                     }}>
                         {!manageMode ? (
                             <>
-                                {legacyKeys.length > 0 && (
-                                    <button onClick={handleCleanupLegacy} disabled={deleting} style={{
-                                        background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
-                                        padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                                        fontSize: '14px', cursor: deleting ? 'not-allowed' : 'pointer',
-                                        whiteSpace: 'nowrap',
-                                    }} title="清理冇 task code 嘅孤兒任務">
-                                        {deleting ? '⏳ 清理中...' : `🧹 清理舊版 (${legacyKeys.length})`}
-                                    </button>
-                                )}
-                                <button onClick={() => setManageMode(true)} style={{
-                                    background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
-                                    padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                                    fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap',
-                                }}>⚙️ 管理模式</button>
-                                <Link to="/inspection/history" style={{
-                                    background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
-                                    padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                                    fontSize: '14px', textDecoration: 'none', whiteSpace: 'nowrap',
-                                }}>📚 歷史檢測記錄</Link>
-                                {/* 手機隱藏「秒前更新」省位,desktop 先顯示 */}
+                                {/* 🔒 三個管理用按鈕只係電腦版顯示,防止手機員工誤撳 */}
                                 {!isMobile && (
-                                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                        {error ? `⚠️ ${error}` : (lastUpdated ? `🔄 ${timeAgo(lastUpdated.toISOString())}更新` : '⏳ 載入中...')}
-                                    </span>
+                                    <>
+                                        {legacyKeys.length > 0 && (
+                                            <button onClick={handleCleanupLegacy} disabled={deleting} style={{
+                                                background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
+                                                padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                                fontSize: '14px', cursor: deleting ? 'not-allowed' : 'pointer',
+                                                whiteSpace: 'nowrap',
+                                            }} title="清理冇 task code 嘅孤兒任務">
+                                                {deleting ? '⏳ 清理中...' : `🧹 清理舊版 (${legacyKeys.length})`}
+                                            </button>
+                                        )}
+                                        <button onClick={() => setManageMode(true)} style={{
+                                            background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
+                                            padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                            fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                        }}>⚙️ 管理模式</button>
+                                        <Link to="/inspection/history" style={{
+                                            background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+                                            padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                            fontSize: '14px', textDecoration: 'none', whiteSpace: 'nowrap',
+                                        }}>📚 歷史檢測記錄</Link>
+                                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                            {error ? `⚠️ ${error}` : (lastUpdated ? `🔄 ${timeAgo(lastUpdated.toISOString())}更新` : '⏳ 載入中...')}
+                                        </span>
+                                    </>
                                 )}
                             </>
                         ) : (
