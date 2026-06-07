@@ -52,6 +52,13 @@ export default function InspectionHub() {
     const [manageMode, setManageMode] = useState(false);
     const [selectedKeys, setSelectedKeys] = useState(new Set()); // {"yummy_20052", ...}
     const [deleting, setDeleting] = useState(false);
+    // 🌟 RWD — 手機(< 640px)行為唔同
+    const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 640);
+    useEffect(() => {
+        const onResize = () => setIsMobile(window.innerWidth < 640);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
 
     // Poll active summary 每 10 秒
     useEffect(() => {
@@ -182,15 +189,15 @@ export default function InspectionHub() {
     };
 
     return (
-        <div style={{ padding: '40px 20px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto' }}>
+        <div style={{ padding: isMobile ? '20px 12px' : '40px 20px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto' }}>
             {/* ── Header ─────────────── */}
-            <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-                <h1 style={{ fontSize: '32px', margin: '0 0 8px', color: '#0f172a' }}>🔍 3PL 貨品檢測中心</h1>
-                <p style={{ fontSize: '16px', color: '#64748b', margin: 0 }}>請選擇您負責檢測的區域</p>
+            <div style={{ textAlign: 'center', marginBottom: isMobile ? '20px' : '30px' }}>
+                <h1 style={{ fontSize: isMobile ? '24px' : '32px', margin: '0 0 8px', color: '#0f172a' }}>🔍 3PL 貨品檢測中心</h1>
+                <p style={{ fontSize: isMobile ? '14px' : '16px', color: '#64748b', margin: 0 }}>請選擇您負責檢測的區域</p>
             </div>
 
             {/* ── Zone Buttons ─────────────── */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'center', marginBottom: '40px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? '10px' : '16px', justifyContent: 'center', marginBottom: isMobile ? '20px' : '40px' }}>
                 {ZONES.map(zone => {
                     const cnt = activeCountByZone[zone.id] || 0;
                     return (
@@ -198,15 +205,16 @@ export default function InspectionHub() {
                             key={zone.id}
                             onClick={() => navigate(`/inspection/${zone.id}`)}
                             style={{
-                                padding: '24px 32px',
-                                fontSize: '22px',
+                                padding: isMobile ? '16px 18px' : '24px 32px',
+                                fontSize: isMobile ? '16px' : '22px',
                                 fontWeight: '900',
                                 cursor: 'pointer',
                                 backgroundColor: zone.color,
                                 color: 'white',
                                 border: 'none',
                                 borderRadius: '14px',
-                                minWidth: '200px',
+                                minWidth: isMobile ? '140px' : '200px',
+                                flex: isMobile ? '1 1 calc(50% - 5px)' : '0 0 auto',
                                 boxShadow: '0 6px 14px rgba(0,0,0,0.12)',
                                 transition: 'transform 0.1s, box-shadow 0.2s',
                                 position: 'relative',
@@ -235,17 +243,27 @@ export default function InspectionHub() {
             <div style={{
                 background: 'white',
                 borderRadius: '16px',
-                padding: '24px',
+                padding: isMobile ? '16px' : '24px',
                 boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
             }}>
                 <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    marginBottom: '20px', flexWrap: 'wrap', gap: '10px',
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    justifyContent: 'space-between',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    marginBottom: '20px', gap: '10px',
                 }}>
                     <h2 style={{ margin: 0, fontSize: '20px', color: '#0f172a' }}>
                         📊 進行中嘅任務 {summary && <span style={{ color: '#94a3b8', fontWeight: 'normal', fontSize: '16px' }}>({flatActive.length})</span>}
                     </h2>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                        // 手機自動 wrap 多行 + 對齊左
+                        justifyContent: isMobile ? 'flex-start' : 'flex-end',
+                    }}>
                         {!manageMode ? (
                             <>
                                 {legacyKeys.length > 0 && (
@@ -253,6 +271,7 @@ export default function InspectionHub() {
                                         background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
                                         padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
                                         fontSize: '14px', cursor: deleting ? 'not-allowed' : 'pointer',
+                                        whiteSpace: 'nowrap',
                                     }} title="清理冇 task code 嘅孤兒任務">
                                         {deleting ? '⏳ 清理中...' : `🧹 清理舊版 (${legacyKeys.length})`}
                                     </button>
@@ -260,43 +279,47 @@ export default function InspectionHub() {
                                 <button onClick={() => setManageMode(true)} style={{
                                     background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
                                     padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                                    fontSize: '14px', cursor: 'pointer',
+                                    fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap',
                                 }}>⚙️ 管理模式</button>
                                 <Link to="/inspection/history" style={{
                                     background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
                                     padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                                    fontSize: '14px', textDecoration: 'none',
+                                    fontSize: '14px', textDecoration: 'none', whiteSpace: 'nowrap',
                                 }}>📚 歷史檢測記錄</Link>
-                                <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                    {error ? `⚠️ ${error}` : (lastUpdated ? `🔄 ${timeAgo(lastUpdated.toISOString())}更新` : '⏳ 載入中...')}
-                                </span>
+                                {/* 手機隱藏「秒前更新」省位,desktop 先顯示 */}
+                                {!isMobile && (
+                                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                        {error ? `⚠️ ${error}` : (lastUpdated ? `🔄 ${timeAgo(lastUpdated.toISOString())}更新` : '⏳ 載入中...')}
+                                    </span>
+                                )}
                             </>
                         ) : (
                             <>
                                 <button onClick={selectAll} style={{
                                     background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
                                     padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                                    fontSize: '14px', cursor: 'pointer',
+                                    fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap',
                                 }}>☑️ 全選</button>
                                 <button onClick={clearSelection} disabled={selectedKeys.size === 0} style={{
                                     background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1',
                                     padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
                                     fontSize: '14px', cursor: selectedKeys.size === 0 ? 'not-allowed' : 'pointer',
-                                    opacity: selectedKeys.size === 0 ? 0.5 : 1,
-                                }}>清除選擇</button>
+                                    opacity: selectedKeys.size === 0 ? 0.5 : 1, whiteSpace: 'nowrap',
+                                }}>清除</button>
                                 <button onClick={handleBulkDelete} disabled={selectedKeys.size === 0 || deleting} style={{
                                     background: selectedKeys.size === 0 ? '#cbd5e1' : '#dc2626', color: 'white',
                                     border: 'none', padding: '7px 14px', borderRadius: '8px',
                                     fontWeight: 'bold', fontSize: '14px',
                                     cursor: selectedKeys.size === 0 || deleting ? 'not-allowed' : 'pointer',
+                                    whiteSpace: 'nowrap',
                                 }}>
-                                    {deleting ? '⏳ 刪除中...' : `🗑 徹底刪除 (${selectedKeys.size})`}
+                                    {deleting ? '⏳ 刪除中...' : `🗑 刪除 (${selectedKeys.size})`}
                                 </button>
                                 <button onClick={exitManageMode} style={{
                                     background: 'white', color: '#475569', border: '1px solid #cbd5e1',
                                     padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                                    fontSize: '14px', cursor: 'pointer',
-                                }}>✕ 取消管理</button>
+                                    fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                }}>✕ 取消</button>
                             </>
                         )}
                     </div>
