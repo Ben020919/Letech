@@ -348,20 +348,41 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                 </div>
             )}
 
-            {/* 全局進度與工具列 */}
-            {!focusedItem && items.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', background: isAllCompleted ? '#dcfce7' : '#ffffff', padding: '10px 20px', borderRadius: '12px', border: `1px solid ${isAllCompleted ? '#bbf7d0' : '#e2e8f0'}`, marginBottom: '20px' }}>
-                    <div style={{ fontWeight: 'bold', fontSize: '18px', color: isAllCompleted ? '#166534' : '#0f172a' }}>
-                        進度：{totalScanned} / {totalTarget} {isAllCompleted && '🎉 (全部齊貨)'}
+            {/* 全局進度與工具列 + 進度條 */}
+            {!focusedItem && items.length > 0 && (() => {
+                const pct = totalTarget > 0 ? Math.round((totalScanned / totalTarget) * 100) : 0;
+                const completedSku = items.filter(i => i.Scanned_Qty >= i.Target_Qty).length;
+                return (
+                    <div style={{ background: isAllCompleted ? '#dcfce7' : '#ffffff', padding: '14px 20px', borderRadius: '12px', border: `1px solid ${isAllCompleted ? '#bbf7d0' : '#e2e8f0'}`, marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '15px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ fontWeight: 'bold', fontSize: '18px', color: isAllCompleted ? '#166534' : '#0f172a' }}>
+                                進度:<span style={{ fontFamily: 'monospace', marginLeft: '4px' }}>{totalScanned}</span>
+                                <span style={{ color: '#94a3b8', margin: '0 2px' }}>/</span>
+                                <span style={{ fontFamily: 'monospace' }}>{totalTarget}</span>
+                                <span style={{ marginLeft: '10px', fontSize: '14px', color: isAllCompleted ? '#166534' : '#64748b', fontWeight: 'normal' }}>
+                                    ({pct}% · SKU {completedSku}/{items.length})
+                                </span>
+                                {isAllCompleted && <span style={{ marginLeft: '8px' }}>🎉 全部齊貨</span>}
+                            </div>
+                            {isAllCompleted && (
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button onClick={exportCSV} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>📥 下載</button>
+                                    <button onClick={clearTask} style={{ background: '#16a34a', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>✅ 結案並歸檔</button>
+                                </div>
+                            )}
+                        </div>
+                        {/* 🌟 進度條 */}
+                        <div style={{ background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden', height: '12px' }}>
+                            <div style={{
+                                width: `${pct}%`,
+                                background: isAllCompleted ? '#16a34a' : 'linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%)',
+                                height: '100%',
+                                transition: 'width 0.4s ease',
+                            }} />
+                        </div>
                     </div>
-                    {isAllCompleted && (
-                        <>
-                            <button onClick={exportCSV} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>📥 下載</button>
-                            <button onClick={clearTask} style={{ background: '#16a34a', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>✅ 結案並清除數據</button>
-                        </>
-                    )}
-                </div>
-            )}
+                );
+            })()}
 
             {/* 🌟 永遠存在的掃碼引擎 (進一步壓縮高度) */}
             <div ref={topRef} style={{ marginBottom: '15px', background: '#f8fafc', padding: '8px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>

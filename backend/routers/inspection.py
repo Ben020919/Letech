@@ -7,6 +7,7 @@ import uuid
 import os
 import gc
 import random  # 🌟 新增：用於生成 5 位數任務碼
+from datetime import datetime, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -21,6 +22,27 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 router = APIRouter()
 
+VALID_ZONES = ["anymall", "hellobear", "yummy", "homey"]
+
+
+def _parse_zone_key(z: str):
+    """Parse '{zone}_{task_code}' → (zone, task_code)."""
+    if not z:
+        return "", ""
+    parts = z.split("_", 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return z, ""
+
+
+def _aggregate_items_by_zone(rows):
+    """Group items rows by their zone key → {zone_key: [items]}."""
+    by_zone = {}
+    for item in rows:
+        by_zone.setdefault(item.get("zone"), []).append(item)
+    return by_zone
+
+
 class UpdateQtyReq(BaseModel):
     item_id: str
     scanned_qty: int
@@ -30,15 +52,22 @@ class UpdateQtyReq(BaseModel):
 async def get_task(zone: str, task_code: str):
     # 🌟 巧妙融合：將 zone 和 task_code 結合成一個字串存入資料庫，無需修改 DB 欄位結構
     task_zone_key = f"{zone.lower().replace(' ', '')}_{task_code}"
-    
-    task_res = supabase.table("inspection_tasks").select("*").eq("zone", task_zone_key).execute()
+
+    # 🚀 只攞未歸檔嘅 active task,已歸檔嘅當「無此任務」處理
+    task_res = (
+        supabase.table("inspection_tasks")
+        .select("*")
+        .eq("zone", task_zone_key)
+        .eq("archived", False)
+        .execute()
+    )
     if not task_res.data:
         return {"status": "no_task"}
-        
+
     items_res = supabase.table("inspection_items").select("*").eq("zone", task_zone_key).order("seq").execute()
-    
+
     return {
-        "status": "success", 
+        "status": "success",
         "task": {
             "filename": task_res.data[0]["filename"],
             "items": items_res.data
@@ -192,10 +221,135 @@ async def update_qty(zone: str, req: UpdateQtyReq):
     return {"status": "success", "item": item}
 
 
-# ================= 4. 清除/完成任務 =================
+# ================= 4. 結案任務(改成 archive,保留歷史) =================
 @router.post("/clear/{zone}/{task_code}")
 async def clear_task(zone: str, task_code: str):
+    """🌟 改成「歸檔」而唔係硬刪 — 員工可以喺歷史紀錄揾返。
+    items 完全保留,只係 task row 標記 archived=true。
+    """
     task_zone_key = f"{zone.lower().replace(' ', '')}_{task_code}"
-    supabase.table("inspection_tasks").delete().eq("zone", task_zone_key).execute()
-    supabase.table("inspection_items").delete().eq("zone", task_zone_key).execute()
-    return {"status": "success", "message": "任務已結案並從雲端清除"}
+    supabase.table("inspection_tasks").update({
+        "archived": True,
+        "archived_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("zone", task_zone_key).execute()
+    return {"status": "success", "message": "任務已結案並歸檔,可喺歷史紀錄揾返"}
+
+
+# ================= 5. Dashboard:所有區進行緊嘅任務 summary =================
+@router.get("/active-summary")
+async def get_active_summary():
+    """🚀 InspectionHub Dashboard 用 — 一次過攞所有 zone 嘅 active task 進度。"""
+    tasks_res = (
+        supabase.table("inspection_tasks")
+        .select("zone, filename, created_at, archived")
+        .eq("archived", False)
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    result = {z: [] for z in VALID_ZONES}
+    if not tasks_res.data:
+        return {"zones": result}
+
+    # 一次過攞晒 items aggregate(只攞 active 任務嘅 zone keys 嘅 items)
+    active_zone_keys = [t["zone"] for t in tasks_res.data]
+    items_res = (
+        supabase.table("inspection_items")
+        .select("zone, Target_Qty, Scanned_Qty")
+        .in_("zone", active_zone_keys)
+        .execute()
+    )
+    items_by_zone = _aggregate_items_by_zone(items_res.data or [])
+
+    for task in tasks_res.data:
+        zone_key = task["zone"]
+        zone_name, task_code = _parse_zone_key(zone_key)
+        if zone_name not in result:
+            continue
+        items = items_by_zone.get(zone_key, [])
+        total_target = sum((i.get("Target_Qty") or 0) for i in items)
+        total_scanned = sum((i.get("Scanned_Qty") or 0) for i in items)
+        result[zone_name].append({
+            "task_code": task_code,
+            "filename": task.get("filename"),
+            "items_count": len(items),
+            "total_target": total_target,
+            "total_scanned": total_scanned,
+            "is_completed": total_target > 0 and total_target == total_scanned,
+            "created_at": task.get("created_at"),
+        })
+
+    return {"zones": result}
+
+
+# ================= 6. History list(歷史檢測記錄)=================
+@router.get("/history")
+async def get_history(zone: str = None, limit: int = 100):
+    """🚀 歷史檢測記錄頁用 — 列出已歸檔嘅任務 summary。
+    zone:'anymall' / 'hellobear' / 'yummy' / 'homey' / None(全部)
+    """
+    query = (
+        supabase.table("inspection_tasks")
+        .select("*")
+        .eq("archived", True)
+        .order("archived_at", desc=True)
+        .limit(limit)
+    )
+    if zone and zone.lower() in VALID_ZONES:
+        query = query.like("zone", f"{zone.lower()}_%")
+
+    tasks_res = query.execute()
+    if not tasks_res.data:
+        return {"history": []}
+
+    archived_zone_keys = [t["zone"] for t in tasks_res.data]
+    items_res = (
+        supabase.table("inspection_items")
+        .select("zone, Target_Qty, Scanned_Qty")
+        .in_("zone", archived_zone_keys)
+        .execute()
+    )
+    items_by_zone = _aggregate_items_by_zone(items_res.data or [])
+
+    history = []
+    for task in tasks_res.data:
+        zone_key = task["zone"]
+        zone_name, task_code = _parse_zone_key(zone_key)
+        items = items_by_zone.get(zone_key, [])
+        history.append({
+            "task_code": task_code,
+            "zone": zone_name,
+            "filename": task.get("filename"),
+            "items_count": len(items),
+            "total_target": sum((i.get("Target_Qty") or 0) for i in items),
+            "total_scanned": sum((i.get("Scanned_Qty") or 0) for i in items),
+            "created_at": task.get("created_at"),
+            "archived_at": task.get("archived_at"),
+        })
+    return {"history": history}
+
+
+# ================= 7. History detail(睇返一個已歸檔任務嘅完整 items)=================
+@router.get("/history/{zone}/{task_code}")
+async def get_history_detail(zone: str, task_code: str):
+    task_zone_key = f"{zone.lower().replace(' ', '')}_{task_code}"
+    task_res = (
+        supabase.table("inspection_tasks")
+        .select("*")
+        .eq("zone", task_zone_key)
+        .eq("archived", True)
+        .execute()
+    )
+    if not task_res.data:
+        raise HTTPException(status_code=404, detail="找不到呢個歸檔任務")
+    items_res = (
+        supabase.table("inspection_items")
+        .select("*")
+        .eq("zone", task_zone_key)
+        .order("seq")
+        .execute()
+    )
+    return {
+        "task": task_res.data[0],
+        "items": items_res.data or [],
+    }

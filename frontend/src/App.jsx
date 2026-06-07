@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, useNavigate, Route, Link, useLocation } from 'react-router-dom';
 import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
+import InspectionHistory from './pages/InspectionHistory';
 import './App.css';
 
 // 🌟 自動切換測試與正式環境的 API 網址 (本地跑 npm run dev 時會是 127.0.0.1，上線時會是 render)
@@ -19,6 +20,7 @@ function Sidebar() {
     { path: '/', icon: '🏠', label: '系統首頁' }, 
     { path: '/search', icon: '🔍', label: '智能查詢中心' }, // 👈 整合後的新選單
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
+    { path: '/inspection/history', icon: '📚', label: '檢測歷史記錄' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
     { path: '/anymall', icon: '🛍️', label: 'Anymall 3PL' },
     { path: '/hellobear', icon: '🐻', label: 'Hello Bear 3PL' },
@@ -1207,6 +1209,7 @@ function App() {
             <Route path="/label-search" element={<LabelSearchPage />} />
             <Route path="/label-repack" element={<LabelRepackPage />} />
             <Route path="/inspection" element={<InspectionHub />} />
+            <Route path="/inspection/history" element={<InspectionHistory />} />
             <Route path="/inspection/anymall" element={<InspectionZone zoneName="Anymall" />} />
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />
             <Route path="/inspection/yummy" element={<InspectionZone zoneName="Yummy" />} />
