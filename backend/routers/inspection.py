@@ -238,12 +238,13 @@ async def clear_task(zone: str, task_code: str):
 # ================= 5. Dashboard:所有區進行緊嘅任務 summary =================
 @router.get("/active-summary")
 async def get_active_summary():
-    """🚀 InspectionHub Dashboard 用 — 一次過攞所有 zone 嘅 active task 進度。"""
+    """🚀 InspectionHub Dashboard 用 — 一次過攞所有 zone 嘅 active task 進度。
+    用 select("*") 避免 column-not-exist 嘅 500 error,Python 入面再 sort。
+    """
     tasks_res = (
         supabase.table("inspection_tasks")
-        .select("zone, filename, created_at, archived")
+        .select("*")
         .eq("archived", False)
-        .order("created_at", desc=True)
         .execute()
     )
 
@@ -261,7 +262,14 @@ async def get_active_summary():
     )
     items_by_zone = _aggregate_items_by_zone(items_res.data or [])
 
-    for task in tasks_res.data:
+    # Python 入面 sort(by created_at desc,冇就用空字串)
+    tasks_sorted = sorted(
+        tasks_res.data,
+        key=lambda t: t.get("created_at") or "",
+        reverse=True,
+    )
+
+    for task in tasks_sorted:
         zone_key = task["zone"]
         zone_name, task_code = _parse_zone_key(zone_key)
         if zone_name not in result:
