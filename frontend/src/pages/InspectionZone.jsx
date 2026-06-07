@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 // 🌟 動態判斷 API 網址
 const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
@@ -37,11 +38,21 @@ const playSound = (type) => {
 
 export default function InspectionZone({ zoneName = "Anymall" }) {
     const apiZoneStr = zoneName.toLowerCase().replace(/\s/g, "");
+    const [searchParams] = useSearchParams();
+    const urlTaskCode = searchParams.get('task'); // 🌟 由 Dashboard 過嚟嗰陣會帶住 task_code
 
     const [activeTaskCode, setActiveTaskCode] = useState(() => {
-        return localStorage.getItem(`inspection_task_${apiZoneStr}`) || "";
-    }); 
+        // 優先級:URL 嘅 task > localStorage 嘅
+        return urlTaskCode || localStorage.getItem(`inspection_task_${apiZoneStr}`) || "";
+    });
     const [joinInputCode, setJoinInputCode] = useState("");
+
+    // 🌟 URL task 變(用 react-router navigate)就同步入 state
+    useEffect(() => {
+        if (urlTaskCode && urlTaskCode !== activeTaskCode) {
+            setActiveTaskCode(urlTaskCode);
+        }
+    }, [urlTaskCode]);
     const [focusedItemId, setFocusedItemId] = useState(null);
 
     const [items, setItems] = useState([]);

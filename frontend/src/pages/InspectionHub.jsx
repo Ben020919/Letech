@@ -287,7 +287,8 @@ export default function InspectionHub() {
                                     key={key}
                                     onClick={() => {
                                         if (manageMode) toggleSelect(key);
-                                        else navigate(`/inspection/${t.zoneId}`);
+                                        // 🌟 帶住 task_code 過去,等 InspectionZone 唔會 fallback 去 localStorage 嗰個舊嘅
+                                        else navigate(`/inspection/${t.zoneId}?task=${t.task_code}`);
                                     }}
                                     style={{
                                         border: checked ? '2px solid #dc2626' : '1px solid #e2e8f0',
