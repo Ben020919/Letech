@@ -34,6 +34,7 @@ function timeAgo(iso) {
 export default function InspectionHub() {
     const navigate = useNavigate();
     const [summary, setSummary] = useState(null);
+    const [legacyKeys, setLegacyKeys] = useState([]); // 🌟 舊版任務(冇 task code)
     const [error, setError] = useState('');
     const [lastUpdated, setLastUpdated] = useState(null);
     const [manageMode, setManageMode] = useState(false);
@@ -59,6 +60,7 @@ export default function InspectionHub() {
                 const data = await res.json();
                 if (!cancelled) {
                     setSummary(data.zones || {});
+                    setLegacyKeys(data.legacy_zone_keys || []);
                     setLastUpdated(new Date());
                     setError('');
                 }
@@ -97,9 +99,37 @@ export default function InspectionHub() {
             return next;
         });
     };
-    const selectAll = () => setSelectedKeys(new Set(flatActive.map(t => `${t.zoneId}_${t.task_code}`)));
+    const selectAll = () => setSelectedKeys(new Set(flatActive.map(t => t.zone_key || `${t.zoneId}_${t.task_code}`)));
     const clearSelection = () => setSelectedKeys(new Set());
     const exitManageMode = () => { setManageMode(false); clearSelection(); };
+
+    // 🌟 一鍵清理所有舊版孤兒任務
+    const handleCleanupLegacy = async () => {
+        if (legacyKeys.length === 0) return;
+        const ok = window.confirm(
+            `🧹 揾到 ${legacyKeys.length} 個舊版任務(冇 5 位數任務碼,無法經 UI 開返)。\n\n` +
+            `確定要徹底清掉?(任務 + 所有 SKU 紀錄一齊清,Supabase 入面都會冇晒)`
+        );
+        if (!ok) return;
+        setDeleting(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/inspection/delete-batch`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_keys: legacyKeys }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.detail || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            alert(`✅ ${data.message || '清理完成'}`);
+            setLegacyKeys([]);
+        } catch (err) {
+            alert('❌ 清理失敗:' + err.message);
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     const handleBulkDelete = async () => {
         if (selectedKeys.size === 0) { alert('未揀任何任務'); return; }
@@ -127,7 +157,7 @@ export default function InspectionHub() {
                 if (!prev) return prev;
                 const cleaned = {};
                 for (const [zoneId, tasks] of Object.entries(prev)) {
-                    cleaned[zoneId] = tasks.filter(t => !selectedKeys.has(`${zoneId}_${t.task_code}`));
+                    cleaned[zoneId] = tasks.filter(t => !selectedKeys.has(t.zone_key || `${zoneId}_${t.task_code}`));
                 }
                 return cleaned;
             });
@@ -206,6 +236,15 @@ export default function InspectionHub() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         {!manageMode ? (
                             <>
+                                {legacyKeys.length > 0 && (
+                                    <button onClick={handleCleanupLegacy} disabled={deleting} style={{
+                                        background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a',
+                                        padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                        fontSize: '14px', cursor: deleting ? 'not-allowed' : 'pointer',
+                                    }} title="清理冇 task code 嘅孤兒任務">
+                                        {deleting ? '⏳ 清理中...' : `🧹 清理舊版 (${legacyKeys.length})`}
+                                    </button>
+                                )}
                                 <button onClick={() => setManageMode(true)} style={{
                                     background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
                                     padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
@@ -279,7 +318,8 @@ export default function InspectionHub() {
                             const pct = t.total_target > 0
                                 ? Math.round((t.total_scanned / t.total_target) * 100)
                                 : 0;
-                            const key = `${t.zoneId}_${t.task_code}`;
+                            // 🌟 優先用 backend 嘅 zone_key,fallback 至拼裝(舊 cache 兼容)
+                            const key = t.zone_key || `${t.zoneId}_${t.task_code}`;
                             const checked = selectedKeys.has(key);
                             const isEmpty = t.items_count === 0;
                             return (

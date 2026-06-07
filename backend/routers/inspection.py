@@ -286,15 +286,21 @@ async def get_active_summary():
         reverse=True,
     )
 
+    legacy_zone_keys = []  # 🌟 舊版任務(冇 5 位數 task code,無法經 UI 開返)
     for task in tasks_sorted:
         zone_key = task["zone"]
         zone_name, task_code = _parse_zone_key(zone_key)
         if zone_name not in result:
             continue
+        if not task_code:
+            # 舊版 task — 收集起來,等 frontend 一鍵清理
+            legacy_zone_keys.append(zone_key)
+            continue
         items = items_by_zone.get(zone_key, [])
         total_target = sum((i.get("Target_Qty") or 0) for i in items)
         total_scanned = sum((i.get("Scanned_Qty") or 0) for i in items)
         result[zone_name].append({
+            "zone_key": zone_key,  # 🌟 直接給前端用做唯一識別 + delete key
             "task_code": task_code,
             "filename": task.get("filename"),
             "items_count": len(items),
@@ -304,7 +310,7 @@ async def get_active_summary():
             "created_at": task.get("created_at"),
         })
 
-    return {"zones": result}
+    return {"zones": result, "legacy_zone_keys": legacy_zone_keys}
 
 
 # ================= 5b. 真‧批量刪除(徹底清除,連 items 都唔留低)=================

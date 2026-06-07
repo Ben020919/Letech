@@ -20,7 +20,6 @@ function Sidebar() {
     { path: '/', icon: '🏠', label: '系統首頁' }, 
     { path: '/search', icon: '🔍', label: '智能查詢中心' }, // 👈 整合後的新選單
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
-    { path: '/inspection/history', icon: '📚', label: '檢測歷史記錄' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
     { path: '/anymall', icon: '🛍️', label: 'Anymall 3PL' },
     { path: '/hellobear', icon: '🐻', label: 'Hello Bear 3PL' },
