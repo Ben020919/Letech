@@ -9,12 +9,8 @@ import uuid
 import base64
 import gc
 # 🌟 統一向 master_api 借大腦
-from services.master_api import load_master_db
-
-try:
-    from services.stats_api import log_action
-except ImportError:
-    def log_action(name): pass
+from services.master_api import load_master_db, find_by_product_no, find_by_barcode
+from services.pdf_core import delete_file_later
 
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
@@ -23,16 +19,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
 
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font1.ttf")
+SERIF_FONT_PATH = os.path.join(DATA_DIR, "syst.ttf")  # 思源宋體 CN (Source Han Serif), 開源 SIL OFL
 
 router = APIRouter()
-
-# 🌟 20分鐘後自動毀滅任務
-async def delete_file_later(file_path: str):
-    await asyncio.sleep(300)
-    if os.path.exists(file_path):
-        try: os.remove(file_path)
-        except: pass
-    gc.collect()
 
 def clean_val(val):
     if pd.isna(val) or str(val).lower() == 'nan': return ""
@@ -53,13 +42,48 @@ def extract_date_from_text(text):
     if match_standard: return f"{match_standard.group(1)}-{match_standard.group(2)}-{match_standard.group(3)}"
     return "未偵測到"
 
-def font_to_base64_css(font_path):
-    if not os.path.exists(font_path): return ""
-    try:
-        with open(font_path, "rb") as f:
-            b64_str = base64.b64encode(f.read()).decode('utf-8')
-        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: bold; font-style: normal; }} body, .label-container, div, span {{ font-family: 'CustomLabelFont', Helvetica, Arial, sans-serif !important; }}"
-    except: return ""
+def font_to_base64_css(font_path, serif_path=None):
+    # ⚠️ 預設 serif_path=None — 唔再 default embed syst.ttf。
+    # 加 14MB 字體會令 response 大爆,browser 易 OOM。如要用思源宋體,
+    # 主動呼叫 font_to_base64_css(font, SERIF_FONT_PATH) 開返。
+    """嵌入主字體 (Microsoft YaHei → CustomLabelFont) 與可選的中文 serif
+    (Source Han Serif CN → CustomLabelSerif)。任何元素加上 class="serif"
+    即會用思源宋體;其餘維持原本 sans 樣式。"""
+    blocks = []
+    if os.path.exists(font_path):
+        try:
+            with open(font_path, "rb") as f:
+                b64_str = base64.b64encode(f.read()).decode('utf-8')
+            blocks.append(
+                f"@font-face {{ font-family: 'CustomLabelFont'; "
+                f"src: url(data:font/ttf;base64,{b64_str}) format('truetype'); "
+                f"font-weight: bold; font-style: normal; }}"
+            )
+        except Exception:
+            pass
+    if serif_path and os.path.exists(serif_path):
+        try:
+            with open(serif_path, "rb") as f:
+                s64 = base64.b64encode(f.read()).decode('utf-8')
+            blocks.append(
+                f"@font-face {{ font-family: 'CustomLabelSerif'; "
+                f"src: url(data:font/ttf;base64,{s64}) format('truetype'); "
+                f"font-weight: normal; font-style: normal; }}"
+            )
+        except Exception:
+            pass
+    if not blocks:
+        return ""
+    blocks.append(
+        "body, .label-container, div, span { "
+        "font-family: 'CustomLabelFont', Helvetica, Arial, sans-serif !important; }"
+    )
+    blocks.append(
+        ".serif, .label-container .serif { "
+        "font-family: 'CustomLabelSerif', 'Source Han Serif SC', "
+        "'Songti SC', SimSun, serif !important; }"
+    )
+    return "".join(blocks)
 
 def check_data_status(data_dict):
     if not data_dict: return 'empty'
@@ -155,7 +179,7 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
     single_label_html = f"""
     <html><head><style>
         {font_css}
-        @page {{ size: auto; margin: 0mm; }}
+        @page {{ size: 70mm 50mm; margin: 0; }} /* 🎨 強制 page 大細 = label 大細,唔再出現白色外圍 */
         
         body {{ 
             margin: 0; 
@@ -163,51 +187,57 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             font-family: Helvetica, Arial, sans-serif; 
         }}
         
-        .label-container {{ 
-            width: 70mm; 
-            height: 50mm; 
-            position: relative; 
-            box-sizing: border-box; 
-            border: 1px solid #ddd; 
-            page-break-after: always; 
-            overflow: hidden; 
-            font-weight: bold; 
+        .label-container {{
+            width: 70mm;
+            height: 50mm;
+            position: relative;
+            box-sizing: border-box;
+            /* 🎨 跟足 label.py:冇外框,只有 3 條內部分隔線 */
+            page-break-after: always;
+            overflow: hidden;
+            font-weight: bold;
         }}
-        
-        .barcode-text {{ 
-            position: absolute; 
-            left: 2mm; 
-            top: 2mm; 
-            font-size: 5pt; 
-            font-weight: bold; 
+
+        /* === TOP 0-7mm === */
+        .barcode-text {{
+            position: absolute;
+            left: 2mm;
+            top: 1mm;
+            font-size: 4.5pt;
+            font-weight: bold;
         }}
-        
-        .desc-text {{ 
-            position: absolute; 
-            left: 2mm; 
-            top: 4.5mm; 
-            width: 59mm; 
-            font-size: 5pt; 
-            line-height: 1.2; 
-            font-weight: bold; 
+
+        .desc-text {{
+            position: absolute;
+            left: 2mm;
+            top: 3mm;
+            width: 65mm;
+            max-height: 4mm;
+            overflow: hidden;
+            font-size: 4.5pt;
+            line-height: 1.15;
+            font-weight: bold;
         }}
-        
-        .line1 {{ 
-            position: absolute; 
-            left: 0; 
-            top: 9mm; 
-            width: 70mm; 
-            border-top: 1.42pt solid black; 
+
+        .line1 {{
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 7mm; /* 跟足 label.py middle_top_y=mm(43) */
+            border-top: 1.5pt solid black;
         }}
-        
-        .nutri-box {{   
-            position: absolute; 
-            left: 2mm; 
-            top: 10mm; 
-            width: 23mm; 
-            font-size: 4.5pt; /* 统一改字体大小 */
-            line-height: 1.25; /* 统一改行距 */
-            font-weight: bold; 
+
+        /* === MIDDLE 7-41mm === */
+        .nutri-box {{
+            position: absolute;
+            left: 2mm;
+            top: 8.5mm; /* 🎨 line1 下面留 1.5mm 透氣位 */
+            width: 21mm; /* 🎨 vline 喺 24.5,留 1.5mm padding 唔貼住豎線 */
+            max-height: 31mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.3;
+            font-weight: bold;
         }}
         
         .nutri-title {{ 
@@ -224,63 +254,111 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             padding-left: 3px; 
         }}
         
-        .vline {{ 
-            position: absolute; 
-            left: 26mm; 
-            top: 9mm; 
-            height: 29mm; 
-            border-left: 1.42pt solid black; 
+        .vline {{
+            position: absolute;
+            left: 24.5mm; /* label.py: c.line(mm(24.5), ...) */
+            top: 7mm;
+            height: 34mm;
+            border-left: 1.5pt solid black;
         }}
-        
-        .line2 {{ 
-            position: absolute; 
-            left: 0; 
-            top: 38mm; 
-            width: 70mm; 
-            border-top: 1.42pt solid black; 
+
+        .line2 {{
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 41mm; /* label.py: middle_bottom_y=mm(8.8) → 50-8.8≈41 */
+            border-top: 1.5pt solid black;
         }}
-        
-        .mfr-box {{ 
-            position: absolute; 
-            left: 2mm; 
-            top: 40mm; 
-            width: 35mm; 
-            font-size: 4.76pt; 
-            line-height: 1.2; 
-            font-weight: bold; 
+
+        /* === BOTTOM 41-50mm === */
+        .mfr-box {{
+            position: absolute;
+            left: 2mm;
+            top: 42.5mm; /* 🎨 line2 下面留 1.5mm 透氣位 */
+            width: 44mm;
+            max-height: 7.5mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.3;
+            font-weight: bold;
         }}
-        
-        .bb-box {{ 
-            position: absolute; 
-            left: 47mm; 
-            top: 40mm; 
-            width: 27mm; 
-            font-size: 4.2pt; 
-            line-height: 1.2; 
-            font-weight: bold; 
-            white-space: nowrap; 
+
+        .bb-box {{
+            position: absolute;
+            left: 48mm;
+            top: 42.5mm; /* 🎨 line2 下面留 1.5mm 透氣位 */
+            width: 20mm;
+            max-height: 7.5mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.5;
+            font-weight: bold;
+            white-space: nowrap;
         }}
-        
-        .ing-box {{ 
-            position: absolute; 
-            left: 27mm; 
-            top: 10mm; 
-            width: 41mm; 
-            height: 28mm; 
-            font-size: 3.5pt; 
-            line-height: 1.1; 
-            overflow: hidden; 
-            text-align: left; /* 🌟 1. 改成靠左對齊，避免單字被亂拉長 */
-            font-weight: bold; 
-            letter-spacing: 0.2pt; /* 🌟 2. 調整字母與字母之間的距離 (可調 0.1pt ~ 0.5pt) */
-            word-spacing: 0.5pt;   /* 🌟 3. (可選) 調整英文單字與單字之間的距離 */
+
+        .ing-box {{
+            position: absolute;
+            left: 26.5mm; /* 🎨 vline 喺 24.5mm,留 2mm padding 唔貼住豎線 */
+            top: 8.5mm; /* 🎨 line1 下面留 1.5mm 透氣位 */
+            width: 41mm;
+            height: 31mm;
+            font-size: 4pt;
+            line-height: 1.2;
+            overflow: hidden;
+            text-align: left;
+            font-weight: bold;
+            letter-spacing: 0.2pt;
+            word-spacing: 0.5pt;
         }}
 
         /* 強制全域粗體 */
-        .label-container, .label-container * {{ 
-            font-weight: 900 !important; 
+        .label-container, .label-container * {{
+            font-weight: 900 !important;
         }}
-    </style></head><body>
+    </style>
+    <script>
+    /* 🚀 Shrink-to-fit:每個容器內容若 overflow,自動縮細字直至塞得入 */
+    (function() {{
+      function fitText(el, minPx) {{
+        if (!el) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        if (!size) return;
+        var min = minPx || 4;
+        var iters = 0;
+        while (el.scrollHeight > el.clientHeight && size > min && iters < 50) {{
+          size -= 0.3;
+          el.style.fontSize = size + 'px';
+          iters++;
+        }}
+      }}
+      function fitTextWH(el, minPx) {{
+        /* 同時檢查橫向 + 縱向 overflow,適合 bb-box 嗰類 white-space: nowrap 元素 */
+        if (!el) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        if (!size) return;
+        var min = minPx || 3;
+        var iters = 0;
+        while ((el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) && size > min && iters < 50) {{
+          size -= 0.3;
+          el.style.fontSize = size + 'px';
+          iters++;
+        }}
+      }}
+      function fitAll() {{
+        document.querySelectorAll('.desc-text').forEach(function(el) {{ fitText(el, 4); }});
+        document.querySelectorAll('.nutri-box').forEach(function(el) {{ fitText(el, 4); }});
+        document.querySelectorAll('.ing-box').forEach(function(el) {{ fitText(el, 3); }});
+        document.querySelectorAll('.mfr-box').forEach(function(el) {{ fitText(el, 3.5); }});
+        document.querySelectorAll('.bb-box').forEach(function(el) {{ fitTextWH(el, 3); }});
+      }}
+      if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', fitAll);
+      }} else {{
+        fitAll();
+      }}
+    }})();
+    </script>
+    </head><body>
         <div class="label-container">
             <div class="barcode-text">{barcode_text}</div>
             <div class="desc-text">{desc_text}</div>
@@ -321,7 +399,7 @@ def create_caution_html(text, qty):
     if not formatted or formatted == "nan": formatted = ""
     single = f"""
     <html><head><style>
-        @page {{ size: auto; margin: 0mm; }}
+        @page {{ size: 70mm 50mm; margin: 0; }} /* 🎨 強制 page 大細 = label 大細,唔再出現白色外圍 */
         
         body {{ 
             margin: 0; 
@@ -372,8 +450,8 @@ def generate_jelly_html(cautions_text, qty):
     if not formatted or formatted == "nan": return ""
     # 單純生成附帶 qty 數量的 DIV 片段，大小與主標籤(70mm x 50mm)一致，並設定 page-break-after 換頁
     single = f"""
-    <div style="width: 70mm; height: 50mm; box-sizing: border-box; padding: 2mm; page-break-after: always; display: flex; align-items: center; justify-content: center; text-align: center; font-family: Helvetica, Arial, sans-serif; background: #fff; color: #000;">
-        <div style="font-size: 15pt; font-weight: 900; text-decoration: underline; line-height: 1.2; word-wrap: break-word;">
+    <div class="jelly-label" style="width: 70mm; height: 50mm; box-sizing: border-box; padding: 2mm; page-break-after: always; display: flex; align-items: center; justify-content: center; text-align: center; font-family: Helvetica, Arial, sans-serif; background: #fff; color: #000; font-weight: 900 !important;">
+        <div style="font-size: 15pt; font-weight: 900 !important; text-decoration: underline; line-height: 1.2; word-wrap: break-word;">
             {formatted}
         </div>
     </div>
@@ -451,14 +529,12 @@ def process_yummy_pdf(file_bytes):
         final_html = ""
         
         if df_master is not None and not df_master.empty:
-            match_col = 'Product_No' if 'Product_No' in df_master.columns else 'ProductCode'
-            if match_col in df_master.columns:
-                matches = df_master[df_master[match_col].astype(str).str.strip() == p_no]
-                if matches.empty and barcode_val != "(N/A)":
-                    if 'Barcode' in df_master.columns:
-                        matches = df_master[df_master['Barcode'].astype(str).str.strip() == barcode_val]
-                
-                if not matches.empty:
+            # 🚀 O(1) hash-map 查表(原本係 O(N) 每次掃晒成個 DataFrame)
+            matches = find_by_product_no(p_no)
+            if matches.empty and barcode_val != "(N/A)":
+                matches = find_by_barcode(barcode_val)
+
+            if not matches.empty:
                     # ====== 1. 優先抓出 Food Label 的紀錄 (排除 Label_Type 包含 Jelly 的) ======
                     main_records = matches[~matches['Label_Type'].astype(str).str.lower().str.contains('jelly', na=False)]
                     
@@ -470,28 +546,39 @@ def process_yummy_pdf(file_bytes):
                     matched_data = best_match_df.iloc[0].to_dict()
                     data_status = check_data_status(matched_data)
                     
+                    # 🚀 改成「先做一對(food+jelly),再 × qty」,實現交替打印
+                    # 先用 qty=1 生成單份 food / caution(內部仲未做 ×qty 複製)
                     if data_status == 'food':
-                        final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, qty)
+                        final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1)
                     elif data_status == 'caution':
                         caution_text = smart_get_caution_text(matched_data) or "Caution Column Empty"
-                        final_html = create_caution_html(caution_text, qty)
+                        final_html = create_caution_html(caution_text, 1)
 
-                    # ====== 2. 尋找 Jelly Label 並將它接在 HTML 後方 ======
+                    # ====== 2. 尋找 Jelly Label,單份生成 ======
+                    jelly_single = ""  # 一份 Jelly 警告貼嘅 HTML div
+                    jelly_cautions_text = ""
                     jelly_records = matches[matches['Label_Type'].astype(str).str.lower().str.contains('jelly', na=False)]
                     if not jelly_records.empty:
                         jelly_data = jelly_records.iloc[0].to_dict()
-                        cautions_text = smart_get_caution_text(jelly_data)
-                        
-                        if cautions_text:
-                            jelly_content = generate_jelly_html(cautions_text, qty)
-                            
-                            if final_html and "</body></html>" in final_html:
-                                # 將 Jelly 貼紙 HTML 完美插入 Food Label 的 </body> 前
-                                final_html = final_html.replace("</body></html>", "") + jelly_content + "</body></html>"
-                            elif not final_html:
-                                # 如果這個 Barcode 只有 Jelly 標籤 (沒有 Food Label)
-                                final_html = create_caution_html(cautions_text, qty)
-                                data_status = 'caution'
+                        jelly_cautions_text = smart_get_caution_text(jelly_data)
+                        if jelly_cautions_text:
+                            jelly_single = generate_jelly_html(jelly_cautions_text, 1)
+
+                    # ====== 3. 組合一對(food+jelly)然後 × qty,實現交替 ======
+                    if final_html and "</body></html>" in final_html:
+                        import re as _regex
+                        body_match = _regex.search(r'<body>(.*?)</body>', final_html, _regex.DOTALL)
+                        if body_match:
+                            single_body = body_match.group(1)
+                            # 一對:[food/caution] + [jelly(如有)]
+                            pair = single_body + jelly_single
+                            # × qty:food→jelly→food→jelly→...
+                            full_body = pair * qty
+                            final_html = final_html.replace(single_body, full_body)
+                    elif jelly_single and not final_html:
+                        # 只有 Jelly,冇 food/caution → 直接用 caution_html × qty
+                        final_html = create_caution_html(jelly_cautions_text, qty)
+                        data_status = 'caution'
 
         if p_no not in product_no_tracker: product_no_tracker[p_no] = []
         product_no_tracker[p_no].append(i + 1)
@@ -523,8 +610,6 @@ async def upload_yummy_pdf(background_tasks: BackgroundTasks, file: UploadFile =
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
-        log_action("Yummy_Upload")
-        
         font_css = font_to_base64_css(DEFAULT_FONT_PATH)
         
         return {

@@ -6,12 +6,6 @@ import requests
 import time
 from typing import Dict, Any, List
 
-# 🌟 匯入打卡系統
-try:
-    from services.stats_api import log_action
-except ImportError:
-    def log_action(name): pass
-
 # ==============================================================================
 # 🔍 第一部分：本地資料庫搜尋系統 (Search API)
 # ==============================================================================
@@ -126,7 +120,6 @@ async def search_barcode(q: str = Query(..., min_length=1)):
             "SearchUrl": search_url
         })
             
-    log_action("Barcode_Search")
     return results
 
 

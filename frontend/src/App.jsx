@@ -23,8 +23,8 @@ function Sidebar() {
     { path: '/anymall', icon: '🛍️', label: 'Anymall 3PL' },
     { path: '/hellobear', icon: '🐻', label: 'Hello Bear 3PL' },
     { path: '/homey', icon: '🏠', label: 'Homey 3PL' },
-    { path: '/label', icon: '🏷️', label: '標籤列印系統' },
-    { path: '/chat', icon: '💬', label: '異常訂單問題' },
+    { path: '/label-search', icon: '🖨️', label: '標籤搜尋打印' },
+    { path: '/label-repack', icon: '✏️', label: '自助 Repack' },
   ];
 
   useEffect(() => {
@@ -418,117 +418,100 @@ function UnifiedSearchInventoryPage() {
   );
 }
 
-// ================= 共用表格樣式 =================
-const tableCellStyle = { padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6' };
+// ================= 共用：4 個 3PL 系統 (Yummy / Anymall / Hello Bear / Homey) =================
+const THREE_PL_CONFIGS = {
+  yummy: {
+    title: '🍔 Yummy 3PL 系統',
+    subtitle: '上傳 HKTVmall Yummy Delivery Note 進行解析與列印',
+    endpoint: '/api/yummy/upload',
+    accent: '#3b82f6',
+    uploader: { title: '⚙️ 3PL 主資料庫' },
+    useFontCss: false,
+    showDate: true,
+    showLabelType: false,
+    highlight: 'none',
+    emptyStatus: 'empty',
+    emptyText: () => '無資料',
+    emptyBadgeStyle: { display: 'inline-block', padding: '6px 12px', background: '#fef2f2', color: '#dc2626', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #fecaca' },
+    printBtnStyle: { background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '6px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+    actionHeader: '操作',
+  },
+  anymall: {
+    title: '🛍️ Anymall 3PL 系統',
+    subtitle: '上傳 Anymall Delivery Note (PDF) 進行極速解析',
+    endpoint: '/api/anymall/upload',
+    accent: '#10b981',
+    uploader: null,
+    useFontCss: false,
+    showDate: false,
+    showLabelType: false,
+    highlight: 'none',
+    emptyStatus: 'no_print',
+    emptyText: () => '無需打印',
+    emptyBadgeStyle: { display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap', border: '1px solid #e2e8f0' },
+    printBtnStyle: { background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '6px 16px', borderRadius: '6px', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer' },
+    actionHeader: '操作狀態',
+  },
+  hellobear: {
+    title: '🐻 Hello Bear 3PL 系統',
+    subtitle: '上傳 Hello Bear Delivery Note (PDF) 進行極速解析',
+    endpoint: '/api/hellobear/upload',
+    accent: '#8b5cf6',
+    uploader: { title: '⚙️ 3PL & 標籤主資料庫' },
+    useFontCss: false,
+    showDate: false,
+    showLabelType: false,
+    highlight: 'hellobear',
+    emptyStatus: 'no_print',
+    emptyText: () => '無需打印',
+    emptyBadgeStyle: { display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' },
+    printBtnStyle: { background: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '6px 16px', whiteSpace: 'nowrap', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+    actionHeader: '操作狀態',
+  },
+  homey: {
+    title: '🏠 Homey 3PL 系統',
+    subtitle: '上傳 Homey Delivery Note (PDF) 進行極速解析 (支援蟲蟲、食品、Repack 標籤)',
+    endpoint: '/api/homey/upload',
+    accent: '#14b8a6',
+    uploader: { title: '⚙️ 3PL & 標籤主資料庫' },
+    useFontCss: true,
+    showDate: false,
+    showLabelType: true,
+    highlight: 'homey',
+    emptyStatus: 'no_print',
+    emptyText: (item) => item.label_type,
+    emptyBadgeStyle: { display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' },
+    printBtnStyle: { background: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '6px 16px', whiteSpace: 'nowrap', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+    actionHeader: '操作狀態',
+  },
+};
 
-function YummyPage() {
+// 🌟 每個 zone 各自一份 cache (key = endpoint),令切走再返時保留之前嘅解析結果
+const ZONE_RESULT_CACHE = {};
+
+function ThreePLPage({ config }) {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [resultData, setResultData] = useState(null);
+  const [resultData, setResultData] = useState(() => ZONE_RESULT_CACHE[config.endpoint] || null);
 
-  const handleProcess = async () => {
-    if (!file) { setError('請先選擇 PDF 檔案！'); return; }
-    setLoading(true); setError(''); setResultData(null);
-    const formData = new FormData(); formData.append('file', file);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/yummy/upload`, { method: 'POST', body: formData });
-      if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
-      const data = await response.json(); setResultData(data);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) {
-        window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank');
+  // 每次 resultData 變動,寫返入該 zone 嘅 cache
+  // ⚠️ 故意 strip 走 font_css(嵌入式 base64 字體可以 ~19MB+,累積會搞到 browser OOM)
+  useEffect(() => {
+    if (resultData) {
+      const { font_css: _ignore, ...slim } = resultData;
+      ZONE_RESULT_CACHE[config.endpoint] = slim;
+    } else {
+      ZONE_RESULT_CACHE[config.endpoint] = null;
     }
-  };
-
-  const handlePrint = (htmlContent) => {
-    if (!htmlContent) return;
-    fetch(`${API_BASE_URL}/api/stats/log_print`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Yummy_Print' })
-    }).catch(e => console.log(e));
-
-    const win = window.open('', '_blank', 'width=400,height=400');
-    if (win) { win.document.write(htmlContent); win.document.close(); win.onload = function() { win.focus(); win.onafterprint = function() { win.close(); }; win.print(); }; }
-  };
-
-  return (
-    <div className="page-content">
-      <div className="page-header"><h2>🍔 Yummy 3PL 系統</h2><p>上傳 HKTVmall Yummy Delivery Note 進行解析與列印</p></div>
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px' }}>
-          <div style={{ flex: '1', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ marginBottom: '15px' }} /><br />
-            <button onClick={handleProcess} disabled={loading} style={{ background: loading ? '#94a3b8' : '#3b82f6', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
-              {loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}
-            </button>
-            {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
-          </div>
-          <DatabaseUploader title="⚙️ 3PL 主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
-      </div>
-      {resultData && (
-        <>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
-            <div style={{ flex: '1', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>📊 處理摘要</h3><p style={{ fontSize: '15px', color: '#475569', marginBottom: '10px' }}>有效解析筆數: <strong>{resultData.summary.total_pages}</strong></p>
-               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
-            </div>
-            <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>⚠️ 重複訂單檢測</h3>
-               {resultData.summary.has_duplicates ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}><p style={{ color: '#b91c1c', fontWeight: 'bold', marginBottom: '10px' }}>發現 {resultData.duplicates.length} 筆重複資料！</p><table style={{ width: '100%', fontSize: '13px', textAlign: 'left', borderCollapse: 'collapse' }}><thead><tr style={{ borderBottom: '1px solid #fca5a5' }}><th style={{ padding: '5px' }}>商品編號</th><th style={{ padding: '5px' }}>重複次數</th><th style={{ padding: '5px' }}>出現頁數</th></tr></thead><tbody>{resultData.duplicates.map((d, idx) => (<tr key={idx}><td style={{ padding: '5px', fontWeight: 'bold' }}>{d.Product_No}</td><td style={{ padding: '5px' }}>{d.Count}</td><td style={{ padding: '5px' }}>{d.Pages}</td></tr>))}</tbody></table></div>
-               ) : ( <p style={{ color: '#15803d', fontWeight: 'bold', background: '#f0fdf4', padding: '10px', borderRadius: '8px' }}>✅ 未發現重複訂單</p> )}
-            </div>
-          </div>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px' }}>日期</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>操作</th></tr></thead>
-                <tbody>
-                  {resultData.items.map((item, idx) => {
-                    const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isDup ? '#fffbeb' : 'transparent' }}>
-                        <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
-                        <td style={tableCellStyle}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
-                        <td style={{ padding: '12px', color: '#64748b' }}>{item.Date}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
-                          {item.status === 'empty' ? (
-                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#fef2f2', color: '#dc2626', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #fecaca' }}>無資料</span>
-                          ) : (
-                            <button onClick={() => handlePrint(item.print_html)} style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', padding: '6px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🖨️ 打印標籤</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function AnymallPage() {
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [resultData, setResultData] = useState(null);
+  }, [config.endpoint, resultData]);
 
   const handleProcess = async () => {
     if (!file) { setError('請先選擇 PDF 檔案！'); return; }
     setLoading(true); setError(''); setResultData(null);
     const formData = new FormData(); formData.append('file', file);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/anymall/upload`, { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE_URL}${config.endpoint}`, { method: 'POST', body: formData });
       if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
       const data = await response.json(); setResultData(data);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -540,593 +523,158 @@ function AnymallPage() {
 
   const handlePrint = (htmlContent) => {
     if (!htmlContent) return;
-    fetch(`${API_BASE_URL}/api/stats/log_print`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Anymall_Print' }) 
-    }).catch(e => console.log(e));
+    const finalHtml = config.useFontCss
+      ? htmlContent.replace('/* FONT_CSS_PLACEHOLDER */', (resultData && resultData.font_css) || '')
+      : htmlContent;
 
-    const win = window.open('', '_blank', 'width=400,height=400');
-    if (win) { win.document.write(htmlContent); win.document.close(); win.onload = function() { win.focus(); win.onafterprint = function() { win.close(); }; win.print(); }; }
-  };
+    // 🎨 用隱藏 iframe 嚟打印(類似別人公司做法),print dialog 顯示嘅 URL 會係本頁,
+    // 而唔係 about:blank tab。
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
 
-  return (
-    <div className="page-content">
-      <div className="page-header"><h2>🛍️ Anymall 3PL 系統</h2><p>上傳 Anymall Delivery Note (PDF) 進行極速解析</p></div>
-      <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '25px' }}>
-        <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ marginBottom: '15px' }} /><br />
-        <button onClick={handleProcess} disabled={loading} style={{ background: loading ? '#94a3b8' : '#10b981', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>{loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}</button>
-        {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
-      </div>
-      {resultData && (
-        <>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
-            <div style={{ flex: '1', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>📊 處理摘要</h3><p style={{ fontSize: '15px', color: '#475569', marginBottom: '10px' }}>有效解析筆數: <strong>{resultData.summary.total_pages}</strong></p>
-               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
-            </div>
-            <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>⚠️ 重複訂單檢測</h3>
-               {resultData.summary.has_duplicates ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}><p style={{ color: '#b91c1c', fontWeight: 'bold', marginBottom: '10px' }}>發現 {resultData.duplicates.length} 筆重複資料！</p><table style={{ width: '100%', fontSize: '13px', textAlign: 'left', borderCollapse: 'collapse' }}><thead><tr style={{ borderBottom: '1px solid #fca5a5' }}><th style={{ padding: '5px' }}>商品編號</th><th style={{ padding: '5px' }}>重複次數</th><th style={{ padding: '5px' }}>出現頁數</th></tr></thead><tbody>{resultData.duplicates.map((d, idx) => (<tr key={idx}><td style={{ padding: '5px', fontWeight: 'bold' }}>{d.Product_No}</td><td style={{ padding: '5px' }}>{d.Count}</td><td style={{ padding: '5px' }}>{d.Pages}</td></tr>))}</tbody></table></div>
-               ) : ( <p style={{ color: '#15803d', fontWeight: 'bold', background: '#f0fdf4', padding: '10px', borderRadius: '8px' }}>✅ 未發現重複訂單</p> )}
-            </div>
-          </div>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
-                <tbody>
-                  {resultData.items.map((item, idx) => {
-                    const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isDup ? '#fffbeb' : 'transparent' }}>
-                        <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
-                        <td style={tableCellStyle}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
-                          {item.status === 'no_print' ? (
-                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px',whiteSpace: 'nowrap', border: '1px solid #e2e8f0' }}>無需打印</span>
-                          ) : (
-                            <button onClick={() => handlePrint(item.print_html)} style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '6px 16px', borderRadius: '6px', whiteSpace: 'nowrap', fontWeight: 'bold',fontSize: '13px', cursor: 'pointer'}}>🖨️ 打印標籤</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
+    let printed = false; // 🛡️ 防止 onload + setTimeout 兩次觸發 print()
+    let cleanedUp = false;
 
-function HelloBearPage() {
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [resultData, setResultData] = useState(null);
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      setTimeout(() => {
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      }, 500);
+    };
 
-  const handleProcess = async () => {
-    if (!file) { setError('請先選擇 PDF 檔案！'); return; }
-    setLoading(true); setError(''); setResultData(null);
-    const formData = new FormData(); formData.append('file', file);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/hellobear/upload`, { method: 'POST', body: formData });
-      if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
-      const data = await response.json(); setResultData(data);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) { window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank'); }
-  };
-
-  const handlePrint = (htmlContent) => {
-    if (!htmlContent) return;
-    fetch(`${API_BASE_URL}/api/stats/log_print`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'HelloBear_Print' }) 
-    }).catch(e => console.log(e));
-    
-    const win = window.open('', '_blank', 'width=400,height=400');
-    if (win) { win.document.write(htmlContent); win.document.close(); win.onload = function() { win.focus(); win.onafterprint = function() { win.close(); }; win.print(); }; }
-  };
-
-  return (
-    <div className="page-content">
-      <div className="page-header"><h2>🐻 Hello Bear 3PL 系統</h2><p>上傳 Hello Bear Delivery Note (PDF) 進行極速解析</p></div>
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
-          <button onClick={handleProcess} disabled={loading} style={{ width: '20%', minWidth: '150px', background: loading ? '#94a3b8' : '#8b5cf6', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
-            {loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}
-          </button>
-          {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
-        </div>
-
-        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
-      </div>
-      {resultData && (
-        <>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
-            <div style={{ flex: '1', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>📊 處理摘要</h3><p style={{ fontSize: '15px', color: '#475569', marginBottom: '10px' }}>有效解析筆數: <strong>{resultData.summary.total_pages}</strong></p>
-               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
-            </div>
-            <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>⚠️ 重複訂單檢測</h3>
-               {resultData.summary.has_duplicates ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}><p style={{ color: '#b91c1c', fontWeight: 'bold', marginBottom: '10px' }}>發現 {resultData.duplicates.length} 筆重複資料！</p><table style={{ width: '100%', fontSize: '13px', textAlign: 'left', borderCollapse: 'collapse' }}><thead><tr style={{ borderBottom: '1px solid #fca5a5' }}><th style={{ padding: '5px' }}>商品編號</th><th style={{ padding: '5px' }}>重複次數</th><th style={{ padding: '5px' }}>出現頁數</th></tr></thead><tbody>{resultData.duplicates.map((d, idx) => (<tr key={idx}><td style={{ padding: '5px', fontWeight: 'bold' }}>{d.Product_No}</td><td style={{ padding: '5px' }}>{d.Count}</td><td style={{ padding: '5px' }}>{d.Pages}</td></tr>))}</tbody></table></div>
-               ) : ( <p style={{ color: '#15803d', fontWeight: 'bold', background: '#f0fdf4', padding: '10px', borderRadius: '8px' }}>✅ 未發現重複訂單</p> )}
-            </div>
-          </div>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
-                <tbody>
-                  {resultData.items.map((item, idx) => {
-                    const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
-                    
-                    // 🌟 判斷 Barcode 是否包含英文字母 (組合母單提示)
-                    const hasLetter = /[a-zA-Z]/.test(item.Barcode || "");
-                    // 🌟 判斷 Product_No 和 Barcode 是否完全相同
-                    const isSame = item.Product_No === item.Barcode;
-                    
-                    // 如果有英文字母或是兩者相同，就觸發高亮
-                    const needsHighlight = hasLetter || isSame;
-
-                    const rowBgColor = isDup ? '#fffbeb' : (needsHighlight ? '#fef08a' : 'transparent'); // #fef08a 是亮黃色
-                    const textColor = needsHighlight ? '#ea580c' : 'inherit'; // #ea580c 是顯眼的橘色
-
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: rowBgColor, transition: 'background 0.2s' }}>
-                        <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', color: textColor }}>{item.Product_No}</td>
-                        <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', color: textColor, fontWeight: needsHighlight ? 'bold' : 'normal' }}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace' }}>
-                          <span style={{ background: needsHighlight ? '#fde047' : '#f1f5f9', padding: '4px 8px', borderRadius: '4px', color: textColor, fontWeight: needsHighlight ? 'bold' : 'normal' }}>
-                            {item.Barcode}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center', color: textColor }}>{item.Qty}</td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
-                          {item.status === 'no_print' ? (
-                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' }}>無需打印</span>
-                          ) : (
-                            <button onClick={() => handlePrint(item.print_html)} style={{ background: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '6px 16px', whiteSpace: 'nowrap', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🖨️ 打印標籤</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function HomeyPage() {
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [resultData, setResultData] = useState(null);
-
-  const handleProcess = async () => {
-    if (!file) { setError('請先選擇 PDF 檔案！'); return; }
-    setLoading(true); setError(''); setResultData(null);
-    const formData = new FormData(); formData.append('file', file);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/homey/upload`, { method: 'POST', body: formData });
-      if (!response.ok) { const errData = await response.json(); throw new Error(errData.detail || '上傳或解析失敗'); }
-      const data = await response.json(); setResultData(data);
-    } catch (err) { setError(err.message); } finally { setLoading(false); }
-  };
-
-  const handleDownloadPDF = () => {
-    if (resultData && resultData.download_url) { window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank'); }
-  };
-
-  const handlePrint = (htmlContent) => {
-    if (!htmlContent) return;
-    fetch(`${API_BASE_URL}/api/stats/log_print`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'Homey_Print' }) 
-    }).catch(e => console.log(e));
-
-    const finalHtml = htmlContent.replace('/* FONT_CSS_PLACEHOLDER */', resultData.font_css || '');
-    const win = window.open('', '_blank', 'width=400,height=400');
-    
-    if (win) { 
-        win.document.write(finalHtml); 
-        win.document.close(); 
-        setTimeout(() => { win.focus(); win.print(); }, 0); 
-        win.onafterprint = function() { win.close(); }; 
-    }
-  };
-
-  return (
-    <div className="page-content">
-      <div className="page-header"><h2>🏠 Homey 3PL 系統</h2><p>上傳 Homey Delivery Note (PDF) 進行極速解析 (支援蟲蟲、食品、Repack 標籤)</p></div>
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
-          <button onClick={handleProcess} disabled={loading} style={{ width: '20%', background: loading ? '#94a3b8' : '#14b8a6', color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
-            {loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}
-          </button>
-          {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
-        </div>
-
-        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
-      </div>
-      {resultData && (
-        <>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
-            <div style={{ flex: '1', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>📊 處理摘要</h3><p style={{ fontSize: '15px', color: '#475569', marginBottom: '10px' }}>有效解析筆數: <strong>{resultData.summary.total_pages}</strong></p>
-               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
-            </div>
-            <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>⚠️ 重複訂單檢測</h3>
-               {resultData.summary.has_duplicates ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}><p style={{ color: '#b91c1c', fontWeight: 'bold', marginBottom: '10px' }}>發現 {resultData.duplicates.length} 筆重複資料！</p><table style={{ width: '100%', fontSize: '13px', textAlign: 'left', borderCollapse: 'collapse' }}><thead><tr style={{ borderBottom: '1px solid #fca5a5' }}><th style={{ padding: '5px' }}>商品編號</th><th style={{ padding: '5px' }}>重複次數</th><th style={{ padding: '5px' }}>出現頁數</th></tr></thead><tbody>{resultData.duplicates.map((d, idx) => (<tr key={idx}><td style={{ padding: '5px', fontWeight: 'bold' }}>{d.Product_No}</td><td style={{ padding: '5px' }}>{d.Count}</td><td style={{ padding: '5px' }}>{d.Pages}</td></tr>))}</tbody></table></div>
-               ) : ( <p style={{ color: '#15803d', fontWeight: 'bold', background: '#f0fdf4', padding: '10px', borderRadius: '8px' }}>✅ 未發現重複訂單</p> )}
-            </div>
-          </div>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
-                <thead><tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}><th style={{ padding: '12px' }}>序號</th><th style={{ padding: '12px' }}>商品編號</th><th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th><th style={{ padding: '12px' }}>商品條碼</th><th style={{ padding: '12px', textAlign: 'center' }}>數量</th><th style={{ padding: '12px', textAlign: 'center' }}>標籤類型</th><th style={{ padding: '12px', textAlign: 'center' }}>操作狀態</th></tr></thead>
-                <tbody>
-                  {resultData.items.map((item, idx) => {
-                    const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
-                    const isHighlight = ["repack", "sku", "蟲", "food"].some(k => item.label_type.toLowerCase().includes(k));
-                    
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: isDup ? '#fffbeb' : 'transparent' }}>
-                        <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.Product_No}</td>
-                        <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', ...(isHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {}) }}>{item.Name}</td>
-                        <td style={{ padding: '12px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', padding: '4px 8px', margin: '8px' }}>{item.Barcode}</td>
-                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center' }}>{item.Qty}</td>
-                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(isHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
-                          {item.status === 'no_print' ? (
-                            <span style={{ display: 'inline-block', padding: '6px 12px', background: '#f8fafc', color: '#94a3b8', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #e2e8f0' }}>{item.label_type}</span>
-                          ) : (
-                            <button onClick={() => handlePrint(item.print_html)} style={{ background: '#ccfbf1', color: '#0f766e', border: '1px solid #99f6e4', padding: '6px 16px', whiteSpace: 'nowrap', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>🖨️ 打印標籤</button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function FoodLabelPage() {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [hasSearched, setHasSearched] = useState(false);
-  const [quantities, setQuantities] = useState({});
-
-  const handleSearch = async (e) => {
-    if (e.key === 'Enter') {
-      if (!query.trim()) return;
-      setLoading(true); setError(''); setHasSearched(true);
+    const doPrint = () => {
+      if (printed) return;
+      printed = true;
       try {
-        const response = await fetch(`${API_BASE_URL}/api/food_label/search?q=${encodeURIComponent(query)}`);
-        if (!response.ok) { const errData = await response.json(); setError(errData.detail || '發生未知錯誤'); setResults([]); return; }
-        const data = await response.json(); 
-        setResults(data);
-        const initQtys = {};
-        data.forEach(r => { initQtys[r.Product_No] = 1; });
-        setQuantities(initQtys);
-      } catch (err) { setError('連線失敗！請確認後端已啟動。'); setResults([]); } finally { setLoading(false); }
-    }
-  };
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (e) { console.error(e); }
+      // 打印對話框關閉(印完或取消)後清走 iframe
+      if (iframe.contentWindow) {
+        iframe.contentWindow.onafterprint = cleanup;
+      }
+      // safety:即使 onafterprint 唔觸發,5 秒後都會 clean(夠時間用戶睇 dialog)
+      setTimeout(cleanup, 5000);
+    };
 
-  const handlePrint = async (item) => {
-    const qty = quantities[item.Product_No] || 1;
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/food_label/generate_html`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: { Product_No: item.Product_No, Barcode: item.Barcode, Name: item.Name }, matched_data: item.matched_data, qty: parseInt(qty), status: item.status })
-      });
-      if (!response.ok) { throw new Error('無法生成標籤'); }
-      const data = await response.json();
-      
-      const win = window.open('', '_blank', 'width=400,height=400');
-      if (win) { win.document.write(data.html); win.document.close(); win.onload = function() { win.focus(); win.onafterprint = function() { win.close(); }; win.print(); }; }
-    } catch (err) { alert("列印失敗：" + err.message); }
-  };
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(finalHtml);
+    doc.close();
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'food': return <span style={{ background: '#dcfce7', color: '#0f766e', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #a7f3d0' }}>🍕 食品標籤</span>;
-      case 'insect': return <span style={{ background: '#fef08a', color: '#b45309', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #fde047' }}>🐛 蟲蟲標籤</span>;
-      case 'caution': return <span style={{ background: '#fee2e2', color: '#b91c1c', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #fecaca' }}>⚠️ 警告標籤</span>;
-      default: return <span style={{ background: '#f1f5f9', color: '#64748b', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '13px', border: '1px solid #cbd5e1' }}>❌ 無資料</span>;
+    if (config.useFontCss) {
+      // Homey:JS shrink-to-fit + font_css 替換需要時間,delay 多少少
+      setTimeout(doPrint, 100);
+    } else {
+      // 等 iframe load 完即時 print,有 printed flag 保護唔會 double-fire
+      iframe.onload = doPrint;
+      setTimeout(doPrint, 300); // safety fallback,如果 onload 因故唔觸發
     }
   };
 
   return (
     <div className="page-content">
-      <div className="page-header">
-        <h2>🏷️ 標籤列印系統 (Food Label)</h2>
-        <p>輸入 Product No / Barcode / 名稱，搜尋並列印專屬標籤</p>
-      </div>
-      
+      <div className="page-header"><h2>{config.title}</h2><p>{config.subtitle}</p></div>
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
         <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-           <h3 style={{ fontSize: '16px', marginBottom: '15px', color: '#0f172a' }}>🔍 搜尋商品</h3>
-           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleSearch} placeholder="輸入關鍵字並按下 Enter 搜尋..." style={{ width: '100%', padding: '16px', borderRadius: '10px', border: '2px solid #e2e8f0', fontSize: '16px', outline: 'none' }} />
-           {loading && <p style={{ color: '#3b82f6', fontWeight: 'bold', marginTop: '15px' }}>⏳ 資料檢索中，請稍候...</p>}
-           {error && <p style={{ color: '#ef4444', fontWeight: 'bold', marginTop: '15px' }}>❌ {error}</p>}
-           {!loading && !error && hasSearched && results.length === 0 && <p style={{ color: '#f59e0b', fontWeight: 'bold', marginTop: '15px' }}>❌ 找不到相符的商品資料</p>}
+          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
+          <button onClick={handleProcess} disabled={loading} style={{ background: loading ? '#94a3b8' : config.accent, color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
+            {loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}
+          </button>
+          {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
         </div>
-
-        <DatabaseUploader title="⚙️ 3PL & 標籤主資料庫" infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
+        {config.uploader && (
+          <DatabaseUploader title={config.uploader.title} infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
+        )}
       </div>
-      
-      {error && <p style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ {error}</p>}
-      
-      {!loading && !error && results.length > 0 && (
-         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(500px, 1fr))', gap: '20px' }}>
-            {results.map((item, index) => (
-                <div key={index} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', boxShadow: '0 4px 10px rgba(0,0,0,0.03)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                    <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                            <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b', lineHeight: '1.4', paddingRight: '15px' }}>{item.Name}</div>
-                            <div style={{ flexShrink: 0 }}>{getStatusBadge(item.status)}</div>
-                        </div>
-                        
-                        <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
-                            <div style={{ background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}>
-                                <span style={{ color: '#64748b', fontWeight: 'bold', marginRight: '5px' }}>商品編號</span>
-                                <span style={{ color: '#0369a1', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '14px' }}>{item.Product_No}</span>
-                            </div>
-                            <div style={{ background: '#f8fafc', padding: '6px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}>
-                                <span style={{ color: '#64748b', fontWeight: 'bold', marginRight: '5px' }}>條碼</span>
-                                <span style={{ color: '#0369a1', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '14px' }}>{item.Barcode}</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style={{ display: 'flex', gap: '15px', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '15px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontWeight: 'bold', color: '#475569', fontSize: '14px' }}>數量:</span>
-                            <input 
-                                type="number" min="1" max="1000" 
-                                value={quantities[item.Product_No] || 1} 
-                                onChange={(e) => setQuantities({...quantities, [item.Product_No]: e.target.value})}
-                                style={{ width: '80px', padding: '10px', borderRadius: '8px', border: '2px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', outline: 'none' }} 
-                            />
-                        </div>
-                        {item.status !== 'empty' ? (
-                            <button onClick={() => handlePrint(item)} style={{ flex: 1, background: '#3b82f6', color: 'white', border: 'none', padding: '12px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px' }}>
-                                🖨️ 打印 {item.status === 'food' ? '食品標籤' : item.status === 'insect' ? '蟲蟲標籤' : '警告標籤'}
-                            </button>
+      {resultData && (
+        <>
+          <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
+            <div style={{ flex: '1', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>📊 處理摘要</h3><p style={{ fontSize: '15px', color: '#475569', marginBottom: '10px' }}>有效解析筆數: <strong>{resultData.summary.total_pages}</strong></p>
+               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
+            </div>
+            <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>⚠️ 重複訂單檢測</h3>
+               {resultData.summary.has_duplicates ? (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}><p style={{ color: '#b91c1c', fontWeight: 'bold', marginBottom: '10px' }}>發現 {resultData.duplicates.length} 筆重複資料！</p><table style={{ width: '100%', fontSize: '13px', textAlign: 'left', borderCollapse: 'collapse' }}><thead><tr style={{ borderBottom: '1px solid #fca5a5' }}><th style={{ padding: '5px' }}>商品編號</th><th style={{ padding: '5px' }}>重複次數</th><th style={{ padding: '5px' }}>出現頁數</th></tr></thead><tbody>{resultData.duplicates.map((d, idx) => (<tr key={idx}><td style={{ padding: '5px', fontWeight: 'bold' }}>{d.Product_No}</td><td style={{ padding: '5px' }}>{d.Count}</td><td style={{ padding: '5px' }}>{d.Pages}</td></tr>))}</tbody></table></div>
+               ) : ( <p style={{ color: '#15803d', fontWeight: 'bold', background: '#f0fdf4', padding: '10px', borderRadius: '8px' }}>✅ 未發現重複訂單</p> )}
+            </div>
+          </div>
+          <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+            <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
+                    <th style={{ padding: '12px' }}>序號</th>
+                    <th style={{ padding: '12px' }}>商品編號</th>
+                    <th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th>
+                    <th style={{ padding: '12px' }}>商品條碼</th>
+                    {config.showDate && <th style={{ padding: '12px' }}>日期</th>}
+                    <th style={{ padding: '12px', textAlign: 'center' }}>數量</th>
+                    {config.showLabelType && <th style={{ padding: '12px', textAlign: 'center' }}>標籤類型</th>}
+                    <th style={{ padding: '12px', textAlign: 'center' }}>{config.actionHeader}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultData.items.map((item, idx) => {
+                    const isDup = resultData.duplicates.some(d => d.Product_No === item.Product_No);
+
+                    const hbHighlight = config.highlight === 'hellobear' &&
+                      (/[a-zA-Z]/.test(item.Barcode || "") || item.Product_No === item.Barcode);
+                    const homeyHighlight = config.highlight === 'homey' &&
+                      ["repack", "sku", "蟲", "food"].some(k => (item.label_type || "").toLowerCase().includes(k));
+
+                    const rowBg = isDup ? '#fffbeb' : (hbHighlight ? '#fef08a' : 'transparent');
+                    const hbText = hbHighlight ? '#ea580c' : 'inherit';
+                    const homeyCell = homeyHighlight ? { backgroundColor: '#FFFFAA', color: '#B30000', fontWeight: 'bold' } : {};
+                    const isEmpty = item.status === config.emptyStatus;
+
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: rowBg, transition: 'background 0.2s' }}>
+                        <td style={{ padding: '12px', color: '#94a3b8' }}>{idx + 1}</td>
+                        <td style={{ padding: '12px', fontWeight: 'bold', color: hbText }}>{item.Product_No}</td>
+                        <td style={{ padding: '12px', minWidth: '250px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: '1.6', color: hbText, fontWeight: hbHighlight ? 'bold' : 'normal', ...homeyCell }}>{item.Name}</td>
+                        {config.highlight === 'hellobear' ? (
+                          <td style={{ padding: '12px', fontFamily: 'monospace' }}>
+                            <span style={{ background: hbHighlight ? '#fde047' : '#f1f5f9', padding: '4px 8px', borderRadius: '4px', color: hbText, fontWeight: hbHighlight ? 'bold' : 'normal' }}>{item.Barcode}</span>
+                          </td>
                         ) : (
-                            <button disabled style={{ flex: 1, background: '#e2e8f0', color: '#94a3b8', border: 'none', padding: '12px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '15px', cursor: 'not-allowed' }}>
-                                ❌ 無資料 (無法列印)
-                            </button>
+                          <td style={{ padding: '4px 8px', fontFamily: 'monospace', background: '#f1f5f9', borderRadius: '4px', margin: '8px' }}>{item.Barcode}</td>
                         )}
-                    </div>
-                </div>
-            ))}
-         </div>
+                        {config.showDate && <td style={{ padding: '12px', color: '#64748b' }}>{item.Date}</td>}
+                        <td style={{ padding: '12px', fontWeight: 'bold', fontSize: '16px', textAlign: 'center', color: hbText }}>{item.Qty}</td>
+                        {config.showLabelType && (
+                          <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', ...(homeyHighlight ? { backgroundColor: '#FFFFAA', whiteSpace: 'nowrap', color: '#B30000' } : {}) }}>{item.label_type}</td>
+                        )}
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          {isEmpty ? (
+                            <span style={config.emptyBadgeStyle}>{config.emptyText(item)}</span>
+                          ) : (
+                            <button onClick={() => handlePrint(item.print_html)} style={config.printBtnStyle}>🖨️ 打印標籤</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
 }
-
-function ChatPage() {
-  const [messages, setMessages] = useState([]);
-  const [userName, setUserName] = useState('');
-  const [inputText, setInputText] = useState('');
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [isSending, setIsSending] = useState(false);
-  
-  const messagesEndRef = useRef(null);
-  const scrollContainerRef = useRef(null);
-  const forceScrollRef = useRef(false); 
-
-  const fetchMessages = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/chat/messages`);
-      const data = await res.json();
-      if (data.status === 'success') {
-        setMessages(data.messages);
-      }
-    } catch (err) { console.error("獲取訊息失敗", err); }
-  };
-
-  useEffect(() => {
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (!scrollContainerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 150;
-
-    if (forceScrollRef.current || isAtBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      forceScrollRef.current = false; 
-    }
-  }, [messages]); 
-
-  const compressImage = (file) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_WIDTH = 800;
-          if (width > MAX_WIDTH) {
-            height = Math.round((height * MAX_WIDTH) / width);
-            width = MAX_WIDTH;
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          canvas.toBlob((blob) => {
-              const newFile = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() });
-              resolve(newFile);
-            }, 'image/jpeg', 0.8);
-        };
-      };
-    });
-  };
-
-  const handleSend = async () => {
-    if (!userName.trim()) { alert("⚠️ 請先在左上方輸入您的「名字」！"); return; }
-    if (!inputText.trim() && !selectedImage) return;
-
-    setIsSending(true);
-    let fileToSend = selectedImage;
-    if (selectedImage) { fileToSend = await compressImage(selectedImage); }
-
-    const formData = new FormData();
-    formData.append('user_name', userName);
-    formData.append('message', inputText);
-    if (fileToSend) formData.append('file', fileToSend);
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/chat/message`, { method: 'POST', body: formData });
-      if (res.ok) {
-        setInputText('');
-        setSelectedImage(null);
-        const fileInput = document.getElementById('chat-image-upload');
-        if (fileInput) fileInput.value = '';
-        forceScrollRef.current = true; 
-        fetchMessages(); 
-      } else {
-        const errData = await res.json();
-        alert(`發送失敗: ${errData.detail}`);
-      }
-    } catch (err) { alert("連線失敗"); } 
-    finally { setIsSending(false); }
-  };
-
-  const handleDelete = async (msgId) => {
-    if (!window.confirm("確定要撤回這則訊息嗎？")) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/chat/message/${msgId}`, { method: 'DELETE' });
-      if (res.ok) { fetchMessages(); } else { alert("撤回失敗，請稍後再試。"); }
-    } catch (err) { alert("連線失敗！"); }
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  return (
-    <div className="page-content" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 40px)' }}>
-      <div className="page-header" style={{ marginBottom: '15px' }}>
-        <h2 style={{ fontSize: '30px', color: '#0f172a', fontWeight: '800', margin: 0 }}>💬 異常訂單記錄</h2>
-        <p style={{ color: '#64748b', fontSize: '16px', marginTop: '10px' }}>這裡是專屬的溝通頻道，遇到找不到訂單的狀況請在此回報。</p>
-        <div style={{ background: '#f0fdf4', color: '#166534', padding: '12px 15px', borderRadius: '8px', border: '1px solid #bbf7d0', fontSize: '14px', marginTop: '10px' }}>
-          💡 <strong>填寫範例</strong>：<br/>
-          <strong>H260225512645-H0956006</strong>
-        </div>
-      </div>
-
-      <div style={{ marginBottom: '15px' }}>
-        <input 
-          type="text" placeholder="👤 請輸入名字 (必填)" value={userName} onChange={(e) => setUserName(e.target.value)} 
-          style={{ padding: '10px 15px', borderRadius: '8px', border: '2px solid #e2e8f0', outline: 'none', width: '250px', fontSize: '15px', fontWeight: 'bold', boxSizing: 'border-box' }}
-        />
-      </div>
-
-      <div ref={scrollContainerRef} style={{ flex: 1, background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        {messages.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: 'auto', marginBottom: 'auto' }}>目前沒有訊息</div>
-        ) : (
-          messages.map((msg) => {
-            const isMe = msg.user_name === userName;
-            const msgDate = new Date(msg.created_at);
-            const now = new Date();
-            const diffInSeconds = (now - msgDate) / 1000;
-            const isWithinOneMinute = diffInSeconds <= 60;
-            const canDelete = isMe && isWithinOneMinute;
-
-            return (
-              <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px', marginLeft: '5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <strong style={{ color: '#3b82f6', fontSize: '14px' }}>{msg.user_name}</strong>
-                  <span>• {msg.display_time}</span>
-                  {canDelete && (
-                    <span onClick={() => handleDelete(msg.id)} style={{ cursor: 'pointer', color: '#ef4444', fontWeight: 'bold', fontSize: '12px', padding: '2px 6px', background: '#fee2e2', borderRadius: '4px' }} title="1分鐘內可撤回訊息">
-                      🗑️ 撤回
-                    </span>
-                  )}
-                </div>
-                <div style={{ background: 'white', color: '#0f172a', padding: '12px 16px', borderRadius: '4px 16px 16px 16px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', maxWidth: '85%', wordWrap: 'break-word', border: '1px solid #e2e8f0' }}>
-                  {msg.message && <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>{msg.message}</div>}
-                  {msg.image_url && (
-                    <img src={msg.image_url} alt="附件圖片" style={{ maxWidth: '250px', width: '100%', borderRadius: '8px', marginTop: msg.message ? '10px' : '0', cursor: 'pointer', border: '1px solid #e2e8f0' }} onClick={() => window.open(msg.image_url, '_blank')} title="點擊放大圖片" />
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      <div style={{ marginTop: '15px', background: 'white', padding: '10px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid #e2e8f0', width: '100%', boxSizing: 'border-box' }}>
-        <label style={{ cursor: 'pointer', background: '#f1f5f9', padding: '10px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} title="上傳圖片">
-          🖼️
-          <input id="chat-image-upload" type="file" accept="image/jpeg, image/png, image/jpg" style={{ display: 'none' }} onChange={(e) => setSelectedImage(e.target.files[0])} />
-        </label>
-        
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {selectedImage && <div style={{ fontSize: '12px', color: '#10b981', fontWeight: 'bold', marginBottom: '5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📎 {selectedImage.name}</div>}
-          <input 
-            type="text" placeholder="請輸入單號..." value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={handleKeyDown}
-            style={{ width: '100%', padding: '10px', border: 'none', outline: 'none', fontSize: '15px', background: 'transparent', boxSizing: 'border-box' }}
-          />
-        </div>
-        
-        <button onClick={handleSend} disabled={isSending} style={{ background: isSending ? '#94a3b8' : '#3b82f6', color: 'white', border: 'none', padding: '12px 18px', borderRadius: '10px', fontWeight: 'bold', cursor: isSending ? 'not-allowed' : 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
-          {isSending ? '傳送中...' : '發送 🚀'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function HomePage() {
   const [orderData, setOrderData] = useState(null);
   const [cancelInputs, setCancelInputs] = useState({ today: '', tomorrow: '' });
@@ -1365,6 +913,284 @@ function DatabaseUploader({ title, infoUrl, uploadUrl }) {
   );
 }
 
+// ================= 共用打印 helper(iframe + 唔再彈 about:blank) =================
+function printHtmlInIframe(html, fontCss) {
+  if (!html) return;
+  const finalHtml = html.replace('/* FONT_CSS_PLACEHOLDER */', fontCss || '');
+  const iframe = document.createElement('iframe');
+  Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0', visibility: 'hidden' });
+  document.body.appendChild(iframe);
+  let printed = false;
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 500);
+  };
+  const doPrint = () => {
+    if (printed) return;
+    printed = true;
+    try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { console.error(e); }
+    if (iframe.contentWindow) iframe.contentWindow.onafterprint = cleanup;
+    setTimeout(cleanup, 5000);
+  };
+  const doc = iframe.contentWindow.document;
+  doc.open(); doc.write(finalHtml); doc.close();
+  iframe.onload = doPrint;
+  setTimeout(doPrint, 300);
+}
+
+// ================= 🖨️ 標籤搜尋打印中心 =================
+function LabelSearchPage() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
+  const [qtyMap, setQtyMap] = useState({});
+  const [printingKey, setPrintingKey] = useState(null);
+  // 🛡️ Race-condition 防護:每次搜尋遞增,只接受最新嗰次嘅 response
+  const searchIdRef = useRef(0);
+
+  const keyOf = (it) => it.Barcode || it.Product_No || it.Name;
+
+  const handleSearch = async () => {
+    if (!query.trim()) return;
+    // 🚀 即時清空舊結果 + qty + error,避免「舊資料疊新資料」感覺
+    setResults([]);
+    setQtyMap({});
+    setLoading(true);
+    setError('');
+    setHasSearched(true);
+    const myId = ++searchIdRef.current;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/label_tool/search?q=${encodeURIComponent(query.trim())}`);
+      if (!res.ok) throw new Error('搜尋失敗');
+      const data = await res.json();
+      // 若中途已有更新嘅搜尋(myId 過時),直接 ignore 呢次 response
+      if (myId !== searchIdRef.current) return;
+      // 🚀 只 keep master DB 入面真係有 label 資料嘅(冇 label 嘅完全唔顯示)
+      const filtered = (data.results || []).filter(r => r.has_label_data);
+      setResults(filtered);
+      const initQty = {};
+      // 用 idx 一齊做 key,避免 barcode 重複時撞 key
+      filtered.forEach((r, idx) => { initQty[keyOf(r) + '__' + idx] = 1; });
+      setQtyMap(initQty);
+    } catch (err) {
+      if (myId !== searchIdRef.current) return;
+      setError(err.message); setResults([]);
+    }
+    finally {
+      if (myId === searchIdRef.current) setLoading(false);
+    }
+  };
+
+  const handleKey = (e) => { if (e.key === 'Enter') handleSearch(); };
+
+  const handlePrint = async (item, rowKey) => {
+    // rowKey 從 map 入面傳入(已含 idx,確保唯一)
+    const qty = parseInt(qtyMap[rowKey] || 1, 10);
+    if (!qty || qty < 1) { alert('請輸入有效數量'); return; }
+    setPrintingKey(rowKey);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/label_tool/print`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: item.Barcode || '', product_no: item.Product_No || '', qty })
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || '打印失敗'); }
+      const data = await res.json();
+      printHtmlInIframe(data.html, data.font_css);
+    } catch (err) { alert('❌ ' + err.message); }
+    finally { setPrintingKey(null); }
+  };
+
+  const TYPE_BADGES = {
+    food: { label: '🍱 Food Label', color: '#2563eb', bg: '#eff6ff' },
+    jelly: { label: '⚠️ Jelly 警告', color: '#b45309', bg: '#fef3c7' },
+    insects: { label: '🐛 蟲蟲 Label', color: '#16a34a', bg: '#dcfce7' },
+    caution: { label: '⚠️ Caution', color: '#dc2626', bg: '#fee2e2' },
+  };
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <h2>🖨️ 標籤搜尋打印中心</h2>
+        <p>搜尋產品(支援中文關鍵字)→ 一鍵自動打印標籤,Food + Jelly 會自動交替合併(同 Yummy 3PL 一樣)</p>
+      </div>
+
+      <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKey}
+            placeholder="輸入中文名稱、條碼或商品編號...(例如:愛玉、果凍、4710626256410)"
+            style={{ flex: '1', minWidth: '250px', padding: '14px 18px', fontSize: '16px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none' }} />
+          <button onClick={handleSearch} disabled={loading}
+            style={{ background: loading ? '#94a3b8' : '#3b82f6', color: 'white', padding: '14px 28px', borderRadius: '12px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '16px' }}>
+            {loading ? '⏳ 搜尋中...' : '🔍 搜尋'}
+          </button>
+        </div>
+        <div style={{ marginTop: '10px', fontSize: '12px', color: '#64748b' }}>
+          💡 搜尋資料來自「智能查詢中心」嘅資料庫,打印時用「3PL 主資料庫」嘅 label 資料
+        </div>
+        {error && <p style={{ color: '#dc2626', marginTop: '12px', fontWeight: 'bold' }}>❌ {error}</p>}
+        {!loading && hasSearched && results.length === 0 && !error && (
+          <p style={{ color: '#d97706', marginTop: '12px', fontWeight: 'bold' }}>⚠️ 搵唔到符合嘅產品</p>
+        )}
+      </div>
+
+      {results.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          {results.map((item, idx) => {
+            const k = keyOf(item) + '__' + idx;
+            const isPrinting = printingKey === k;
+            const types = item.label_types || [];
+            const hasFood = types.includes('food');
+            const hasJelly = types.includes('jelly');
+            return (
+              <div key={k} style={{ background: 'white', padding: '20px', borderRadius: '14px', boxShadow: '0 2px 6px rgba(0,0,0,0.04)', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
+                  <div style={{ flex: '1', minWidth: '300px' }}>
+                    <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>{item.Name || '(無名稱)'}</div>
+                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '13px', color: '#64748b' }}>
+                      <span><strong>條碼:</strong> <span style={{ fontFamily: 'monospace', color: '#10b981' }}>{item.Barcode || '-'}</span></span>
+                      {item.Product_No && <span><strong>編號:</strong> <span style={{ fontFamily: 'monospace', color: '#3b82f6' }}>{item.Product_No}</span></span>}
+                    </div>
+                    {/* 顯示有邊啲 label(info 用,唔係掣) */}
+                    <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {hasFood && hasJelly && (
+                        <span style={{ background: '#ccfbf1', color: '#0f766e', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', border: '1px solid #0f766e33' }}>
+                          🔁 自動 Food + Jelly 交替
+                        </span>
+                      )}
+                      {types.filter(t => !(hasFood && hasJelly && (t === 'food' || t === 'jelly'))).map(t => {
+                        const cfg = TYPE_BADGES[t] || { label: t, color: '#64748b', bg: '#f1f5f9' };
+                        return (
+                          <span key={t} style={{ background: cfg.bg, color: cfg.color, padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', border: `1px solid ${cfg.color}33` }}>
+                            {cfg.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: '14px', color: '#475569', fontWeight: 'bold' }}>數量:</label>
+                    <input type="number" min="1" max="500" value={qtyMap[k] || 1}
+                      onChange={(e) => setQtyMap({ ...qtyMap, [k]: e.target.value })}
+                      style={{ width: '90px', padding: '10px', borderRadius: '8px', border: '2px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', fontSize: '15px', outline: 'none' }} />
+                    <button onClick={() => handlePrint(item, k)} disabled={isPrinting}
+                      style={{ background: isPrinting ? '#94a3b8' : '#10b981', color: 'white', border: 'none', padding: '12px 22px', borderRadius: '10px', fontWeight: 'bold', cursor: isPrinting ? 'not-allowed' : 'pointer', fontSize: '15px' }}>
+                      {isPrinting ? '⏳ 生成中...' : '🖨️ 打印標籤'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================= ✏️ 自助 Repack Label =================
+function LabelRepackPage() {
+  const [mode, setMode] = useState('repack'); // 'repack' | 'barcode_only'
+  const [barcode, setBarcode] = useState('');
+  const [name, setName] = useState('');
+  const [qty, setQty] = useState(1);
+  const [loading, setLoading] = useState(false);
+
+  const handlePrint = async () => {
+    if (!barcode.trim()) { alert('請輸入 barcode'); return; }
+    if (mode === 'repack' && !name.trim()) { alert('請輸入商品名稱(或切換到「純 Barcode」模式)'); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/label_tool/repack`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          barcode: barcode.trim(),
+          name: name.trim(),
+          qty: parseInt(qty || 1, 10),
+          only_barcode: mode === 'barcode_only',
+        })
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail || '打印失敗'); }
+      const data = await res.json();
+      printHtmlInIframe(data.html, data.font_css);
+    } catch (err) { alert('❌ ' + err.message); }
+    finally { setLoading(false); }
+  };
+
+  const tabStyle = (active) => ({
+    flex: 1,
+    padding: '14px',
+    border: 'none',
+    background: active ? '#7c3aed' : '#f1f5f9',
+    color: active ? 'white' : '#475569',
+    fontWeight: 'bold',
+    fontSize: '15px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  });
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <h2>✏️ 自助 Repack Label</h2>
+        <p>自由輸入 Barcode 即時打印,可選「條碼 + 商品名」或「只條碼」兩種格式</p>
+      </div>
+
+      <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', maxWidth: '700px', overflow: 'hidden' }}>
+        {/* 模式切換 Tab */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
+          <button onClick={() => setMode('repack')} style={tabStyle(mode === 'repack')}>
+            📦 條碼 + 商品名
+          </button>
+          <button onClick={() => setMode('barcode_only')} style={tabStyle(mode === 'barcode_only')}>
+            🔢 純 Barcode
+          </button>
+        </div>
+
+        <div style={{ padding: '30px' }}>
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>📊 Barcode(數字 / 字母)</label>
+            <input type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)}
+              placeholder="例如 49568102370 67A"
+              style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '2px solid #cbd5e1', fontSize: '16px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+
+          {mode === 'repack' && (
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>🏷️ 商品名稱(中/英都得)</label>
+              <textarea value={name} onChange={(e) => setName(e.target.value)} rows={3}
+                placeholder="例如:日本 Bitatto Okuchi 清新蜂膠便攜除菌漱口水 - 檸檬味 (11ml x 5條) x2"
+                style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '2px solid #cbd5e1', fontSize: '15px', lineHeight: '1.5', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }} />
+            </div>
+          )}
+
+          <div style={{ marginBottom: '25px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>🔢 打印數量</label>
+            <input type="number" min="1" max="500" value={qty} onChange={(e) => setQty(e.target.value)}
+              style={{ width: '120px', padding: '14px', borderRadius: '10px', border: '2px solid #cbd5e1', fontSize: '16px', textAlign: 'center', fontWeight: 'bold', outline: 'none' }} />
+          </div>
+
+          <button onClick={handlePrint} disabled={loading}
+            style={{ background: loading ? '#94a3b8' : '#7c3aed', color: 'white', padding: '15px 40px', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: loading ? 'not-allowed' : 'pointer', width: '100%' }}>
+            {loading ? '⏳ 生成中...' : '🖨️ 即時打印'}
+          </button>
+
+          <div style={{ marginTop: '20px', padding: '15px', background: '#f8fafc', borderRadius: '10px', fontSize: '13px', color: '#64748b' }}>
+            {mode === 'repack' ? (
+              <>ℹ️ <strong>Repack label</strong>:70mm × 50mm,自動生成 Code128 條碼圖 + 條碼數字 + 商品名。</>
+            ) : (
+              <>ℹ️ <strong>純 Barcode label</strong>:70mm × 50mm,大尺寸條碼圖 + 條碼數字(18pt),冇商品名,適合純標識用。</>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   return (
     <Router>
@@ -1372,14 +1198,14 @@ function App() {
         <Sidebar />
         <div className="main-content">
           <Routes>
-            <Route path="/" element={<HomePage />} /> 
+            <Route path="/" element={<HomePage />} />
             <Route path="/search" element={<UnifiedSearchInventoryPage />} />
-            <Route path="/yummy" element={<YummyPage />} />
-            <Route path="/anymall" element={<AnymallPage />} />
-            <Route path="/hellobear" element={<HelloBearPage />} />
-            <Route path="/homey" element={<HomeyPage />} />
-            <Route path="/label" element={<FoodLabelPage />} />
-            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/yummy" element={<ThreePLPage key="yummy" config={THREE_PL_CONFIGS.yummy} />} />
+            <Route path="/anymall" element={<ThreePLPage key="anymall" config={THREE_PL_CONFIGS.anymall} />} />
+            <Route path="/hellobear" element={<ThreePLPage key="hellobear" config={THREE_PL_CONFIGS.hellobear} />} />
+            <Route path="/homey" element={<ThreePLPage key="homey" config={THREE_PL_CONFIGS.homey} />} />
+            <Route path="/label-search" element={<LabelSearchPage />} />
+            <Route path="/label-repack" element={<LabelRepackPage />} />
             <Route path="/inspection" element={<InspectionHub />} />
             <Route path="/inspection/anymall" element={<InspectionZone zoneName="Anymall" />} />
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />

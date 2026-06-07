@@ -4,39 +4,13 @@ import re
 import io
 import os
 import asyncio
-import barcode
-from barcode.writer import ImageWriter
 import uuid
 import gc
-
-try:
-    from services.stats_api import log_action
-except ImportError:
-    def log_action(name): pass
+from services.pdf_core import delete_file_later, generate_barcode_b64
 
 router = APIRouter()
 PDF_OUT_DIR = "generated_pdfs"
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
-
-# 🌟 20分鐘後自動毀滅任務
-async def delete_file_later(file_path: str):
-    await asyncio.sleep(300)  # 1200秒 = 20分鐘
-    if os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except:
-            pass
-    gc.collect() # 刪除後順手清理記憶體
-
-def generate_barcode_b64(data: str):
-    try:
-        Code128 = barcode.get_barcode_class('code128')
-        rv = io.BytesIO()
-        Code128(data, writer=ImageWriter()).write(rv, options={"write_text": False, "module_height": 10.0, "quiet_zone": 1.0})
-        import base64
-        b64 = base64.b64encode(rv.getvalue()).decode("utf-8")
-        return f"data:image/png;base64,{b64}"
-    except: return ""
 
 def create_anymall_label_html(barcode_val, qty):
     barcode_img_src = generate_barcode_b64(barcode_val)
@@ -117,7 +91,6 @@ async def upload_anymall_pdf(background_tasks: BackgroundTasks, file: UploadFile
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
-        log_action("Anymall_Upload")
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},

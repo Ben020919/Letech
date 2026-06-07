@@ -28,6 +28,7 @@ backend/generated_pdfs/
 *.xlsx
 *.csv
 *.pdf
+*.numbers
 
 # === 5. 系統與編輯器設定 ===
 .DS_Store

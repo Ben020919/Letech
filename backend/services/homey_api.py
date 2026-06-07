@@ -8,32 +8,19 @@ import asyncio
 import base64
 import uuid
 import gc
-import barcode
-from barcode.writer import ImageWriter
 # 🌟 統一借大腦，不自己建立 cache
-from services.master_api import load_master_db
-
-try:
-    from services.stats_api import log_action
-except ImportError:
-    def log_action(name): pass
+from services.master_api import load_master_db, find_by_product_no, find_by_barcode
+from services.pdf_core import delete_file_later, generate_barcode_b64
 
 router = APIRouter()
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
 # 🌟 修改預設字體為 msyh.ttf
 DEFAULT_FONT_PATH = os.path.join(DATA_DIR, "font1.ttf")
+SERIF_FONT_PATH = os.path.join(DATA_DIR, "syst.ttf")  # 思源宋體 CN (Source Han Serif), 開源 SIL OFL
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
-
-# 🌟 20分鐘後自動毀滅任務
-async def delete_file_later(file_path: str):
-    await asyncio.sleep(300)
-    if os.path.exists(file_path):
-        try: os.remove(file_path)
-        except: pass
-    gc.collect()
 
 def clean_val(val):
     if pd.isna(val) or str(val).lower() == 'nan': return ""
@@ -44,23 +31,49 @@ def get_nutri_val(data, key):
     if pd.isna(val) or str(val).lower() == 'nan': return "0"
     return str(val).strip()
 
-def font_to_base64_css(font_path):
-    if not os.path.exists(font_path): return ""
-    try:
-        with open(font_path, "rb") as f:
-            b64_str = base64.b64encode(f.read()).decode('utf-8')
-        # 🌟 加上微軟雅黑與蘋方作為 Fallback 字型，並取消了粗體設定 (改為 normal)
-        return f"@font-face {{ font-family: 'CustomLabelFont'; src: url(data:font/ttf;base64,{b64_str}) format('truetype'); font-weight: normal; font-style: normal; }} body, .label-container, .label-box, div, span {{ font-family: 'CustomLabelFont', 'Microsoft YaHei', 'PingFang SC', 'Heiti SC', Helvetica, Arial, sans-serif !important; }}"
-    except: return ""
-
-def generate_barcode_b64(data: str):
-    try:
-        Code128 = barcode.get_barcode_class('code128')
-        rv = io.BytesIO()
-        Code128(data, writer=ImageWriter()).write(rv, options={"write_text": False, "module_height": 10.0, "quiet_zone": 1.0})
-        b64 = base64.b64encode(rv.getvalue()).decode("utf-8")
-        return f"data:image/png;base64,{b64}"
-    except: return ""
+def font_to_base64_css(font_path, serif_path=None):
+    # ⚠️ 預設 serif_path=None — 唔再 default embed syst.ttf。
+    # 加 14MB 字體會令 response 大爆,browser 易 OOM。如要用思源宋體,
+    # 主動呼叫 font_to_base64_css(font, SERIF_FONT_PATH) 開返。
+    """嵌入主字體 (Microsoft YaHei → CustomLabelFont) 與可選的中文 serif
+    (Source Han Serif CN → CustomLabelSerif)。任何元素加上 class="serif"
+    即會用思源宋體;其餘維持原本 sans 樣式。"""
+    blocks = []
+    if os.path.exists(font_path):
+        try:
+            with open(font_path, "rb") as f:
+                b64_str = base64.b64encode(f.read()).decode('utf-8')
+            blocks.append(
+                f"@font-face {{ font-family: 'CustomLabelFont'; "
+                f"src: url(data:font/ttf;base64,{b64_str}) format('truetype'); "
+                f"font-weight: normal; font-style: normal; }}"
+            )
+        except Exception:
+            pass
+    if serif_path and os.path.exists(serif_path):
+        try:
+            with open(serif_path, "rb") as f:
+                s64 = base64.b64encode(f.read()).decode('utf-8')
+            blocks.append(
+                f"@font-face {{ font-family: 'CustomLabelSerif'; "
+                f"src: url(data:font/ttf;base64,{s64}) format('truetype'); "
+                f"font-weight: normal; font-style: normal; }}"
+            )
+        except Exception:
+            pass
+    if not blocks:
+        return ""
+    blocks.append(
+        "body, .label-container, .label-box, div, span { "
+        "font-family: 'CustomLabelFont', 'Microsoft YaHei', 'PingFang SC', "
+        "'Heiti SC', Helvetica, Arial, sans-serif !important; }"
+    )
+    blocks.append(
+        ".serif, .label-container .serif, .label-box .serif { "
+        "font-family: 'CustomLabelSerif', 'Source Han Serif SC', "
+        "'Songti SC', SimSun, serif !important; }"
+    )
+    return "".join(blocks)
 
 # ================= 新增：日期格式化函數 =================
 def format_expiry_date(expiry_value):
@@ -123,12 +136,17 @@ def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
         }}
         
         .name-text {{
-            font-size: 10pt; 
-            margin-top: 6px; 
-            width: 95%; 
-            word-wrap: break-word; 
-            line-height: 1.2; 
+            font-size: 10pt;
+            margin-top: 6px;
+            width: 95%;
+            word-wrap: break-word;
+            line-height: 1.2;
             color: black;
+        }}
+
+        /* 強制全域粗體 */
+        .label-container, .label-container * {{
+            font-weight: 900 !important;
         }}
     </style></head><body>
         <div class="label-container">
@@ -145,6 +163,71 @@ def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
         full_body = div_content * qty
         return single_label_html.replace(div_content, full_body)
     return single_label_html
+
+def create_barcode_only_label_html(barcode_val, qty, font_css=""):
+    """🚀 純 barcode label:只有條碼圖 + 條碼數字,冇商品名。
+    一律 70mm × 50mm — barcode 圖 28mm 高、文字 18pt。
+    """
+    barcode_img_src = generate_barcode_b64(barcode_val)
+    single_label_html = f"""
+    <html><head><style>
+        {font_css}
+        @page {{ size: 70mm 50mm; margin: 0; }}
+
+        body {{
+            margin: 0;
+            padding: 0;
+            background-color: white;
+        }}
+
+        .label-container {{
+            width: 70mm;
+            height: 50mm;
+            box-sizing: border-box;
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 4mm;
+            overflow: hidden;
+            text-align: center;
+        }}
+
+        .barcode-img {{
+            height: 28mm;
+            width: 92%;
+            object-fit: contain;
+        }}
+
+        .barcode-text {{
+            font-family: monospace;
+            font-size: 18pt;
+            margin-top: 4mm;
+            letter-spacing: 1.5px;
+            color: black;
+            font-weight: bold;
+        }}
+
+        /* 強制全域粗體 */
+        .label-container, .label-container * {{
+            font-weight: 900 !important;
+        }}
+    </style></head><body>
+        <div class="label-container">
+            <img class="barcode-img" src="{barcode_img_src}">
+            <div class="barcode-text">{barcode_val}</div>
+        </div>
+    </body></html>
+    """
+    import re as regex
+    match = regex.search(r'<body>(.*?)</body>', single_label_html, regex.DOTALL)
+    if match:
+        div_content = match.group(1)
+        full_body = div_content * qty
+        return single_label_html.replace(div_content, full_body)
+    return single_label_html
+
 
 def create_insects_label_html(matched_data, qty, font_css=""):
     data = matched_data if matched_data else {}
@@ -170,24 +253,57 @@ def create_insects_label_html(matched_data, qty, font_css=""):
         }}
         
         .label-box {{
-            width: 70mm; 
-            height: 50mm; 
-            box-sizing: border-box; 
-            padding: 3mm 4mm; 
-            overflow: hidden; 
-            background-color: white; 
-            color: black; 
-            font-size: 3.5pt; 
-            line-height: 1.1; 
+            width: 70mm;
+            height: 50mm;
+            box-sizing: border-box;
+            padding: 3mm 4mm;
+            overflow: hidden;
+            background-color: white;
+            color: black;
+            font-size: 3.5pt;
+            line-height: 1.1;
+            font-weight: bold;
             page-break-after: always;
         }}
-        
+
         .insect-row {{
-            margin-bottom: 6pt; 
-            word-wrap: break-word; 
+            margin-bottom: 6pt;
+            word-wrap: break-word;
             min-height: 6pt;
+            font-weight: bold;
         }}
-    </style></head><body>
+
+        /* 強制全域粗體 */
+        .label-box, .label-box * {{
+            font-weight: 900 !important;
+        }}
+    </style>
+    <script>
+    /* 🚀 Shrink-to-fit:label-box overflow 自動縮細字 */
+    (function() {{
+      function fitText(el, minPx) {{
+        if (!el) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        if (!size) return;
+        var min = minPx || 3;
+        var iters = 0;
+        while (el.scrollHeight > el.clientHeight && size > min && iters < 50) {{
+          size -= 0.3;
+          el.style.fontSize = size + 'px';
+          iters++;
+        }}
+      }}
+      function fitAll() {{
+        document.querySelectorAll('.label-box').forEach(function(el) {{ fitText(el, 3); }});
+      }}
+      if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', fitAll);
+      }} else {{
+        fitAll();
+      }}
+    }})();
+    </script>
+    </head><body>
         <div class="label-box">
             <div class="insect-row">
                 <div>{barcode}</div>
@@ -241,7 +357,7 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
     single_label_html = f"""
     <html><head><style>
         {font_css}
-        @page {{ size: auto; margin: 0mm; }}
+        @page {{ size: 70mm 50mm; margin: 0; }} /* 🎨 強制 page 大細 = label 大細,唔再出現白色外圍 */
         
         body {{ 
             margin: 0; 
@@ -249,111 +365,178 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             font-family: Helvetica, Arial, sans-serif; 
         }}
         
-        .label-container {{ 
-            width: 70mm; 
-            height: 50mm; 
-            position: relative; 
-            box-sizing: border-box; 
-            border: 1px solid #ddd; 
-            page-break-after: always; 
-            overflow: hidden; 
+        .label-container {{
+            width: 70mm;
+            height: 50mm;
+            position: relative;
+            box-sizing: border-box;
+            /* 🎨 跟足 label.py:冇外框,只有 3 條內部分隔線 */
+            page-break-after: always;
+            overflow: hidden;
+            font-weight: bold;
         }}
-        
-        .barcode-text {{ 
-            position: absolute; 
-            left: 2mm; 
-            top: 2mm; 
-            font-size: 5pt; 
+
+        /* === TOP 0-7mm (跟 label.py:middle_top_y=mm(43) → 50-43=7mm) === */
+        .barcode-text {{
+            position: absolute;
+            left: 2mm;
+            top: 1mm; /* label.py: y=48 → 50-48=2mm baseline, top~1mm */
+            font-size: 4.5pt;
+            font-weight: bold;
         }}
-        
-        .desc-text {{ 
-            position: absolute; 
-            left: 2mm; 
-            top: 4.5mm; 
-            width: 59mm; 
-            font-size: 5pt; 
-            line-height: 1.2; 
+
+        .desc-text {{
+            position: absolute;
+            left: 2mm;
+            top: 3mm; /* label.py: y=45 → 50-45=5mm baseline, top~3mm */
+            width: 65mm;
+            max-height: 4mm;
+            overflow: hidden;
+            font-size: 4.5pt;
+            line-height: 1.15;
+            font-weight: bold;
         }}
-        
-        .line1 {{ 
-            position: absolute; 
-            left: 0; 
-            top: 9mm; 
-            width: 70mm; 
-            border-top: 1.42pt solid black; 
+
+        .line1 {{
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 7mm; /* label.py: middle_top_y = mm(43) → 50-43=7mm */
+            border-top: 1.5pt solid black;
         }}
-        
-        .nutri-box {{   
-            position: absolute; 
-            left: 2mm; 
-            top: 10mm; 
-            width: 23mm; 
-            font-size: 4.5pt; /* 统一改字体大小 */
-            line-height: 1.25; /* 统一改行距 */
+
+        /* === MIDDLE 7-41mm (34mm,跟足 label.py:middle_height=43-8.8) === */
+        .nutri-box {{
+            position: absolute;
+            left: 2mm;
+            top: 8.5mm; /* 🎨 line1 下面留 1.5mm 透氣位,標題唔再貼住線 */
+            width: 21mm; /* 🎨 vline 喺 24.5,留 1.5mm padding 唔貼住豎線 */
+            max-height: 31mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.3;
+            font-weight: bold;
         }}
-        
-        .nutri-title {{ 
-            margin-bottom: 1px; 
+
+        .nutri-title {{
+            font-weight: bold;
+            margin-bottom: 1mm;
         }}
-        
-        .nutri-row {{ 
-            display: flex; 
-            justify-content: space-between; 
+
+        .nutri-row {{
+            display: flex;
+            justify-content: space-between;
         }}
-        
-        .indent {{ 
-            padding-left: 3px; 
+
+        .indent {{
+            padding-left: 2mm;
         }}
-        
-        .vline {{ 
-            position: absolute; 
-            left: 26mm; 
-            top: 9mm; 
-            height: 29mm; 
-            border-left: 1.42pt solid black; 
+
+        .vline {{
+            position: absolute;
+            left: 24.5mm; /* label.py: c.line(mm(24.5), ...) */
+            top: 7mm;
+            height: 34mm;
+            border-left: 1.5pt solid black;
         }}
-        
-        .line2 {{ 
-            position: absolute; 
-            left: 0; 
-            top: 38mm; 
-            width: 70mm; 
-            border-top: 1.42pt solid black; 
+
+        .line2 {{
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 41mm; /* label.py: middle_bottom_y = mm(7+1.8)=8.8 → 50-8.8≈41mm */
+            border-top: 1.5pt solid black;
         }}
-        
-        .mfr-box {{ 
-            position: absolute; 
-            left: 2mm; 
-            top: 40mm; 
-            width: 35mm; 
-            font-size: 4.76pt; 
-            line-height: 1.2; 
+
+        /* === BOTTOM 41-50mm (9mm) === */
+        .mfr-box {{
+            position: absolute;
+            left: 2mm;
+            top: 42.5mm; /* 🎨 line2 下面留 1.5mm 透氣位 */
+            width: 44mm;
+            max-height: 7.5mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.3;
+            font-weight: bold;
         }}
-        
-        .bb-box {{ 
-            position: absolute; 
-            left: 47mm; 
-            top: 40mm; 
-            width: 27mm; 
-            font-size: 4.2pt; 
-            line-height: 1.2; 
-            white-space: nowrap; 
+
+        .bb-box {{
+            position: absolute;
+            left: 48mm;
+            top: 42.5mm; /* 🎨 line2 下面留 1.5mm 透氣位 */
+            width: 20mm;
+            max-height: 7.5mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.5;
+            font-weight: bold;
+            white-space: nowrap;
         }}
-        
-        .ing-box {{ 
-            position: absolute; 
-            left: 27mm; 
-            top: 10mm; 
-            width: 41mm; 
-            height: 28mm; 
-            font-size: 3.5pt; 
-            line-height: 1.1; 
-            overflow: hidden; 
-            text-align: left; /* 🌟 1. 改成靠左對齊，避免單字被亂拉長 */
-            letter-spacing: 0.2pt; /* 🌟 2. 調整字母與字母之間的距離 (可調 0.1pt ~ 0.5pt) */
-            word-spacing: 0.5pt;   /* 🌟 3. (可選) 調整英文單字與單字之間的距離 */
+
+        .ing-box {{
+            position: absolute;
+            left: 26.5mm; /* 🎨 vline 喺 24.5mm,留 2mm padding 唔貼住豎線 */
+            top: 8.5mm; /* 🎨 line1 下面留 1.5mm 透氣位 */
+            width: 41mm;
+            height: 31mm;
+            font-size: 4pt;
+            line-height: 1.2;
+            overflow: hidden;
+            text-align: left;
+            font-weight: bold;
+            letter-spacing: 0.2pt;
+            word-spacing: 0.5pt;
         }}
-    </style></head><body>
+
+        /* 強制全域粗體 */
+        .label-container, .label-container * {{
+            font-weight: 900 !important;
+        }}
+    </style>
+    <script>
+    /* 🚀 Shrink-to-fit:每個容器內容若 overflow,自動縮細字直至塞得入 */
+    (function() {{
+      function fitText(el, minPx) {{
+        if (!el) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        if (!size) return;
+        var min = minPx || 4;
+        var iters = 0;
+        while (el.scrollHeight > el.clientHeight && size > min && iters < 50) {{
+          size -= 0.3;
+          el.style.fontSize = size + 'px';
+          iters++;
+        }}
+      }}
+      function fitTextWH(el, minPx) {{
+        /* 同時檢查橫向 + 縱向 overflow,適合 bb-box 嗰類 white-space: nowrap 元素 */
+        if (!el) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        if (!size) return;
+        var min = minPx || 3;
+        var iters = 0;
+        while ((el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) && size > min && iters < 50) {{
+          size -= 0.3;
+          el.style.fontSize = size + 'px';
+          iters++;
+        }}
+      }}
+      function fitAll() {{
+        document.querySelectorAll('.desc-text').forEach(function(el) {{ fitText(el, 4); }});
+        document.querySelectorAll('.nutri-box').forEach(function(el) {{ fitText(el, 4); }});
+        document.querySelectorAll('.ing-box').forEach(function(el) {{ fitText(el, 3); }});
+        document.querySelectorAll('.mfr-box').forEach(function(el) {{ fitText(el, 3.5); }});
+        document.querySelectorAll('.bb-box').forEach(function(el) {{ fitTextWH(el, 3); }});
+      }}
+      if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', fitAll);
+      }} else {{
+        fitAll();
+      }}
+    }})();
+    </script>
+    </head><body>
         <div class="label-container">
             <div class="barcode-text">{b_text}</div>
             <div class="desc-text">{desc_text}</div>
@@ -463,17 +646,11 @@ def process_homey_pdf(file_bytes):
         excel_label = ""
         matched_data = {}
         if df_master is not None and not df_master.empty:
-            match_col = 'Product_No' if 'Product_No' in df_master.columns else 'ProductCode'
-            if match_col not in df_master.columns and 'Product No' in df_master.columns: match_col = 'Product No'
-                
-            matches = pd.DataFrame()
-            if match_col in df_master.columns:
-                matches = df_master[df_master[match_col].astype(str).str.strip() == p_no]
-            
-            # 🌟 新增：如果 Product_No 找不到，嘗試用 Barcode 找，確保能對接上 Excel 資料
+            # 🚀 O(1) hash-map 查表(原本係 O(N) 每次掃晒成個 DataFrame)
+            matches = find_by_product_no(p_no)
+            # 🌟 如果 Product_No 找不到，嘗試用 Barcode 找
             if matches.empty and barcode_val and barcode_val != "(N/A)":
-                if 'Barcode' in df_master.columns:
-                    matches = df_master[df_master['Barcode'].astype(str).str.strip() == barcode_val]
+                matches = find_by_barcode(barcode_val)
 
             if not matches.empty:
                 matched_data = matches.iloc[0].fillna("").to_dict()
@@ -501,16 +678,19 @@ def process_homey_pdf(file_bytes):
         final_html = ""
         needs_print = False
         
+        # 🚀 用 placeholder 取代 inline embed,response 由 ~2GB 縮到 ~19MB
+        # frontend handlePrint 會用 resultData.font_css 喺 print 嗰刻先 replace
+        FONT_PLACEHOLDER = "/* FONT_CSS_PLACEHOLDER */"
         if final_label == "Food Label":
             needs_print = True
-            final_html = create_food_label_html(p_name, barcode_val, matched_data, qty, font_css)
-        elif final_label == "蟲蟲Label": 
+            final_html = create_food_label_html(p_name, barcode_val, matched_data, qty, FONT_PLACEHOLDER)
+        elif final_label == "蟲蟲Label":
             needs_print = True
-            final_html = create_insects_label_html(matched_data, qty, font_css)
+            final_html = create_insects_label_html(matched_data, qty, FONT_PLACEHOLDER)
         elif final_label == "Repack Lable":
             needs_print = True
             print_barcode = p_no if not barcode_val or barcode_val == "(N/A)" else barcode_val
-            final_html = create_homey_repack_label_html(p_name, print_barcode, qty, font_css)
+            final_html = create_homey_repack_label_html(p_name, print_barcode, qty, FONT_PLACEHOLDER)
             
         data_status = 'print' if needs_print else 'no_print'
 
@@ -526,13 +706,13 @@ def process_homey_pdf(file_bytes):
     out_filename = f"homey_{uuid.uuid4().hex}.pdf"
     out_path = os.path.join(PDF_OUT_DIR, out_filename)
     with open(out_path, "wb") as f: writer.write(f)
-    return temp_items, product_no_tracker, out_filename
+    return temp_items, product_no_tracker, out_filename, font_css
 
 @router.post("/upload")
 async def upload_homey_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     try:
         file_bytes = await file.read()
-        items, tracker, out_filename = await asyncio.to_thread(process_homey_pdf, file_bytes)
+        items, tracker, out_filename, font_css = await asyncio.to_thread(process_homey_pdf, file_bytes)
         
         # 🌟 釋放記憶體
         del file_bytes
@@ -543,12 +723,10 @@ async def upload_homey_pdf(background_tasks: BackgroundTasks, file: UploadFile =
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
-        log_action("Homey_Upload")
-        
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
-            "download_url": f"/generated_pdfs/{out_filename}", "font_css": ""
+            "download_url": f"/generated_pdfs/{out_filename}", "font_css": font_css
         }
     except Exception as e: 
         gc.collect()
