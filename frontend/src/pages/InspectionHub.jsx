@@ -31,6 +31,18 @@ function timeAgo(iso) {
     return `${d} 日前`;
 }
 
+// 🗓 將 ISO 轉成「2025/06/01 週一」
+const WEEK_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+function formatDateWithDay(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}/${mm}/${dd} 週${WEEK_LABELS[d.getDay()]}`;
+}
+
 export default function InspectionHub() {
     const navigate = useNavigate();
     const [summary, setSummary] = useState(null);
@@ -325,21 +337,19 @@ export default function InspectionHub() {
                             return (
                                 <div
                                     key={key}
-                                    onClick={() => {
-                                        if (manageMode) toggleSelect(key);
-                                        // 🌟 帶住 task_code 過去,等 InspectionZone 唔會 fallback 去 localStorage 嗰個舊嘅
-                                        else navigate(`/inspection/${t.zoneId}?task=${t.task_code}`);
-                                    }}
+                                    onClick={manageMode ? (() => toggleSelect(key)) : undefined}
                                     style={{
                                         border: checked ? '2px solid #dc2626' : '1px solid #e2e8f0',
                                         borderRadius: '12px',
-                                        padding: '14px 16px', cursor: 'pointer',
+                                        padding: '14px 16px',
+                                        // 🔒 Normal mode = 純資訊唔畀撳;管理模式先變 pointer
+                                        cursor: manageMode ? 'pointer' : 'default',
                                         background: checked ? '#fef2f2' : (t.is_completed ? '#f0fdf4' : 'white'),
                                         transition: 'transform 0.1s, box-shadow 0.2s, border 0.15s',
                                         position: 'relative',
                                     }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                                    onMouseEnter={(e) => { if (manageMode) { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}}
+                                    onMouseLeave={(e) => { if (manageMode) { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; }}}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -378,11 +388,13 @@ export default function InspectionHub() {
                                         <span><strong style={{ color: '#0f172a' }}>{t.total_scanned}</strong> / {t.total_target} 件 ({pct}%)</span>
                                         <span>{t.items_count} SKU</span>
                                     </div>
-                                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }} title={t.filename}>
+                                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }} title={t.filename}>
                                             📄 {t.filename || '(未命名)'}
                                         </span>
-                                        <span>🕒 {timeAgo(t.created_at)}</span>
+                                        <span style={{ whiteSpace: 'nowrap', fontWeight: t.created_at ? 'bold' : 'normal', color: t.created_at ? '#475569' : '#cbd5e1' }}>
+                                            📅 {formatDateWithDay(t.created_at) || '—'}
+                                        </span>
                                     </div>
                                 </div>
                             );

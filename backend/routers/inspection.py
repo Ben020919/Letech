@@ -172,7 +172,12 @@ async def upload_inspection_pdf(zone: str, file: UploadFile = File(...)):
         items_list = list(items_dict.values())
         
         # 寫入資料庫 (改用 insert 以支援同一區域有多個任務)
-        supabase.table("inspection_tasks").insert({"zone": task_zone_key, "filename": file.filename}).execute()
+        # 🌟 寫埋 created_at,確保 dashboard 知道任務上傳日期(冇 column 嘅話 Supabase 會 ignore)
+        supabase.table("inspection_tasks").insert({
+            "zone": task_zone_key,
+            "filename": file.filename,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
         
         if items_list:
             supabase.table("inspection_items").insert(items_list).execute()
