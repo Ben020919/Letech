@@ -7,9 +7,21 @@ import InspectionHistory from './pages/InspectionHistory';
 import './App.css';
 
 // 🌟 自動切換測試與正式環境的 API 網址 (本地跑 npm run dev 時會是 127.0.0.1，上線時會是 render)
-const API_BASE_URL = import.meta.env.DEV 
-  ? "http://127.0.0.1:8000" 
+const API_BASE_URL = import.meta.env.DEV
+  ? "http://127.0.0.1:8000"
   : "https://letech-pro.onrender.com";
+
+// 🔒 共用 hook — 偵測係咪手機(< 640px)。用嚟收埋管理員/admin 用嘅 controls,
+// 防止用手機嘅員工誤撳資料庫上傳、刪除任務之類嘅嘢。
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < breakpoint);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 // 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
@@ -58,6 +70,7 @@ function Sidebar() {
 
 // ================= 分離式設計：條碼搜尋 + DEAR 庫存查詢 =================
 function UnifiedSearchInventoryPage() {
+  const isMobile = useIsMobile();
   // --- 搜尋系統 State ---
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -250,12 +263,14 @@ function UnifiedSearchInventoryPage() {
               )}
           </div>
 
-          {/* 右側：插入資料庫上傳面板 */}
-          <DatabaseUploader 
-              title="⚙️ 搜尋專用資料庫"
-              infoUrl={`${API_BASE_URL}/api/search/info`}
-              uploadUrl={`${API_BASE_URL}/api/search/upload`}
-          />
+          {/* 右側：插入資料庫上傳面板 — 🔒 手機隱藏防誤撳 */}
+          {!isMobile && (
+            <DatabaseUploader
+                title="⚙️ 搜尋專用資料庫"
+                infoUrl={`${API_BASE_URL}/api/search/info`}
+                uploadUrl={`${API_BASE_URL}/api/search/upload`}
+            />
+          )}
         </div>
 
         {/* 下層：DEAR 庫存專區 */}
@@ -491,6 +506,7 @@ const THREE_PL_CONFIGS = {
 const ZONE_RESULT_CACHE = {};
 
 function ThreePLPage({ config }) {
+  const isMobile = useIsMobile();
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -592,7 +608,8 @@ function ThreePLPage({ config }) {
           </button>
           {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
         </div>
-        {config.uploader && (
+        {/* 🔒 手機隱藏防止員工誤撳上傳資料庫 */}
+        {!isMobile && config.uploader && (
           <DatabaseUploader title={config.uploader.title} infoUrl={`${API_BASE_URL}/api/master/info`} uploadUrl={`${API_BASE_URL}/api/master/upload`} />
         )}
       </div>
