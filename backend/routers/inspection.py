@@ -236,10 +236,33 @@ async def clear_task(zone: str, task_code: str):
 
 
 # ================= 5. Dashboard:所有區進行緊嘅任務 summary =================
+def _fetch_items_paginated(zone_keys, chunk_size=1000):
+    """🛡️ 避開 Supabase 預設嘅 1000 row 限制 — 分頁 fetch 直至冇新資料。"""
+    all_items = []
+    offset = 0
+    while True:
+        res = (
+            supabase.table("inspection_items")
+            .select("zone, Target_Qty, Scanned_Qty")
+            .in_("zone", zone_keys)
+            .range(offset, offset + chunk_size - 1)
+            .execute()
+        )
+        chunk = res.data or []
+        all_items.extend(chunk)
+        if len(chunk) < chunk_size:
+            break
+        offset += chunk_size
+        if offset > 200000:  # safety stop
+            break
+    return all_items
+
+
 @router.get("/active-summary")
 async def get_active_summary():
     """🚀 InspectionHub Dashboard 用 — 一次過攞所有 zone 嘅 active task 進度。
     用 select("*") 避免 column-not-exist 嘅 500 error,Python 入面再 sort。
+    Items 分頁 fetch,避免大任務(>1000 SKU)被截斷出 0/0。
     """
     tasks_res = (
         supabase.table("inspection_tasks")
@@ -252,15 +275,9 @@ async def get_active_summary():
     if not tasks_res.data:
         return {"zones": result}
 
-    # 一次過攞晒 items aggregate(只攞 active 任務嘅 zone keys 嘅 items)
     active_zone_keys = [t["zone"] for t in tasks_res.data]
-    items_res = (
-        supabase.table("inspection_items")
-        .select("zone, Target_Qty, Scanned_Qty")
-        .in_("zone", active_zone_keys)
-        .execute()
-    )
-    items_by_zone = _aggregate_items_by_zone(items_res.data or [])
+    all_items = _fetch_items_paginated(active_zone_keys)
+    items_by_zone = _aggregate_items_by_zone(all_items)
 
     # Python 入面 sort(by created_at desc,冇就用空字串)
     tasks_sorted = sorted(
@@ -288,6 +305,44 @@ async def get_active_summary():
         })
 
     return {"zones": result}
+
+
+# ================= 5b. 真‧批量刪除(徹底清除,連 items 都唔留低)=================
+class DeleteBatchReq(BaseModel):
+    task_keys: list[str]  # ["yummy_20052", "homey_42309", ...]
+
+
+@router.post("/delete-batch")
+async def delete_batch(req: DeleteBatchReq):
+    """🗑️ 同 archive 唔同 — 呢個係真‧硬刪,清晒 tasks + items table。
+    用嚟清理空任務 / 員工試嘢留低嘅垃圾 task。
+    """
+    keys = [k.strip() for k in (req.task_keys or []) if k and "_" in k]
+    if not keys:
+        return {"deleted": 0, "message": "冇任務 keys"}
+
+    # 安全檢查 — 唔畀 SQL injection 之類嘅嘢
+    for k in keys:
+        zone_name, _ = _parse_zone_key(k)
+        if zone_name not in VALID_ZONES:
+            raise HTTPException(status_code=400, detail=f"無效 zone key: {k}")
+
+    # 分批刪除(避免 .in_() 太長 URL)
+    chunk_size = 50
+    deleted_tasks = 0
+    deleted_items = 0
+    for i in range(0, len(keys), chunk_size):
+        chunk = keys[i:i + chunk_size]
+        items_del = supabase.table("inspection_items").delete().in_("zone", chunk).execute()
+        tasks_del = supabase.table("inspection_tasks").delete().in_("zone", chunk).execute()
+        deleted_items += len(items_del.data or [])
+        deleted_tasks += len(tasks_del.data or [])
+
+    return {
+        "deleted_tasks": deleted_tasks,
+        "deleted_items": deleted_items,
+        "message": f"刪除咗 {deleted_tasks} 個任務 + {deleted_items} 條 items",
+    }
 
 
 # ================= 6. History list(歷史檢測記錄)=================

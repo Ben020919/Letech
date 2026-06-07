@@ -36,6 +36,9 @@ export default function InspectionHub() {
     const [summary, setSummary] = useState(null);
     const [error, setError] = useState('');
     const [lastUpdated, setLastUpdated] = useState(null);
+    const [manageMode, setManageMode] = useState(false);
+    const [selectedKeys, setSelectedKeys] = useState(new Set()); // {"yummy_20052", ...}
+    const [deleting, setDeleting] = useState(false);
 
     // Poll active summary 每 10 秒
     useEffect(() => {
@@ -85,6 +88,56 @@ export default function InspectionHub() {
         arr.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
         return arr;
     }, [summary]);
+
+    // ── 管理模式 helpers ──
+    const toggleSelect = (key) => {
+        setSelectedKeys(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            return next;
+        });
+    };
+    const selectAll = () => setSelectedKeys(new Set(flatActive.map(t => `${t.zoneId}_${t.task_code}`)));
+    const clearSelection = () => setSelectedKeys(new Set());
+    const exitManageMode = () => { setManageMode(false); clearSelection(); };
+
+    const handleBulkDelete = async () => {
+        if (selectedKeys.size === 0) { alert('未揀任何任務'); return; }
+        const keys = Array.from(selectedKeys);
+        const ok = window.confirm(
+            `⚠️ 確定要徹底刪除 ${keys.length} 個任務嗎?\n\n` +
+            `呢個係硬刪 — 任務同所有 SKU 紀錄一齊清掉,冇得喺歷史記錄揾返!\n\n` +
+            `任務:${keys.slice(0, 5).join(', ')}${keys.length > 5 ? `…還有 ${keys.length - 5} 個` : ''}`
+        );
+        if (!ok) return;
+        setDeleting(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/inspection/delete-batch`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_keys: keys }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.detail || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            alert(`✅ ${data.message || '刪除成功'}`);
+            // 即時 refresh summary
+            setSummary(prev => {
+                if (!prev) return prev;
+                const cleaned = {};
+                for (const [zoneId, tasks] of Object.entries(prev)) {
+                    cleaned[zoneId] = tasks.filter(t => !selectedKeys.has(`${zoneId}_${t.task_code}`));
+                }
+                return cleaned;
+            });
+            clearSelection();
+        } catch (err) {
+            alert('❌ 刪除失敗:' + err.message);
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     return (
         <div style={{ padding: '40px 20px', fontFamily: 'sans-serif', maxWidth: '1100px', margin: '0 auto' }}>
@@ -150,18 +203,64 @@ export default function InspectionHub() {
                     <h2 style={{ margin: 0, fontSize: '20px', color: '#0f172a' }}>
                         📊 進行中嘅任務 {summary && <span style={{ color: '#94a3b8', fontWeight: 'normal', fontSize: '16px' }}>({flatActive.length})</span>}
                     </h2>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                        <Link to="/inspection/history" style={{
-                            background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
-                            padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
-                            fontSize: '14px', textDecoration: 'none',
-                        }}>📚 歷史檢測記錄</Link>
-                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                            {error ? `⚠️ ${error}` : (lastUpdated ? `🔄 ${timeAgo(lastUpdated.toISOString())}更新` : '⏳ 載入中...')}
-                        </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {!manageMode ? (
+                            <>
+                                <button onClick={() => setManageMode(true)} style={{
+                                    background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
+                                    padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                    fontSize: '14px', cursor: 'pointer',
+                                }}>⚙️ 管理模式</button>
+                                <Link to="/inspection/history" style={{
+                                    background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+                                    padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                    fontSize: '14px', textDecoration: 'none',
+                                }}>📚 歷史檢測記錄</Link>
+                                <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                    {error ? `⚠️ ${error}` : (lastUpdated ? `🔄 ${timeAgo(lastUpdated.toISOString())}更新` : '⏳ 載入中...')}
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                <button onClick={selectAll} style={{
+                                    background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
+                                    padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                    fontSize: '14px', cursor: 'pointer',
+                                }}>☑️ 全選</button>
+                                <button onClick={clearSelection} disabled={selectedKeys.size === 0} style={{
+                                    background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1',
+                                    padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                    fontSize: '14px', cursor: selectedKeys.size === 0 ? 'not-allowed' : 'pointer',
+                                    opacity: selectedKeys.size === 0 ? 0.5 : 1,
+                                }}>清除選擇</button>
+                                <button onClick={handleBulkDelete} disabled={selectedKeys.size === 0 || deleting} style={{
+                                    background: selectedKeys.size === 0 ? '#cbd5e1' : '#dc2626', color: 'white',
+                                    border: 'none', padding: '7px 14px', borderRadius: '8px',
+                                    fontWeight: 'bold', fontSize: '14px',
+                                    cursor: selectedKeys.size === 0 || deleting ? 'not-allowed' : 'pointer',
+                                }}>
+                                    {deleting ? '⏳ 刪除中...' : `🗑 徹底刪除 (${selectedKeys.size})`}
+                                </button>
+                                <button onClick={exitManageMode} style={{
+                                    background: 'white', color: '#475569', border: '1px solid #cbd5e1',
+                                    padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold',
+                                    fontSize: '14px', cursor: 'pointer',
+                                }}>✕ 取消管理</button>
+                            </>
+                        )}
                     </div>
                 </div>
 
+                {manageMode && (
+                    <div style={{
+                        background: '#fef3c7', border: '1px solid #fde68a',
+                        padding: '10px 14px', borderRadius: '8px', marginBottom: '15px',
+                        fontSize: '13px', color: '#92400e',
+                    }}>
+                        🛠️ <strong>管理模式</strong>:撳張 card 打勾揀,撳「🗑 徹底刪除」清走任務同所有 SKU 紀錄(<strong>呢個係硬刪,冇得返,亦唔會出現喺歷史記錄</strong>)。
+                        {selectedKeys.size > 0 && <span style={{ marginLeft: '10px', fontWeight: 'bold' }}>已揀 {selectedKeys.size} 個</span>}
+                    </div>
+                )}
                 {summary === null ? (
                     <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>載入中...</div>
                 ) : flatActive.length === 0 ? (
@@ -180,21 +279,33 @@ export default function InspectionHub() {
                             const pct = t.total_target > 0
                                 ? Math.round((t.total_scanned / t.total_target) * 100)
                                 : 0;
+                            const key = `${t.zoneId}_${t.task_code}`;
+                            const checked = selectedKeys.has(key);
+                            const isEmpty = t.items_count === 0;
                             return (
                                 <div
-                                    key={`${t.zoneId}_${t.task_code}`}
-                                    onClick={() => navigate(`/inspection/${t.zoneId}`)}
+                                    key={key}
+                                    onClick={() => {
+                                        if (manageMode) toggleSelect(key);
+                                        else navigate(`/inspection/${t.zoneId}`);
+                                    }}
                                     style={{
-                                        border: '1px solid #e2e8f0', borderRadius: '12px',
+                                        border: checked ? '2px solid #dc2626' : '1px solid #e2e8f0',
+                                        borderRadius: '12px',
                                         padding: '14px 16px', cursor: 'pointer',
-                                        background: t.is_completed ? '#f0fdf4' : 'white',
-                                        transition: 'transform 0.1s, box-shadow 0.2s',
+                                        background: checked ? '#fef2f2' : (t.is_completed ? '#f0fdf4' : 'white'),
+                                        transition: 'transform 0.1s, box-shadow 0.2s, border 0.15s',
+                                        position: 'relative',
                                     }}
                                     onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
                                     onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)'; }}
                                 >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {manageMode && (
+                                                <input type="checkbox" checked={checked} readOnly
+                                                    style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: '#dc2626' }} />
+                                            )}
                                             <span style={{
                                                 background: zone?.color || '#64748b', color: 'white',
                                                 padding: '3px 10px', borderRadius: '12px',
@@ -204,9 +315,14 @@ export default function InspectionHub() {
                                                 #{t.task_code}
                                             </span>
                                         </div>
-                                        {t.is_completed && (
-                                            <span style={{ background: '#16a34a', color: 'white', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>✅ 齊貨</span>
-                                        )}
+                                        <div style={{ display: 'flex', gap: '4px' }}>
+                                            {isEmpty && (
+                                                <span style={{ background: '#fef3c7', color: '#92400e', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>⚠️ 空</span>
+                                            )}
+                                            {t.is_completed && (
+                                                <span style={{ background: '#16a34a', color: 'white', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>✅ 齊貨</span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Progress bar */}
