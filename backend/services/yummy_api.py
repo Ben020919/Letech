@@ -416,38 +416,39 @@ def create_caution_html(text, qty):
     if not formatted or formatted == "nan": formatted = ""
     single = f"""
     <html><head><style>
+        /* FONT_CSS_PLACEHOLDER */
         @page {{ size: 70mm 50mm; margin: 0; }} /* 🎨 強制 page 大細 = label 大細,唔再出現白色外圍 */
-        
-        body {{ 
-            margin: 0; 
-            padding: 0; 
-            font-family: Helvetica, Arial, sans-serif; 
+
+        body {{
+            margin: 0;
+            padding: 0;
+            font-family: 'CustomLabelFont', 'CustomLabelSerif', Helvetica, Arial, sans-serif;
         }}
-        
-        .label-container {{ 
-            width: 70mm; 
-            height: 50mm; 
-            box-sizing: border-box; 
-            padding: 2mm; 
-            page-break-after: always; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            text-align: center; 
+
+        .label-container {{
+            width: 70mm;
+            height: 50mm;
+            box-sizing: border-box;
+            padding: 2mm;
+            page-break-after: always;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
         }}
-        
-        .caution-text {{ 
-            font-size: 15pt; 
+
+        .caution-text {{
+            font-size: 15pt;
             font-weight: 900; /* 粗體 */
             text-decoration: underline; /* 🌟 加上底線 */
-            line-height: 1.2; 
-            word-wrap: break-word; 
-            color: black; 
+            line-height: 1.2;
+            word-wrap: break-word;
+            color: black;
         }}
-        
+
         /* 強制全域粗體 */
-        .label-container, .label-container * {{ 
-            font-weight: 900 !important; 
+        .label-container, .label-container * {{
+            font-weight: 900 !important;
         }}
     </style></head><body>
         <div class="label-container"><div class="caution-text">{formatted}</div></div>
@@ -466,8 +467,10 @@ def generate_jelly_html(cautions_text, qty):
     formatted = str(cautions_text).replace('\n', '<br/>')
     if not formatted or formatted == "nan": return ""
     # 單純生成附帶 qty 數量的 DIV 片段，大小與主標籤(70mm x 50mm)一致，並設定 page-break-after 換頁
+    # 🌟 用 CustomLabelFont/Serif 嵌入字體,確保中文 render。呢個 fragment 會嵌入主標籤
+    # (food / caution)嘅 body 入面,繼承嗰邊 @font-face,但都顯式寫清楚font-family。
     single = f"""
-    <div class="jelly-label" style="width: 70mm; height: 50mm; box-sizing: border-box; padding: 2mm; page-break-after: always; display: flex; align-items: center; justify-content: center; text-align: center; font-family: Helvetica, Arial, sans-serif; background: #fff; color: #000; font-weight: 900 !important;">
+    <div class="jelly-label" style="width: 70mm; height: 50mm; box-sizing: border-box; padding: 2mm; page-break-after: always; display: flex; align-items: center; justify-content: center; text-align: center; font-family: 'CustomLabelFont', 'CustomLabelSerif', Helvetica, Arial, sans-serif; background: #fff; color: #000; font-weight: 900 !important;">
         <div style="font-size: 15pt; font-weight: 900 !important; text-decoration: underline; line-height: 1.2; word-wrap: break-word;">
             {formatted}
         </div>
