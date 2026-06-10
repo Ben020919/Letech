@@ -207,21 +207,22 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
         .barcode-text {{
             position: absolute;
             left: 2mm;
-            top: 1mm;
+            top: 0.7mm;
             font-size: 4.5pt;
-            font-weight: bold;
+            font-weight: 900;
+            line-height: 1;
         }}
 
         .desc-text {{
             position: absolute;
             left: 2mm;
-            top: 3mm;
+            top: 3.5mm; /* 🎨 留多 1mm 空間,唔再貼住 barcode */
             width: 65mm;
-            max-height: 4mm;
+            max-height: 3.3mm;
             overflow: hidden;
             font-size: 4.5pt;
             line-height: 1.15;
-            font-weight: bold;
+            font-weight: 900;
         }}
 
         .line1 {{
@@ -276,29 +277,37 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
         }}
 
         /* === BOTTOM 41-50mm === */
+        /* 🎨 兩邊都 flex column + justify-content: center —— 唔同 line 數(2 vs 3)
+           都垂直置中,視覺上對稱;唔再左短右長嗰種唔對齊感 */
         .mfr-box {{
             position: absolute;
             left: 2mm;
-            top: 42.5mm; /* 🎨 line2 下面留 1.5mm 透氣位 */
+            top: 41.5mm;
             width: 44mm;
-            max-height: 7.5mm;
+            height: 8mm; /* 由 max-height 改 height,等 flex centering 有固定高 */
             overflow: hidden;
             font-size: 4pt;
             line-height: 1.3;
-            font-weight: bold;
+            font-weight: 900;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }}
 
         .bb-box {{
             position: absolute;
             left: 48mm;
-            top: 42.5mm; /* 🎨 line2 下面留 1.5mm 透氣位 */
+            top: 41.5mm;
             width: 20mm;
-            max-height: 7.5mm;
+            height: 8mm;
             overflow: hidden;
             font-size: 4pt;
-            line-height: 1.5;
-            font-weight: bold;
+            line-height: 1.4;
+            font-weight: 900;
             white-space: nowrap;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }}
 
         .ing-box {{
@@ -316,9 +325,13 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             word-spacing: 0.5pt;
         }}
 
-        /* 強制全域粗體 */
+        /* 強制全域粗體 — 加埋 text-shadow 製造 faux-bold 視覺重量,
+           因為 syst.ttf 思源宋體本身係 regular weight,真.bold 唔存在嗰個 file 入面 */
         .label-container, .label-container * {{
             font-weight: 900 !important;
+            text-shadow: 0 0 0.08mm currentColor;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }}
     </style>
     <script>
