@@ -3,6 +3,10 @@ import os
 import pandas as pd
 from services.storage_backup import upload_to_storage, restore_one_of
 
+# 🌟 共用嘅字體 endpoint — 避免每個 upload response 都帶 39MB font_css
+# 令 Render 容易 OOM 同 timeout。Frontend fetch 一次 cache 落 memory。
+from services.homey_api import font_to_base64_css as _homey_font_css, DEFAULT_FONT_PATH as _HOMEY_FONT_PATH
+
 router = APIRouter()
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -89,6 +93,21 @@ def find_by_barcode(barcode):
     if idx is None or len(idx) == 0:
         return pd.DataFrame()
     return _db_cache.loc[idx]
+
+# 🌟 共用字體 endpoint — frontend fetch 一次 cache,所有 label print 共用
+_FONT_CSS_CACHE = None
+
+@router.get("/font-css")
+async def get_font_css():
+    """獨立 endpoint 返 base64-embed 嘅 font CSS(font1.ttf + syst.ttf 思源宋體)。
+    Frontend cache 落 memory,所有 label print 共用,避免每個 upload response
+    都帶 39MB font_css 令 Render 出現 timeout/OOM。
+    """
+    global _FONT_CSS_CACHE
+    if _FONT_CSS_CACHE is None:
+        _FONT_CSS_CACHE = _homey_font_css(_HOMEY_FONT_PATH)
+    return {"font_css": _FONT_CSS_CACHE}
+
 
 @router.get("/info")
 async def get_master_info():

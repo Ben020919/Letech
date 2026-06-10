@@ -726,10 +726,11 @@ async def upload_homey_pdf(background_tasks: BackgroundTasks, file: UploadFile =
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
+        # 🌟 font_css 改由 /api/master/font-css 獨立 endpoint 供應(避免 OOM)
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
-            "download_url": f"/generated_pdfs/{out_filename}", "font_css": font_css
+            "download_url": f"/generated_pdfs/{out_filename}",
         }
     except Exception as e: 
         gc.collect()

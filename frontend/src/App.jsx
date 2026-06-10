@@ -538,10 +538,14 @@ function ThreePLPage({ config }) {
     if (resultData && resultData.download_url) { window.open(`${API_BASE_URL}${resultData.download_url}`, '_blank'); }
   };
 
-  const handlePrint = (htmlContent) => {
+  const handlePrint = async (htmlContent) => {
     if (!htmlContent) return;
-    const finalHtml = config.useFontCss
-      ? htmlContent.replace('/* FONT_CSS_PLACEHOLDER */', (resultData && resultData.font_css) || '')
+    // 🌟 font_css 由全域 cache 取(/api/master/font-css fetch 一次共用),
+    // 唔再依賴 resultData.font_css(已唔再喺 upload response 度返)
+    const cssNeeded = htmlContent.includes('/* FONT_CSS_PLACEHOLDER */');
+    const fontCss = cssNeeded ? await fetchFontCss() : '';
+    const finalHtml = cssNeeded
+      ? htmlContent.replace('/* FONT_CSS_PLACEHOLDER */', fontCss || '')
       : htmlContent;
 
     // 🎨 用隱藏 iframe 嚟打印(類似別人公司做法),print dialog 顯示嘅 URL 會係本頁,
@@ -587,8 +591,8 @@ function ThreePLPage({ config }) {
     doc.write(finalHtml);
     doc.close();
 
-    if (config.useFontCss) {
-      // Homey:JS shrink-to-fit + font_css 替換需要時間,delay 多少少
+    if (cssNeeded) {
+      // 有 embedded font + JS shrink-to-fit,delay 100ms 等渲染完成
       setTimeout(doPrint, 100);
     } else {
       // 等 iframe load 完即時 print,有 printed flag 保護唔會 double-fire
@@ -932,9 +936,25 @@ function DatabaseUploader({ title, infoUrl, uploadUrl }) {
 }
 
 // ================= 共用打印 helper(iframe + 唔再彈 about:blank) =================
-function printHtmlInIframe(html, fontCss) {
+// 🌟 全域 font_css cache — 由 /api/master/font-css 攞一次,所有 label print 共用
+// 避免 upload response 帶 39MB 字體 base64 令 Render OOM
+let _fontCssCache = null;
+let _fontCssPromise = null;
+async function fetchFontCss() {
+  if (_fontCssCache !== null) return _fontCssCache;
+  if (_fontCssPromise) return _fontCssPromise;
+  _fontCssPromise = fetch(`${API_BASE_URL}/api/master/font-css`)
+    .then(r => r.ok ? r.json() : { font_css: '' })
+    .then(d => { _fontCssCache = d.font_css || ''; return _fontCssCache; })
+    .catch(() => { _fontCssCache = ''; return ''; });
+  return _fontCssPromise;
+}
+
+async function printHtmlInIframe(html, fontCss) {
   if (!html) return;
-  const finalHtml = html.replace('/* FONT_CSS_PLACEHOLDER */', fontCss || '');
+  // 如果 caller 冇傳 fontCss(新版 API),自動 fetch 共用 cache
+  const css = fontCss || (html.includes('/* FONT_CSS_PLACEHOLDER */') ? await fetchFontCss() : '');
+  const finalHtml = html.replace('/* FONT_CSS_PLACEHOLDER */', css || '');
   const iframe = document.createElement('iframe');
   Object.assign(iframe.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0', visibility: 'hidden' });
   document.body.appendChild(iframe);

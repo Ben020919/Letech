@@ -219,8 +219,8 @@ def smart_print(req: PrintRequest):
     else:
         raise HTTPException(status_code=404, detail="呢個產品冇可印嘅 label 資料(可能 master DB 入面冇 Label_Type 或營養資料)")
 
-    font_css = homey_font_css(HOMEY_FONT)
-    return {"html": html, "font_css": font_css, "message": msg}
+    # 🌟 font_css 改由 /api/master/font-css 獨立 endpoint
+    return {"html": html, "message": msg}
 
 
 # ────────────────────────────────────────────────────────────
@@ -253,8 +253,7 @@ def print_repack(req: RepackRequest):
         single = create_homey_repack_label_html(req.name.strip(), req.barcode.strip(), 1, FONT_PLACEHOLDER)
 
     html = _multiply_label(single, req.qty)
-    font_css = homey_font_css(HOMEY_FONT)
-    return {"html": html, "font_css": font_css}
+    return {"html": html}
 
 
 # ────────────────────────────────────────────────────────────

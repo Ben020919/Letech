@@ -553,8 +553,9 @@ def process_yummy_pdf(file_bytes):
                     
                     # 🚀 改成「先做一對(food+jelly),再 × qty」,實現交替打印
                     # 先用 qty=1 生成單份 food / caution(內部仲未做 ×qty 複製)
+                    # 🌟 傳 FONT_PLACEHOLDER 等 frontend 統一 inject 嵌入字體,中文先 render 到
                     if data_status == 'food':
-                        final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1)
+                        final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
                     elif data_status == 'caution':
                         caution_text = smart_get_caution_text(matched_data) or "Caution Column Empty"
                         final_html = create_caution_html(caution_text, 1)
@@ -615,12 +616,13 @@ async def upload_yummy_pdf(background_tasks: BackgroundTasks, file: UploadFile =
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
-        font_css = font_to_base64_css(DEFAULT_FONT_PATH)
-        
+        # 🌟 font_css 唔再喺 response 度返(39MB 太大會 Render OOM),
+        # 改由 /api/master/font-css 獨立 endpoint,frontend cache 一次共用
+
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
-            "download_url": f"/generated_pdfs/{out_filename}", "font_css": font_css
+            "download_url": f"/generated_pdfs/{out_filename}",
         }
     except Exception as e: 
         gc.collect()

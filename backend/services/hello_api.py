@@ -139,13 +139,11 @@ async def upload_hellobear_pdf(background_tasks: BackgroundTasks, file: UploadFi
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
-        # 🌟 統一 inject 一次 font_css(包含 syst.ttf 思源宋體),確保 Chinese 商品名 render
-        font_css = homey_font_css(HOMEY_FONT)
+        # 🌟 font_css 改由 /api/master/font-css 獨立 endpoint(避免 39MB × N request 嘅 OOM)
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
             "download_url": f"/generated_pdfs/{out_filename}",
-            "font_css": font_css,
         }
     except Exception as e: 
         gc.collect()
