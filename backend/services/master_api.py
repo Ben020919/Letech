@@ -1,4 +1,5 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
 import os
 import pandas as pd
 from services.storage_backup import upload_to_storage, restore_one_of
@@ -93,21 +94,61 @@ def find_by_barcode(barcode):
         return pd.DataFrame()
     return _db_cache.loc[idx]
 
-# 🌟 共用字體 endpoint — frontend fetch 一次 cache,所有 label print 共用
-_FONT_CSS_CACHE = None
+# 🌟 字體靜態檔案 endpoint —— 唔再傳 base64(會 OOM),直接畀 browser fetch + cache
+
+
+@router.get("/font/{filename}")
+async def get_font(filename: str):
+    """直接 serve font file(font1.ttf / syst.ttf)。Browser 自動 cache。"""
+    safe_names = {"font1.ttf", "syst.ttf"}
+    if filename not in safe_names:
+        raise HTTPException(status_code=404, detail="字體唔存在")
+    path = os.path.join(DATA_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"{filename} 喺 server 度揾唔到")
+    return FileResponse(
+        path,
+        media_type="font/ttf",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+# 🌟 font_css 由 url() reference 構成(細,只有幾百 bytes),
+# 唔再 base64 inline。avoid Render 60s timeout / OOM。
+# Public URL 喺 production 係 letech-pro.onrender.com,local dev fallback 到 localhost
+_FONT_PUBLIC_BASE = os.getenv("PUBLIC_API_BASE", "https://letech-pro.onrender.com")
+_FONT_CSS_CACHE: str | None = None
+
+
+def build_font_css() -> str:
+    """細嘅 font_css,只 reference url 唔 inline base64。"""
+    global _FONT_CSS_CACHE
+    if _FONT_CSS_CACHE is not None:
+        return _FONT_CSS_CACHE
+    base = _FONT_PUBLIC_BASE.rstrip("/")
+    css = (
+        f"@font-face {{ font-family: 'CustomLabelFont'; "
+        f"src: url('{base}/api/master/font/font1.ttf') format('truetype'); "
+        f"font-weight: bold; font-style: normal; font-display: block; }}"
+        f"@font-face {{ font-family: 'CustomLabelSerif'; "
+        f"src: url('{base}/api/master/font/syst.ttf') format('truetype'); "
+        f"font-weight: normal; font-style: normal; font-display: block; }}"
+        "body, .label-container, div, span { "
+        "font-family: 'CustomLabelFont', 'CustomLabelSerif', "
+        "'Microsoft YaHei', 'PingFang SC', 'Heiti SC', "
+        "Helvetica, Arial, sans-serif !important; }"
+        ".serif, .label-container .serif, .label-box .serif { "
+        "font-family: 'CustomLabelSerif', 'Source Han Serif SC', "
+        "'Songti SC', SimSun, serif !important; }"
+    )
+    _FONT_CSS_CACHE = css
+    return css
+
 
 @router.get("/font-css")
 async def get_font_css():
-    """獨立 endpoint 返 base64-embed 嘅 font CSS(font1.ttf + syst.ttf 思源宋體)。
-    Frontend cache 落 memory,所有 label print 共用,避免每個 upload response
-    都帶 39MB font_css 令 Render 出現 timeout/OOM。
-    """
-    global _FONT_CSS_CACHE
-    if _FONT_CSS_CACHE is None:
-        # Late import 避免 circular dep:homey_api → master_api → homey_api
-        from services.homey_api import font_to_base64_css, DEFAULT_FONT_PATH
-        _FONT_CSS_CACHE = font_to_base64_css(DEFAULT_FONT_PATH)
-    return {"font_css": _FONT_CSS_CACHE}
+    """細(<1KB)嘅 font CSS,reference 兩個 ttf endpoint。Frontend cache。"""
+    return {"font_css": build_font_css()}
 
 
 @router.get("/info")
