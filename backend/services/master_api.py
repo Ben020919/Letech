@@ -1,18 +1,24 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 import os
 import pandas as pd
+from services.storage_backup import upload_to_storage, restore_one_of
 
 router = APIRouter()
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# 🌟 自動尋找檔案是 csv 還是 xlsx
+# 🌟 自動尋找檔案是 csv 還是 xlsx,本地揾唔到就試 Supabase Storage restore
 def get_db_path():
     for ext in ['.csv', '.xlsx', '.xls']:
         p = os.path.join(DATA_DIR, f"data{ext}")
-        if os.path.exists(p): 
+        if os.path.exists(p):
             return p
-    return None
+    # 🌟 本地冇 → 試 Supabase Storage(Render redeploy 後第一次 access)
+    candidates = [
+        (os.path.join(DATA_DIR, f"data{ext}"), f"master/data{ext}")
+        for ext in ['.csv', '.xlsx', '.xls']
+    ]
+    return restore_one_of(candidates)
 
 # 全域變數：所有 3PL 系統共享這份記憶體！
 _db_cache = None
@@ -110,14 +116,18 @@ async def upload_master_db(file: UploadFile = File(...)):
         content = await file.read()
         with open(save_path, "wb") as f:
             f.write(content)
-            
+
+        # 🌟 鏡像備份去 Supabase Storage —— 下次 Render redeploy 後自動 restore,
+        # 唔使員工再上載一次
+        upload_to_storage(save_path, f"master/{os.path.basename(save_path)}")
+
         # 🌟 關鍵：強制清空全域記憶體 + index，讓所有系統下次讀取時都抓最新版！
         global _db_cache, _db_mtime, _product_no_index, _barcode_index
         _db_cache = None
         _db_mtime = 0
         _product_no_index = {}
         _barcode_index = {}
-            
-        return {"message": "3PL與標籤資料庫已成功更新！"}
+
+        return {"message": "3PL與標籤資料庫已成功更新！(同時備份至 Supabase Storage)"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

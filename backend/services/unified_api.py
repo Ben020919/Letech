@@ -20,9 +20,15 @@ _search_mtime = 0
 def get_search_db_path():
     for ext in ['.csv', '.xlsx', '.xls']:
         p = os.path.join(DATA_DIR, f"search_data{ext}")
-        if os.path.exists(p): 
+        if os.path.exists(p):
             return p
-    return None
+    # 🌟 本地冇 → 試由 Supabase Storage restore(Render redeploy 後自動回復)
+    from services.storage_backup import restore_one_of
+    candidates = [
+        (os.path.join(DATA_DIR, f"search_data{ext}"), f"search/search_data{ext}")
+        for ext in ['.csv', '.xlsx', '.xls']
+    ]
+    return restore_one_of(candidates)
 
 def load_search_db():
     global _search_cache, _search_mtime
@@ -56,10 +62,14 @@ async def get_search_info():
     df = load_search_db()
     if df is not None:
         display_name = os.path.basename(db_path)
+        # 🌟 試由 Supabase Storage restore 返 display name(redeploy 後失蹤嘅話)
+        if not os.path.exists(SEARCH_DB_NAME_FILE):
+            from services.storage_backup import restore_from_storage
+            restore_from_storage(SEARCH_DB_NAME_FILE, "search/search_db_name.txt")
         if os.path.exists(SEARCH_DB_NAME_FILE):
             with open(SEARCH_DB_NAME_FILE, "r", encoding="utf-8") as f:
                 display_name = f.read().strip()
-                
+
         return {"total_records": len(df), "current_db_name": display_name}
     return {"total_records": 0, "current_db_name": "檔案格式錯誤"}
 
@@ -77,15 +87,20 @@ async def upload_search_db(file: UploadFile = File(...)):
         content = await file.read()
         with open(save_path, "wb") as f:
             f.write(content)
-            
+
         with open(SEARCH_DB_NAME_FILE, "w", encoding="utf-8") as f:
             f.write(file.filename)
-            
+
+        # 🌟 鏡像備份去 Supabase Storage(+ 埋 SEARCH_DB_NAME_FILE 等個顯示名都保留)
+        from services.storage_backup import upload_to_storage
+        upload_to_storage(save_path, f"search/{os.path.basename(save_path)}")
+        upload_to_storage(SEARCH_DB_NAME_FILE, "search/search_db_name.txt")
+
         global _search_cache, _search_mtime
         _search_cache = None
         _search_mtime = 0
-            
-        return {"message": "搜尋專用資料庫已成功更新！"}
+
+        return {"message": "搜尋專用資料庫已成功更新！(同時備份至 Supabase Storage)"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
