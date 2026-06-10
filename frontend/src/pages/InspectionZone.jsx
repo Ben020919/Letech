@@ -236,10 +236,20 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         setTimeout(() => setAlertMsg(null), 2500); 
     };
 
-    const clearTask = async () => {
-        if (window.confirm("確定要結案並清除資料嗎？")) {
+    const clearTask = async (early = false) => {
+        // early=true:未齊貨提前結案,confirm 提示仲有幾多件/幾多 SKU 未掃
+        let msg = "確定要結案並歸檔嗎?(可喺歷史記錄睇返)";
+        if (early) {
+            const shortItems = items.filter(i => i.Scanned_Qty < i.Target_Qty);
+            const shortQty = shortItems.reduce((acc, i) => acc + (i.Target_Qty - i.Scanned_Qty), 0);
+            msg = `⚠️ 仲未齊貨!\n\n` +
+                  `重 ${shortItems.length} 個 SKU 短裝,合共差 ${shortQty} 件未掃。\n\n` +
+                  `確定要提前結案並歸檔嗎?\n` +
+                  `(歷史記錄會標示邊啲係短裝,你可以之後睇返)`;
+        }
+        if (window.confirm(msg)) {
             await fetch(`${API_BASE_URL}/api/inspection/clear/${apiZoneStr}/${activeTaskCode}`, { method: "POST" });
-            setActiveTaskCode(""); 
+            setActiveTaskCode("");
             setFocusedItemId(null);
             setItems([]);
         }
@@ -375,12 +385,14 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                                 </span>
                                 {isAllCompleted && <span style={{ marginLeft: '8px' }}>🎉 全部齊貨</span>}
                             </div>
-                            {isAllCompleted && (
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button onClick={exportCSV} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>📥 下載</button>
-                                    <button onClick={clearTask} style={{ background: '#16a34a', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>✅ 結案並歸檔</button>
-                                </div>
-                            )}
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                <button onClick={exportCSV} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>📥 下載</button>
+                                {isAllCompleted ? (
+                                    <button onClick={() => clearTask(false)} style={{ background: '#16a34a', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>✅ 結案並歸檔</button>
+                                ) : (
+                                    <button onClick={() => clearTask(true)} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }} title="未齊貨都可以提前結案,歷史記錄會標示短裝">⚠️ 提前結案</button>
+                                )}
+                            </div>
                         </div>
                         {/* 🌟 進度條 */}
                         <div style={{ background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden', height: '12px' }}>
