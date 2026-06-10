@@ -474,7 +474,7 @@ const THREE_PL_CONFIGS = {
     endpoint: '/api/hellobear/upload',
     accent: '#8b5cf6',
     uploader: { title: '⚙️ 3PL & 標籤主資料庫' },
-    useFontCss: false,
+    useFontCss: true,  // 🌟 Repack label 商品名要 embed 思源宋體先 render 到中文
     showDate: false,
     showLabelType: false,
     highlight: 'hellobear',

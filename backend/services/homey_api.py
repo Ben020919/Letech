@@ -31,10 +31,10 @@ def get_nutri_val(data, key):
     if pd.isna(val) or str(val).lower() == 'nan': return "0"
     return str(val).strip()
 
-def font_to_base64_css(font_path, serif_path=None):
-    # ⚠️ 預設 serif_path=None — 唔再 default embed syst.ttf。
-    # 加 14MB 字體會令 response 大爆,browser 易 OOM。如要用思源宋體,
-    # 主動呼叫 font_to_base64_css(font, SERIF_FONT_PATH) 開返。
+def font_to_base64_css(font_path, serif_path=SERIF_FONT_PATH):
+    # 🌟 預設 embed 思源宋體 syst.ttf — 之前怕 14MB × N labels 引起 OOM 所以 disable,
+    # 但 frontend 已用 FONT_PLACEHOLDER 模式,font_css 只 inject 一次,唔再 × N。
+    # 後端 / Render 嘅瀏覽器冇 system Chinese font,必須 embed 先可以 render 中文字。
     """嵌入主字體 (Microsoft YaHei → CustomLabelFont) 與可選的中文 serif
     (Source Han Serif CN → CustomLabelSerif)。任何元素加上 class="serif"
     即會用思源宋體;其餘維持原本 sans 樣式。"""

@@ -7,10 +7,18 @@ import asyncio
 import uuid
 import gc
 from services.pdf_core import delete_file_later, generate_barcode_b64
+# 🌟 用 Homey 嘅 font helper 統一 embed font1.ttf + syst.ttf,確保 Chinese 商品名 render 到
+from services.homey_api import (
+    font_to_base64_css as homey_font_css,
+    DEFAULT_FONT_PATH as HOMEY_FONT,
+)
 
 router = APIRouter()
 PDF_OUT_DIR = "generated_pdfs"
 os.makedirs(PDF_OUT_DIR, exist_ok=True)
+
+# 🌟 Hello Bear label HTML 入面用 placeholder,等 backend 統一 inject font_css 一次
+FONT_PLACEHOLDER = "/* FONT_CSS_PLACEHOLDER */"
 
 def create_hellobear_label_html(barcode_val, p_name, qty):
     barcode_img_src = generate_barcode_b64(barcode_val)
@@ -20,7 +28,7 @@ def create_hellobear_label_html(barcode_val, p_name, qty):
         <div style="font-family: monospace; font-weight: bold; font-size: 14pt; margin-top: 2px; letter-spacing: 1px; color: black;">{barcode_val}</div>
         <div style="font-size: 8pt; font-weight: bold; margin-top: 6px; width: 95%; word-wrap: break-word; line-height: 1.2; color: black;">{p_name}</div>
     </div>"""
-    return f"<html><head><style>@page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; background-color: white; }}</style></head><body>{single_label * qty}</body></html>"
+    return f"<html><head><style>{FONT_PLACEHOLDER}@page {{ size: 70mm 50mm; margin: 0; }} body {{ margin: 0; padding: 0; background-color: white; }}</style></head><body>{single_label * qty}</body></html>"
 
 def process_hellobear_pdf(file_bytes):
     pdf_file = io.BytesIO(file_bytes)
@@ -131,10 +139,13 @@ async def upload_hellobear_pdf(background_tasks: BackgroundTasks, file: UploadFi
         background_tasks.add_task(delete_file_later, out_path)
 
         duplicates = [{"Product_No": k, "Count": len(v), "Pages": ", ".join(map(str, v))} for k, v in tracker.items() if len(v) > 1]
+        # 🌟 統一 inject 一次 font_css(包含 syst.ttf 思源宋體),確保 Chinese 商品名 render
+        font_css = homey_font_css(HOMEY_FONT)
         return {
             "status": "success", "items": items, "duplicates": duplicates,
             "summary": {"total_pages": len(items), "has_duplicates": len(duplicates) > 0},
-            "download_url": f"/generated_pdfs/{out_filename}"
+            "download_url": f"/generated_pdfs/{out_filename}",
+            "font_css": font_css,
         }
     except Exception as e: 
         gc.collect()
