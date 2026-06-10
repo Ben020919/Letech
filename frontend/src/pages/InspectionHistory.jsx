@@ -273,7 +273,7 @@ export default function InspectionHistory() {
                                                             {isComplete ? (
                                                                 <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px' }}>✅ 齊</span>
                                                             ) : isShort ? (
-                                                                <span style={{ background: '#fef2f2', color: '#b91c1c', padding: '2px 10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px' }}>⚠️ 短裝</span>
+                                                                <span style={{ background: '#fef2f2', color: '#b91c1c', padding: '2px 10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px' }}>⚠️ 未執</span>
                                                             ) : (
                                                                 <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px' }}>-</span>
                                                             )}
