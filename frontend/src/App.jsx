@@ -571,10 +571,17 @@ function ThreePLPage({ config }) {
       }, 500);
     };
 
-    const doPrint = () => {
+    const doPrint = async () => {
       if (printed) return;
       printed = true;
       try {
+        // 🌟 等 iframe 入面嘅 font 真正 download 完,先 trigger print。
+        // 唔等嘅話 14MB syst.ttf 喺 Render 上要 ~10s 下載,print dialog
+        // 會等到 timeout 然後被 cleanup 砍走,用戶見唔到任何 dialog。
+        const winDoc = iframe.contentWindow?.document;
+        if (winDoc?.fonts?.ready) {
+          try { await winDoc.fonts.ready; } catch (e) {}
+        }
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
       } catch (e) { console.error(e); }
@@ -582,8 +589,8 @@ function ThreePLPage({ config }) {
       if (iframe.contentWindow) {
         iframe.contentWindow.onafterprint = cleanup;
       }
-      // safety:即使 onafterprint 唔觸發,5 秒後都會 clean(夠時間用戶睇 dialog)
-      setTimeout(cleanup, 5000);
+      // safety:30 秒安全網(夠時間 download font + 用戶睇 dialog)
+      setTimeout(cleanup, 30000);
     };
 
     const doc = iframe.contentWindow.document;
@@ -592,8 +599,8 @@ function ThreePLPage({ config }) {
     doc.close();
 
     if (cssNeeded) {
-      // 有 embedded font + JS shrink-to-fit,delay 100ms 等渲染完成
-      setTimeout(doPrint, 100);
+      // 有 embedded font,doPrint 自己會 await fonts.ready,立即觸發即可
+      doPrint();
     } else {
       // 等 iframe load 完即時 print,有 printed flag 保護唔會 double-fire
       iframe.onload = doPrint;
@@ -1230,6 +1237,19 @@ function LabelRepackPage() {
 }
 
 function App() {
+  // 🌟 App 啟動時 preload 14MB syst.ttf 同 1MB font_css —— 用戶按打印前已經喺 browser cache。
+  // 唔做嘅話第一次打印要等 Render 喺 10s download font。
+  useEffect(() => {
+    fetchFontCss();
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'font';
+    link.href = `${API_BASE_URL}/api/master/font/syst.ttf`;
+    link.type = 'font/ttf';
+    link.crossOrigin = 'anonymous';
+    document.head.appendChild(link);
+  }, []);
+
   return (
     <Router>
       <div className="app-container">
