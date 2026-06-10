@@ -23,7 +23,10 @@ build/
 .next/
 
 # === 4. 本地端產生的資料庫與測試檔案 ===
-backend/data/
+# 用 `/*` + `!*.ttf` 例外:排除 data 入面所有文件,但 ttf 字體必須 track,
+# 否則 Render 部署冇 font → label 入面嘅中文字會渲染唔到。
+backend/data/*
+!backend/data/*.ttf
 backend/generated_pdfs/
 *.xlsx
 *.csv
