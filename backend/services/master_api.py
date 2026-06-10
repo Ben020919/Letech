@@ -126,13 +126,17 @@ def build_font_css() -> str:
     if _FONT_CSS_CACHE is not None:
         return _FONT_CSS_CACHE
     base = _FONT_PUBLIC_BASE.rstrip("/")
+    # 🌟 兩個字體本身都係 Bold variant(font1.ttf = Microsoft YaHei Bold 700,
+    # syst.ttf = Source Han Serif CN Bold 700)。@font-face 聲明嘅 font-weight
+    # 必須對應實際 file weight,等 browser 唔再做 synthetic bold。
+    # 同一個 file 同時 declare normal + bold weight,確保 CSS 要乜都用呢個 file。
     css = (
         f"@font-face {{ font-family: 'CustomLabelFont'; "
         f"src: url('{base}/api/master/font/font1.ttf') format('truetype'); "
-        f"font-weight: bold; font-style: normal; font-display: block; }}"
+        f"font-weight: 100 900; font-style: normal; font-display: block; }}"
         f"@font-face {{ font-family: 'CustomLabelSerif'; "
         f"src: url('{base}/api/master/font/syst.ttf') format('truetype'); "
-        f"font-weight: normal; font-style: normal; font-display: block; }}"
+        f"font-weight: 100 900; font-style: normal; font-display: block; }}"
         "body, .label-container, div, span { "
         "font-family: 'CustomLabelFont', 'CustomLabelSerif', "
         "'Microsoft YaHei', 'PingFang SC', 'Heiti SC', "

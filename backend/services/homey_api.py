@@ -147,10 +147,9 @@ def create_homey_repack_label_html(p_name, barcode_val, qty, font_css=""):
             color: black;
         }}
 
-        /* 強制全域粗體 + faux-bold text-shadow(因為 syst.ttf 無真.bold variant) */
+        /* 強制全域粗體 — font 本身已經係 Bold variant,唔需要 faux-bold */
         .label-container, .label-container * {{
             font-weight: 900 !important;
-            text-shadow: 0 0 0.08mm currentColor;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }}
@@ -215,10 +214,9 @@ def create_barcode_only_label_html(barcode_val, qty, font_css=""):
             font-weight: bold;
         }}
 
-        /* 強制全域粗體 + faux-bold text-shadow(因為 syst.ttf 無真.bold variant) */
+        /* 強制全域粗體 — font 本身已經係 Bold variant,唔需要 faux-bold */
         .label-container, .label-container * {{
             font-weight: 900 !important;
-            text-shadow: 0 0 0.08mm currentColor;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }}
@@ -507,10 +505,9 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
             word-spacing: 0.5pt;
         }}
 
-        /* 強制全域粗體 + faux-bold text-shadow(因為 syst.ttf 無真.bold variant) */
+        /* 強制全域粗體 — font 本身已經係 Bold variant,唔需要 faux-bold */
         .label-container, .label-container * {{
             font-weight: 900 !important;
-            text-shadow: 0 0 0.08mm currentColor;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }}

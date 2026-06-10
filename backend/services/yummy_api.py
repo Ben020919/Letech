@@ -325,11 +325,10 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             word-spacing: 0.5pt;
         }}
 
-        /* 強制全域粗體 — 加埋 text-shadow 製造 faux-bold 視覺重量,
-           因為 syst.ttf 思源宋體本身係 regular weight,真.bold 唔存在嗰個 file 入面 */
+        /* 強制全域粗體 — font 本身已經係 Bold variant(YaHei 700 / SHS Bold 700),
+           唔再需要 text-shadow faux-bold,移除咗反而清晰啲 */
         .label-container, .label-container * {{
             font-weight: 900 !important;
-            text-shadow: 0 0 0.08mm currentColor;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }}
