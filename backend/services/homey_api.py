@@ -63,10 +63,13 @@ def font_to_base64_css(font_path, serif_path=None):
             pass
     if not blocks:
         return ""
+    # 🌟 CustomLabelFont (font1.ttf) 係英文 font 冇 CJK glyphs,加 CustomLabelSerif
+    # (syst.ttf,embedded 確保 print preview 都用到)做 CJK fallback。
     blocks.append(
         "body, .label-container, .label-box, div, span { "
-        "font-family: 'CustomLabelFont', 'Microsoft YaHei', 'PingFang SC', "
-        "'Heiti SC', Helvetica, Arial, sans-serif !important; }"
+        "font-family: 'CustomLabelFont', 'CustomLabelSerif', "
+        "'Microsoft YaHei', 'PingFang SC', 'Heiti SC', "
+        "Helvetica, Arial, sans-serif !important; }"
     )
     blocks.append(
         ".serif, .label-container .serif, .label-box .serif { "

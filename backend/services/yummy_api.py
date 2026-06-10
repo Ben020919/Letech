@@ -74,9 +74,14 @@ def font_to_base64_css(font_path, serif_path=None):
             pass
     if not blocks:
         return ""
+    # 🌟 font1.ttf (CustomLabelFont) 係英文 font,冇 CJK glyphs。
+    # 加 CustomLabelSerif(syst.ttf 思源宋體)同系統 CJK font 做 fallback,
+    # 否則「此日期前最佳」、「見包裝」呢類中文字會變空白。
     blocks.append(
         "body, .label-container, div, span { "
-        "font-family: 'CustomLabelFont', Helvetica, Arial, sans-serif !important; }"
+        "font-family: 'CustomLabelFont', 'CustomLabelSerif', "
+        "'Source Han Serif SC', 'Songti SC', SimSun, "
+        "Helvetica, Arial, sans-serif !important; }"
     )
     blocks.append(
         ".serif, .label-container .serif { "
