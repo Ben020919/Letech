@@ -1236,22 +1236,104 @@ function LabelRepackPage() {
   );
 }
 
-function App() {
-  // 🌟 App 啟動時 preload 14MB syst.ttf 同 1MB font_css —— 用戶按打印前已經喺 browser cache。
-  // 唔做嘅話第一次打印要等 Render 喺 10s download font。
+// 🌟 字體下載 progress hook — 用 fetch + ReadableStream 抓即時進度
+function useFontPreload() {
+  // null = 未開始 / 已 cache 唔需顯示;0–100 = 下載中;'done' = 啱啱完成準備 fade out
+  const [state, setState] = useState(null);
+
   useEffect(() => {
-    fetchFontCss();
-    const link = document.createElement('link');
-    link.rel = 'preload';
-    link.as = 'font';
-    link.href = `${API_BASE_URL}/api/master/font/syst.ttf`;
-    link.type = 'font/ttf';
-    link.crossOrigin = 'anonymous';
-    document.head.appendChild(link);
+    let cancelled = false;
+    let timer;
+
+    (async () => {
+      // 先把細嘅 font_css 拎到(<1KB)
+      fetchFontCss();
+      try {
+        const url = `${API_BASE_URL}/api/master/font/syst.ttf`;
+        // 用 force-cache 配合 cache 行為:如果 browser 已經 cache 過,fetch 即時 return
+        const t0 = performance.now();
+        const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+        if (!res.ok || !res.body) { setState(null); return; }
+
+        const total = parseInt(res.headers.get('Content-Length') || '0', 10);
+        const reader = res.body.getReader();
+        let received = 0;
+
+        // 如果 cache hit,內容會極快讀完;200ms 內讀晒就索性唔顯示 progress
+        const fastFinish = total > 0 && total < 2 * 1024 * 1024;
+        if (!fastFinish) setState(0);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || cancelled) break;
+          received += value.length;
+          if (total > 0) {
+            const pct = Math.min(99, Math.round((received / total) * 100));
+            // 過咗 200ms 仲未完先開始畫 UI(避免閃)
+            if (state === null && performance.now() - t0 > 200) setState(pct);
+            else if (state !== null) setState(pct);
+          }
+        }
+        if (cancelled) return;
+        setState('done');
+        timer = setTimeout(() => { if (!cancelled) setState(null); }, 1500);
+      } catch (e) {
+        console.error('[font preload]', e);
+        if (!cancelled) setState(null);
+      }
+    })();
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  return state;
+}
+
+function FontPreloadOverlay({ state }) {
+  if (state === null) return null;
+  const isDone = state === 'done';
+  const pct = isDone ? 100 : (state || 0);
+  return (
+    <div style={{
+      position: 'fixed', bottom: '20px', right: '20px',
+      background: 'white', border: '1px solid #e2e8f0',
+      borderRadius: '12px', padding: '12px 16px',
+      boxShadow: '0 10px 25px rgba(0,0,0,0.12)',
+      minWidth: '240px', zIndex: 9999,
+      fontFamily: 'sans-serif', fontSize: '13px',
+      animation: 'fadein 0.2s ease',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+        <span style={{ fontWeight: 'bold', color: isDone ? '#15803d' : '#0f172a' }}>
+          {isDone ? '✅ 字體已準備好' : '⏳ 載入中文字體中…'}
+        </span>
+        <span style={{ color: '#64748b', fontFamily: 'monospace', fontWeight: 'bold' }}>{pct}%</span>
+      </div>
+      <div style={{
+        height: '6px', borderRadius: '999px',
+        background: '#e2e8f0', overflow: 'hidden',
+      }}>
+        <div style={{
+          height: '100%', width: `${pct}%`,
+          background: isDone ? '#16a34a' : 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+          transition: 'width 0.2s ease',
+        }} />
+      </div>
+      {!isDone && (
+        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>
+          首次載入需要等下,之後永久 cache 唔再下載
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const fontState = useFontPreload();
   return (
     <Router>
+      <FontPreloadOverlay state={fontState} />
       <div className="app-container">
         <Sidebar />
         <div className="main-content">
