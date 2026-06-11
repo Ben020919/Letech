@@ -10,12 +10,18 @@ Supabase schema(喺 SQL Editor 跑一次):
         barcode text DEFAULT '',
         name text DEFAULT '',
         bin text NOT NULL,
+        loc_type text DEFAULT '貨架',   -- '貨架'(shelf) 或 '板位'(pallet)
         note text DEFAULT '',
         created_at timestamptz DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_bin_locations_sku ON bin_locations (lower(sku));
     CREATE INDEX IF NOT EXISTS idx_bin_locations_barcode ON bin_locations (barcode);
+
+如果之前已建表,加欄:
+    ALTER TABLE bin_locations ADD COLUMN IF NOT EXISTS loc_type text DEFAULT '貨架';
 """
+
+VALID_LOC_TYPES = ("貨架", "板位")
 import os
 from typing import List, Dict, Any
 
@@ -87,7 +93,7 @@ def search_bin(q: str, limit: int = 50):
         bins = bins_map.get(r["sku"], [])
         results.append({
             **r,
-            "bins": [{"id": b["id"], "bin": b["bin"], "note": b.get("note", "")} for b in bins],
+            "bins": [{"id": b["id"], "bin": b["bin"], "loc_type": b.get("loc_type") or "貨架", "note": b.get("note", "")} for b in bins],
         })
     return {"results": results}
 
@@ -125,7 +131,7 @@ def lookup_bin(barcode: str = "", sku: str = ""):
     else:
         query = query.eq("barcode", barcode)
     res = query.execute()
-    bins = [{"id": b["id"], "bin": b["bin"], "note": b.get("note", "")} for b in (res.data or [])]
+    bins = [{"id": b["id"], "bin": b["bin"], "loc_type": b.get("loc_type") or "貨架", "note": b.get("note", "")} for b in (res.data or [])]
 
     return {"sku": sku, "barcode": barcode, "name": name or "(無名稱)", "bins": bins}
 
@@ -138,6 +144,7 @@ class AddBinReq(BaseModel):
     barcode: str = ""
     name: str = ""
     bin: str
+    loc_type: str = "貨架"   # '貨架' 或 '板位'
     note: str = ""
 
 
@@ -145,24 +152,29 @@ class AddBinReq(BaseModel):
 def add_bin(req: AddBinReq):
     sku = req.sku.strip()
     bin_val = req.bin.strip()
+    loc_type = req.loc_type.strip() if req.loc_type.strip() in VALID_LOC_TYPES else "貨架"
     if not sku:
         raise HTTPException(status_code=400, detail="SKU 不能為空")
     if not bin_val:
-        raise HTTPException(status_code=400, detail="倉位不能為空")
+        raise HTTPException(status_code=400, detail="位置不能為空")
 
-    # 避免同一個 SKU 重複加完全一樣嘅倉位
-    existing = supabase.table("bin_locations").select("id").eq("sku", sku).eq("bin", bin_val).execute()
+    # 避免同一個 SKU + 同一類型 重複加完全一樣嘅位置
+    existing = (
+        supabase.table("bin_locations").select("id")
+        .eq("sku", sku).eq("bin", bin_val).eq("loc_type", loc_type).execute()
+    )
     if existing.data:
-        raise HTTPException(status_code=409, detail=f"SKU {sku} 已經有倉位 {bin_val}")
+        raise HTTPException(status_code=409, detail=f"SKU {sku} 嘅{loc_type}已經有 {bin_val}")
 
     supabase.table("bin_locations").insert({
         "sku": sku,
         "barcode": req.barcode.strip(),
         "name": req.name.strip(),
         "bin": bin_val,
+        "loc_type": loc_type,
         "note": req.note.strip(),
     }).execute()
-    return {"status": "success", "message": f"已加倉位 {bin_val} 俾 {sku}"}
+    return {"status": "success", "message": f"已加{loc_type} {bin_val} 俾 {sku}"}
 
 
 # ────────────────────────────────────────────────────────────

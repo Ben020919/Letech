@@ -142,7 +142,10 @@ async def search_barcode(q: str = Query(..., min_length=1)):
         bins_map = _bins_by_sku(skus)
         for r in results:
             sku = str(r.get("ProductCode", "")).strip()
-            r["Bins"] = [b.get("bin", "") for b in bins_map.get(sku, [])]
+            r["Bins"] = [
+                {"bin": b.get("bin", ""), "loc_type": b.get("loc_type") or "貨架"}
+                for b in bins_map.get(sku, [])
+            ]
     except Exception as e:
         print(f"[search] attach bins 失敗(唔影響搜尋): {e}")
         for r in results:

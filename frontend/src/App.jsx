@@ -248,15 +248,19 @@ function UnifiedSearchInventoryPage() {
                               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '13px', alignItems: 'center' }}>
                                   <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>SKU:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#3b82f6' }}>{item.ProductCode}</span></div>
                                   <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>Barcode:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#10b981' }}>{item.Barcode}</span></div>
-                                  {/* 🌟 倉位 Bin Location */}
+                                  {/* 🌟 位置 Bin Location — 分貨架/板位顏色 */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                      <span style={{ color: '#64748b' }}>📍 倉位:</span>
                                       {item.Bins && item.Bins.length > 0 ? (
-                                          item.Bins.map((b, bi) => (
-                                              <span key={bi} style={{ background: '#ecfeff', border: '1px solid #a5f3fc', color: '#0e7490', padding: '3px 9px', borderRadius: '6px', fontFamily: 'monospace', fontWeight: 'bold' }}>{b}</span>
-                                          ))
+                                          item.Bins.map((b, bi) => {
+                                              const t = LOC_TYPE_MAP[b.loc_type] || LOC_TYPE_MAP['貨架'];
+                                              return (
+                                                  <span key={bi} style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '3px 9px', borderRadius: '6px', fontFamily: 'monospace', fontWeight: 'bold' }}>
+                                                      {t.emoji} {b.bin}
+                                                  </span>
+                                              );
+                                          })
                                       ) : (
-                                          <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>未設定</span>
+                                          <span style={{ color: '#94a3b8' }}>📍 <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>未設定位置</span></span>
                                       )}
                                   </div>
                               </div>
@@ -1249,15 +1253,25 @@ function LabelRepackPage() {
 }
 
 // ================= 📍 Bin Location(倉位)管理 =================
+// 🌟 兩種位置類型嘅顯示設定
+const LOC_TYPES = [
+  { key: '貨架', emoji: '🗄', bg: '#ecfeff', border: '#a5f3fc', color: '#0e7490' },
+  { key: '板位', emoji: '🟫', bg: '#fef3c7', border: '#fde68a', color: '#92400e' },
+];
+const LOC_TYPE_MAP = Object.fromEntries(LOC_TYPES.map(t => [t.key, t]));
+
 function BinLocationPage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
-  // 每個 SKU 對應緊嘅「新增倉位」輸入框內容
-  const [binInputs, setBinInputs] = useState({});
+  // 每個 SKU 對應緊嘅「新增位置」輸入框內容 + 揀緊嘅類型
+  const [binInputs, setBinInputs] = useState({});      // { sku: "A-03-12" }
+  const [typeChoice, setTypeChoice] = useState({});    // { sku: "貨架" | "板位" }
   const searchIdRef = useRef(0);
+
+  const getType = (sku) => typeChoice[sku] || '貨架';
 
   const doSearch = async (e) => {
     if (e) e.preventDefault();
@@ -1290,20 +1304,21 @@ function BinLocationPage() {
 
   const addBin = async (item) => {
     const binVal = (binInputs[item.sku] || '').trim();
-    if (!binVal) { alert('請輸入倉位'); return; }
+    const locType = getType(item.sku);
+    if (!binVal) { alert('請輸入位置'); return; }
     try {
       const res = await fetch(`${API_BASE_URL}/api/bin/add`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku: item.sku, barcode: item.barcode, name: item.name, bin: binVal }),
+        body: JSON.stringify({ sku: item.sku, barcode: item.barcode, name: item.name, bin: binVal, loc_type: locType }),
       });
-      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '加倉位失敗'); }
+      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '加位置失敗'); }
       setBinInputs(prev => ({ ...prev, [item.sku]: '' }));
       await refreshOne(item.sku);
     } catch (err) { alert('❌ ' + err.message); }
   };
 
   const removeBin = async (sku, binId, binLabel) => {
-    if (!window.confirm(`確定刪除倉位「${binLabel}」?`)) return;
+    if (!window.confirm(`確定刪除位置「${binLabel}」?`)) return;
     try {
       const res = await fetch(`${API_BASE_URL}/api/bin/remove`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1347,29 +1362,48 @@ function BinLocationPage() {
               </div>
             </div>
 
-            {/* 倉位 chips */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
-              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold' }}>📍 倉位:</span>
-              {item.bins && item.bins.length > 0 ? item.bins.map((b) => (
-                <span key={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfeff', border: '1px solid #a5f3fc', color: '#0e7490', padding: '5px 10px', borderRadius: '8px', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                  {b.bin}
-                  <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除倉位"
-                    style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}>✕</button>
-                </span>
-              )) : (
-                <span style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic' }}>(未設定)</span>
-              )}
+            {/* 位置 chips — 分貨架 / 板位兩組顯示 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+              {LOC_TYPES.map((t) => {
+                const binsOfType = (item.bins || []).filter(b => (b.loc_type || '貨架') === t.key);
+                return (
+                  <div key={t.key} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', minWidth: '64px' }}>{t.emoji} {t.key}:</span>
+                    {binsOfType.length > 0 ? binsOfType.map((b) => (
+                      <span key={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '5px 10px', borderRadius: '8px', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                        {b.bin}
+                        <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除"
+                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}>✕</button>
+                      </span>
+                    )) : (
+                      <span style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic' }}>未設定</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            {/* 加倉位 */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {/* 加位置 — 先揀類型,再入位置碼 */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* 類型 toggle */}
+              <div style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+                {LOC_TYPES.map((t) => {
+                  const active = getType(item.sku) === t.key;
+                  return (
+                    <button key={t.key} onClick={() => setTypeChoice(prev => ({ ...prev, [item.sku]: t.key }))}
+                      style={{ background: active ? t.color : 'transparent', color: active ? 'white' : '#475569', border: 'none', padding: '8px 14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
+                      {t.emoji} {t.key}
+                    </button>
+                  );
+                })}
+              </div>
               <input type="text" value={binInputs[item.sku] || ''}
                 onChange={(e) => setBinInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBin(item); } }}
-                placeholder="新倉位,例如 A-03-12"
-                style={{ flex: '1', minWidth: '180px', padding: '10px 12px', borderRadius: '8px', border: '2px solid #cbd5e1', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+                placeholder={getType(item.sku) === '貨架' ? '貨架位,例如 A-03-12' : '板位,例如 P-05'}
+                style={{ flex: '1', minWidth: '160px', padding: '10px 12px', borderRadius: '8px', border: '2px solid #cbd5e1', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
               <button onClick={() => addBin(item)}
-                style={{ background: '#0ea5e9', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>➕ 加倉位</button>
+                style={{ background: '#0ea5e9', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>➕ 加</button>
             </div>
           </div>
         ))}
