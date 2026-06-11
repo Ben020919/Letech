@@ -112,15 +112,15 @@ async def search_barcode(q: str = Query(..., min_length=1)):
     
     query_lower = str(q).lower()
     matched_df = df[df['_combined_search_text'].str.contains(query_lower, na=False)].head(200)
-    
+
     results = []
     for _, row in matched_df.iterrows():
         product_code = row.get("ProductCode", row.get("Product_No", ""))
         barcode_val = str(row.get("Barcode", "")).strip()
         name_val = str(row.get("Name", row.get("Description", ""))).strip()
-        
+
         search_url = row.get("SearchUrl", "").strip()
-        
+
         if not search_url:
             if name_val and name_val.upper() != "NAN":
                 encoded_name = urllib.parse.quote(name_val)
@@ -134,7 +134,20 @@ async def search_barcode(q: str = Query(..., min_length=1)):
             "Name": name_val if name_val.upper() != "NAN" else "無名稱",
             "SearchUrl": search_url
         })
-            
+
+    # 🌟 一次過 attach 倉位(Bin Location)— late import 避免 circular dependency
+    try:
+        from services.bin_location_api import _bins_by_sku
+        skus = [str(r["ProductCode"]).strip() for r in results if str(r.get("ProductCode", "")).strip()]
+        bins_map = _bins_by_sku(skus)
+        for r in results:
+            sku = str(r.get("ProductCode", "")).strip()
+            r["Bins"] = [b.get("bin", "") for b in bins_map.get(sku, [])]
+    except Exception as e:
+        print(f"[search] attach bins 失敗(唔影響搜尋): {e}")
+        for r in results:
+            r.setdefault("Bins", [])
+
     return results
 
 

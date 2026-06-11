@@ -245,9 +245,20 @@ function UnifiedSearchInventoryPage() {
                       <div key={index} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '15px', gap: '15px' }}>
                           <div style={{ flex: '1', minWidth: '200px' }}>
                               <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', marginBottom: '8px', lineHeight: '1.4' }}>{item.Name}</div>
-                              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '13px' }}>
+                              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '13px', alignItems: 'center' }}>
                                   <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>SKU:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#3b82f6' }}>{item.ProductCode}</span></div>
                                   <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>Barcode:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#10b981' }}>{item.Barcode}</span></div>
+                                  {/* 🌟 倉位 Bin Location */}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                      <span style={{ color: '#64748b' }}>📍 倉位:</span>
+                                      {item.Bins && item.Bins.length > 0 ? (
+                                          item.Bins.map((b, bi) => (
+                                              <span key={bi} style={{ background: '#ecfeff', border: '1px solid #a5f3fc', color: '#0e7490', padding: '3px 9px', borderRadius: '6px', fontFamily: 'monospace', fontWeight: 'bold' }}>{b}</span>
+                                          ))
+                                      ) : (
+                                          <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>未設定</span>
+                                      )}
+                                  </div>
                               </div>
                           </div>
                           <div style={{ display: 'flex', gap: '10px', flexShrink: 0, width: '100%', justifyContent: 'flex-end', '@media (minWidth: 500px)': { width: 'auto' } }}>
