@@ -254,8 +254,8 @@ function UnifiedSearchInventoryPage() {
                                           item.Bins.map((b, bi) => {
                                               const t = LOC_TYPE_MAP[b.loc_type] || LOC_TYPE_MAP['貨架'];
                                               return (
-                                                  <span key={bi} style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '3px 9px', borderRadius: '6px', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                                                      {t.emoji} {b.bin}
+                                                  <span key={bi} style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '3px 9px', borderRadius: '6px', fontWeight: 'bold' }}>
+                                                      {t.emoji} {t.key} <span style={{ fontFamily: 'monospace' }}>{b.bin}</span>
                                                   </span>
                                               );
                                           })
