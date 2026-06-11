@@ -12,9 +12,10 @@ from services.hello_api import router as hellobear_router
 from services.homey_api import router as homey_router
 from services.master_api import router as master_router
 from services.label_tool_api import router as label_tool_router
+from services.bin_location_api import router as bin_location_router
 # 👇 這是唯一需要修改的地方！把原本的兩個 import 換成這一個
-from services.unified_api import search_router, inventory_router 
-from services.hktvmall_api import router as hktvmall_router 
+from services.unified_api import search_router, inventory_router
+from services.hktvmall_api import router as hktvmall_router
 
 app = FastAPI()
 
@@ -48,6 +49,7 @@ app.include_router(hellobear_router, prefix="/api/hellobear", tags=["HelloBear"]
 app.include_router(homey_router, prefix="/api/homey", tags=["Homey"])
 app.include_router(master_router, prefix="/api/master", tags=["MasterDB"])
 app.include_router(label_tool_router, prefix="/api/label_tool", tags=["LabelTool"])
+app.include_router(bin_location_router, prefix="/api/bin", tags=["BinLocation"])
 app.include_router(inspection.router, prefix="/api/inspection", tags=["Inspection"])
 app.include_router(inventory_router, prefix="/api/inventory", tags=["Inventory"]) 
 app.include_router(hktvmall_router, prefix="/api/hktvmall", tags=["HKTVmall"])

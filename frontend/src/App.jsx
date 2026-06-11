@@ -38,6 +38,7 @@ function Sidebar() {
     { path: '/homey', icon: '🏠', label: 'Homey 3PL' },
     { path: '/label-search', icon: '🖨️', label: '標籤搜尋打印' },
     { path: '/label-repack', icon: '✏️', label: '自助 Repack' },
+    { path: '/bin-location', icon: '📍', label: 'Bin Location 倉位' },
   ];
 
   useEffect(() => {
@@ -1236,6 +1237,136 @@ function LabelRepackPage() {
   );
 }
 
+// ================= 📍 Bin Location(倉位)管理 =================
+function BinLocationPage() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
+  // 每個 SKU 對應緊嘅「新增倉位」輸入框內容
+  const [binInputs, setBinInputs] = useState({});
+  const searchIdRef = useRef(0);
+
+  const doSearch = async (e) => {
+    if (e) e.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    const myId = ++searchIdRef.current;
+    setLoading(true); setError(''); setHasSearched(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/search?q=${encodeURIComponent(q)}`);
+      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '搜尋失敗'); }
+      const data = await res.json();
+      if (myId !== searchIdRef.current) return; // race guard
+      setResults(data.results || []);
+    } catch (err) {
+      if (myId === searchIdRef.current) { setError(err.message); setResults([]); }
+    } finally {
+      if (myId === searchIdRef.current) setLoading(false);
+    }
+  };
+
+  // 重新攞某個 SKU 嘅最新倉位(加/刪之後 refresh 嗰一行)
+  const refreshOne = async (sku) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/lookup?sku=${encodeURIComponent(sku)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setResults(prev => prev.map(r => r.sku === sku ? { ...r, bins: data.bins || [] } : r));
+    } catch (_) {}
+  };
+
+  const addBin = async (item) => {
+    const binVal = (binInputs[item.sku] || '').trim();
+    if (!binVal) { alert('請輸入倉位'); return; }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku: item.sku, barcode: item.barcode, name: item.name, bin: binVal }),
+      });
+      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '加倉位失敗'); }
+      setBinInputs(prev => ({ ...prev, [item.sku]: '' }));
+      await refreshOne(item.sku);
+    } catch (err) { alert('❌ ' + err.message); }
+  };
+
+  const removeBin = async (sku, binId, binLabel) => {
+    if (!window.confirm(`確定刪除倉位「${binLabel}」?`)) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/remove`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: binId }),
+      });
+      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
+      await refreshOne(sku);
+    } catch (err) { alert('❌ ' + err.message); }
+  };
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <h2>📍 Bin Location 倉位管理</h2>
+        <p>搜尋商品睇佢喺邊個倉位,可即時加 / 刪(一個商品可以有多個倉位,多人即時同步)</p>
+      </div>
+
+      <form onSubmit={doSearch} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px', maxWidth: '700px' }}>
+        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+          placeholder="輸入 Barcode / SKU / 中英文名稱..."
+          style={{ flex: '1', minWidth: '240px', padding: '14px 16px', fontSize: '16px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }} />
+        <button type="submit" disabled={loading}
+          style={{ background: loading ? '#94a3b8' : '#0ea5e9', color: 'white', padding: '14px 28px', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+          {loading ? '⏳ 搜尋中...' : '🔍 搜尋'}
+        </button>
+      </form>
+
+      {error && <p style={{ color: '#dc2626', fontWeight: 'bold', background: '#fef2f2', padding: '12px', borderRadius: '10px' }}>❌ {error}</p>}
+      {!loading && !error && hasSearched && results.length === 0 && (
+        <p style={{ color: '#d97706', fontWeight: 'bold', background: '#fef3c7', padding: '12px 15px', borderRadius: '12px' }}>⚠️ 搵唔到相符商品(智能查詢中心資料庫要先載入)</p>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '900px' }}>
+        {results.map((item) => (
+          <div key={item.sku || item.barcode} style={{ background: 'white', borderRadius: '14px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', padding: '18px 20px' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ fontWeight: '800', fontSize: '16px', color: '#0f172a', marginBottom: '6px' }}>{item.name}</div>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '13px' }}>
+                <span style={{ background: '#f1f5f9', padding: '3px 10px', borderRadius: '6px' }}>SKU: <strong style={{ fontFamily: 'monospace', color: '#0ea5e9' }}>{item.sku || '—'}</strong></span>
+                <span style={{ background: '#f1f5f9', padding: '3px 10px', borderRadius: '6px' }}>Barcode: <strong style={{ fontFamily: 'monospace', color: '#10b981' }}>{item.barcode || '—'}</strong></span>
+              </div>
+            </div>
+
+            {/* 倉位 chips */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '12px' }}>
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold' }}>📍 倉位:</span>
+              {item.bins && item.bins.length > 0 ? item.bins.map((b) => (
+                <span key={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfeff', border: '1px solid #a5f3fc', color: '#0e7490', padding: '5px 10px', borderRadius: '8px', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                  {b.bin}
+                  <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除倉位"
+                    style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}>✕</button>
+                </span>
+              )) : (
+                <span style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic' }}>(未設定)</span>
+              )}
+            </div>
+
+            {/* 加倉位 */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <input type="text" value={binInputs[item.sku] || ''}
+                onChange={(e) => setBinInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBin(item); } }}
+                placeholder="新倉位,例如 A-03-12"
+                style={{ flex: '1', minWidth: '180px', padding: '10px 12px', borderRadius: '8px', border: '2px solid #cbd5e1', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+              <button onClick={() => addBin(item)}
+                style={{ background: '#0ea5e9', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>➕ 加倉位</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // 🌟 字體下載 progress hook — 用 fetch + ReadableStream 抓即時進度
 function useFontPreload() {
   // null = 未開始 / 已 cache 唔需顯示;0–100 = 下載中;'done' = 啱啱完成準備 fade out
@@ -1346,6 +1477,7 @@ function App() {
             <Route path="/homey" element={<ThreePLPage key="homey" config={THREE_PL_CONFIGS.homey} />} />
             <Route path="/label-search" element={<LabelSearchPage />} />
             <Route path="/label-repack" element={<LabelRepackPage />} />
+            <Route path="/bin-location" element={<BinLocationPage />} />
             <Route path="/inspection" element={<InspectionHub />} />
             <Route path="/inspection/history" element={<InspectionHistory />} />
             <Route path="/inspection/anymall" element={<InspectionZone zoneName="Anymall" />} />
