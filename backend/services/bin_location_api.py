@@ -39,6 +39,10 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError("缺少 SUPABASE_URL 或 SUPABASE_KEY 環境變數")
 
+# 🔒 刪除倉位嘅密碼(只有 Full Time 同事知)。喺 Render env / .env 設 BIN_DELETE_PASSWORD。
+# 唔設嘅話冇人刪到(安全 default)。
+BIN_DELETE_PASSWORD = os.getenv("BIN_DELETE_PASSWORD", "")
+
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 router = APIRouter()
 
@@ -246,11 +250,17 @@ def update_bin(req: UpdateBinReq):
 # ────────────────────────────────────────────────────────────
 class RemoveBinReq(BaseModel):
     id: str
+    password: str = ""
 
 
 @router.post("/remove")
 def remove_bin(req: RemoveBinReq):
     if not req.id:
         raise HTTPException(status_code=400, detail="缺少 id")
+    # 🔒 權限檢查:只有知道密碼嘅 Full Time 同事先可以刪
+    if not BIN_DELETE_PASSWORD:
+        raise HTTPException(status_code=500, detail="系統未設定刪除密碼(請喺 Render 設 BIN_DELETE_PASSWORD)")
+    if (req.password or "").strip() != BIN_DELETE_PASSWORD:
+        raise HTTPException(status_code=403, detail="密碼錯誤,只有 Full Time 同事先可以刪除舊貨位置")
     supabase.table("bin_locations").delete().eq("id", req.id).execute()
-    return {"status": "success", "message": "已刪除倉位"}
+    return {"status": "success", "message": "已刪除位置"}

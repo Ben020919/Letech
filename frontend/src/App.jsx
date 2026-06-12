@@ -1325,11 +1325,13 @@ function BinLocationPage() {
   };
 
   const removeBin = async (sku, binId, binLabel) => {
-    if (!window.confirm(`確定刪除位置「${binLabel}」?`)) return;
+    // 🔒 刪除要 Full Time 密碼(後端驗證,兼職冇密碼刪唔到)
+    const pw = window.prompt(`🔒 刪除位置「${binLabel}」\n\n需要 Full Time 同事密碼:`);
+    if (pw === null) return; // 取消
     try {
       const res = await fetch(`${API_BASE_URL}/api/bin/remove`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: binId }),
+        body: JSON.stringify({ id: binId, password: pw }),
       });
       if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
       await refreshOne(sku);
