@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-// 🌟 動態判斷 API 網址
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-    ? "http://127.0.0.1:8000" 
-    : "https://letech-pro.onrender.com";
+// 🌟 動態判斷 API 網址(VITE_API_BASE 可覆寫俾 local 預覽用)
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE ||
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? "http://127.0.0.1:8000"
+        : "https://letech-pro.onrender.com");
 
 // ================= 1. 內建音效產生器 (極速版) =================
 let sharedAudioCtx = null;

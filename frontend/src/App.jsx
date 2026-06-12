@@ -6,10 +6,14 @@ import InspectionZone from './pages/InspectionZone';
 import InspectionHistory from './pages/InspectionHistory';
 import './App.css';
 
-// 🌟 自動切換測試與正式環境的 API 網址 (本地跑 npm run dev 時會是 127.0.0.1，上線時會是 render)
-const API_BASE_URL = import.meta.env.DEV
-  ? "http://127.0.0.1:8000"
-  : "https://letech-pro.onrender.com";
+// 🌟 自動切換測試與正式環境的 API 網址
+//   - 上線(Vercel build):用 Render
+//   - 本地 npm run dev:預設 127.0.0.1:8000;但如果想淨係改 UI 唔起後端,
+//     可以喺 frontend/.env.local 設 VITE_API_BASE=https://letech-pro.onrender.com
+//     咁 local dev 就會用 production 真數據(只睇 UI 效果好方便)
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE ||
+  (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://letech-pro.onrender.com");
 
 // 🔒 共用 hook — 偵測係咪手機(< 640px)。用嚟收埋管理員/admin 用嘅 controls,
 // 防止用手機嘅員工誤撳資料庫上傳、刪除任務之類嘅嘢。
@@ -198,9 +202,9 @@ function UnifiedSearchInventoryPage() {
 
   return (
     <div className="page-content" style={{ paddingBottom: '60px', maxWidth: '1000px', margin: '0 auto' }}>
-      <div className="page-header" style={{ textAlign: 'center', marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '30px', color: '#0f172a', fontWeight: '800', margin: 0 }}>🔍 智能查詢中心</h2>
-        <p style={{ color: '#64748b', fontSize: '15px', marginTop: '10px' }}>先搜尋商品，再確認庫存，雙管齊下更高效率。</p>
+      <div className="page-header" style={{ textAlign: 'center', marginBottom: '28px' }}>
+        <h2 style={{ fontSize: '26px', color: 'var(--c-text)', fontWeight: '800', margin: 0, letterSpacing: '-0.6px' }}>🔍 智能查詢中心</h2>
+        <p style={{ color: 'var(--c-text-muted)', fontSize: '14.5px', marginTop: '8px' }}>先搜尋商品,再確認庫存,雙管齊下更高效率。</p>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '35px' }}>
@@ -209,28 +213,29 @@ function UnifiedSearchInventoryPage() {
         <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           
           {/* 左側：搜尋區塊 */}
-          <div style={{ flex: '1', minWidth: '300px', background: '#ffffff', padding: '25px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 8px 25px rgba(59, 130, 246, 0.06)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-                  <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '12px', display: 'flex' }}>📚</div>
-                  <h3 style={{ margin: 0, color: '#1e293b', fontSize: '20px', fontWeight: 'bold' }}>本地資料庫搜尋</h3>
+          <div style={{ flex: '1', minWidth: '300px', background: '#ffffff', padding: '24px', borderRadius: '18px', border: '1px solid #eef2f6', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                  <div style={{ width: '42px', height: '42px', background: 'var(--c-primary-soft)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📚</div>
+                  <div>
+                    <h3 style={{ margin: 0, color: 'var(--c-text)', fontSize: '18px', fontWeight: '700' }}>本地資料庫搜尋</h3>
+                    <div style={{ fontSize: '13px', color: 'var(--c-text-muted)' }}>SKU / Barcode / 中英文名</div>
+                  </div>
               </div>
 
-              <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+              <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
                   <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
-                      <input 
-                          type="text" 
-                          value={searchQuery} 
-                          onChange={(e) => setSearchQuery(e.target.value)} 
-                          placeholder="輸入 SKU / Barcode / 中英文名稱..." 
-                          style={{ width: '100%', padding: '15px 18px', fontSize: '16px', borderRadius: '14px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s' }}
-                          onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                          onBlur={(e) => e.target.style.borderColor = '#cbd5e1'}
+                      <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="輸入 SKU / Barcode / 中英文名稱..."
+                          style={{ width: '100%', padding: '13px 16px', fontSize: '15px', borderRadius: '12px', border: '1.5px solid var(--c-border)', outline: 'none', boxSizing: 'border-box' }}
                       />
                       {searchQuery && (
                           <button type="button" onClick={() => { setSearchQuery(''); setSearchResults([]); setHasSearched(false); }} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
                       )}
                   </div>
-                  <button type="submit" disabled={searchLoading} style={{ background: searchLoading ? '#94a3b8' : '#3b82f6', color: 'white', padding: '15px 25px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: searchLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
+                  <button type="submit" disabled={searchLoading} style={{ background: searchLoading ? '#94a3b8' : 'var(--c-primary)', color: 'white', padding: '13px 24px', fontSize: '15px', borderRadius: '12px', border: 'none', fontWeight: '700', cursor: searchLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                       {searchLoading ? '⏳ 搜尋中...' : '🔍 搜尋商品'}
                   </button>
               </form>
@@ -242,12 +247,12 @@ function UnifiedSearchInventoryPage() {
               {!searchLoading && searchResults.length > 0 && (
                   <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '5px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {searchResults.map((item, index) => (
-                      <div key={index} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '15px', gap: '15px' }}>
+                      <div key={index} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', border: '1px solid var(--c-border-soft)', borderRadius: '14px', padding: '15px', gap: '15px', boxShadow: '0 1px 2px rgba(15,23,42,0.03)' }}>
                           <div style={{ flex: '1', minWidth: '200px' }}>
-                              <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', marginBottom: '8px', lineHeight: '1.4' }}>{item.Name}</div>
-                              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', fontSize: '13px', alignItems: 'center' }}>
-                                  <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>SKU:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#3b82f6' }}>{item.ProductCode}</span></div>
-                                  <div style={{ background: '#ffffff', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}><span style={{ color: '#64748b' }}>Barcode:</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#10b981' }}>{item.Barcode}</span></div>
+                              <div style={{ fontSize: '15.5px', fontWeight: '700', color: 'var(--c-text)', marginBottom: '9px', lineHeight: '1.45' }}>{item.Name}</div>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '13px', alignItems: 'center' }}>
+                                  <div style={{ background: 'var(--c-primary-soft)', padding: '4px 9px', borderRadius: '7px', border: '1px solid var(--c-primary-border)' }}><span style={{ color: '#64748b' }}>SKU</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--c-primary)', marginLeft: '2px' }}>{item.ProductCode}</span></div>
+                                  <div style={{ background: '#ecfdf5', padding: '4px 9px', borderRadius: '7px', border: '1px solid #d1fae5' }}><span style={{ color: '#64748b' }}>Barcode</span> <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#10b981', marginLeft: '2px' }}>{item.Barcode}</span></div>
                                   {/* 🌟 位置 Bin Location — 分貨架/板位顏色 */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                       {item.Bins && item.Bins.length > 0 ? (
@@ -294,28 +299,29 @@ function UnifiedSearchInventoryPage() {
         </div>
 
         {/* 下層：DEAR 庫存專區 */}
-        <div ref={inventorySectionRef} style={{ background: '#ffffff', padding: '25px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 8px 25px rgba(16, 185, 129, 0.06)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-                <div style={{ background: '#ecfdf5', padding: '10px', borderRadius: '12px', display: 'flex' }}>📦</div>
-                <h3 style={{ margin: 0, color: '#064e3b', fontSize: '20px', fontWeight: 'bold' }}>DEAR 即時庫存查詢</h3>
+        <div ref={inventorySectionRef} style={{ background: '#ffffff', padding: '24px', borderRadius: '18px', border: '1px solid #eef2f6', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                <div style={{ width: '42px', height: '42px', background: '#ecfdf5', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>📦</div>
+                <div>
+                  <h3 style={{ margin: 0, color: 'var(--c-text)', fontSize: '18px', fontWeight: '700' }}>DEAR 即時庫存查詢</h3>
+                  <div style={{ fontSize: '13px', color: 'var(--c-text-muted)' }}>輸入精確 SKU 查 HKTV SD4 庫存</div>
+                </div>
             </div>
 
-            <form onSubmit={handleInvSubmit} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+            <form onSubmit={handleInvSubmit} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
                 <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
-                    <input 
-                        type="text" 
-                        value={invQuery} 
-                        onChange={(e) => setInvQuery(e.target.value)} 
-                        placeholder="請輸入精確的 SKU (如: LT10009829)" 
-                        style={{ width: '100%', padding: '15px 18px', fontSize: '16px', borderRadius: '14px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s' }}
-                        onFocus={(e) => e.target.style.borderColor = '#10b981'}
-                        onBlur={(e) => e.target.style.borderColor = '#cbd5e1'}
+                    <input
+                        type="text"
+                        value={invQuery}
+                        onChange={(e) => setInvQuery(e.target.value)}
+                        placeholder="請輸入精確的 SKU (如: LT10009829)"
+                        style={{ width: '100%', padding: '13px 16px', fontSize: '15px', borderRadius: '12px', border: '1.5px solid var(--c-border)', outline: 'none', boxSizing: 'border-box' }}
                     />
                     {invQuery && (
                         <button type="button" onClick={() => { setInvQuery(''); }} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
                     )}
                 </div>
-                <button type="submit" disabled={invLoading} style={{ background: invLoading ? '#94a3b8' : '#10b981', color: 'white', padding: '15px 25px', fontSize: '16px', borderRadius: '14px', border: 'none', fontWeight: 'bold', cursor: invLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
+                <button type="submit" disabled={invLoading} style={{ background: invLoading ? '#94a3b8' : '#10b981', color: 'white', padding: '13px 24px', fontSize: '15px', borderRadius: '12px', border: 'none', fontWeight: '700', cursor: invLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                     {invLoading ? '⏳ 連線中...' : '📦 查詢庫存'}
                 </button>
             </form>
@@ -632,12 +638,13 @@ function ThreePLPage({ config }) {
     <div className="page-content">
       <div className="page-header"><h2>{config.title}</h2><p>{config.subtitle}</p></div>
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginBottom: '25px', flexWrap: 'wrap' }}>
-        <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '15px' }} /><br />
-          <button onClick={handleProcess} disabled={loading} style={{ background: loading ? '#94a3b8' : config.accent, color: 'white', padding: '12px 24px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer' }}>
+        <div style={{ flex: '1', minWidth: '300px', background: 'white', padding: '24px', borderRadius: '18px', border: '1px solid #eef2f6', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--c-text-muted)', marginBottom: '12px', letterSpacing: '0.3px' }}>📄 上傳 Delivery Note</div>
+          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} style={{ width: '100%', marginBottom: '16px', fontSize: '14px' }} /><br />
+          <button onClick={handleProcess} disabled={loading} style={{ background: loading ? '#94a3b8' : config.accent, color: 'white', padding: '12px 24px', borderRadius: '10px', border: 'none', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer' }}>
             {loading ? '⏳ 解析中...' : '📄 開始解析 PDF'}
           </button>
-          {error && <p style={{ color: 'red', marginTop: '10px', fontWeight: 'bold' }}>❌ {error}</p>}
+          {error && <p style={{ color: '#dc2626', marginTop: '12px', fontWeight: 'bold', background: '#fef2f2', padding: '10px 12px', borderRadius: '8px' }}>❌ {error}</p>}
         </div>
         {/* 🔒 手機隱藏防止員工誤撳上傳資料庫 */}
         {!isMobile && config.uploader && (
@@ -647,23 +654,24 @@ function ThreePLPage({ config }) {
       {resultData && (
         <>
           <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
-            <div style={{ flex: '1', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>📊 處理摘要</h3><p style={{ fontSize: '15px', color: '#475569', marginBottom: '10px' }}>有效解析筆數: <strong>{resultData.summary.total_pages}</strong></p>
-               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '10px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
+            <div style={{ flex: '1', background: 'white', padding: '22px', borderRadius: '18px', border: '1px solid #eef2f6', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+               <h3 style={{ marginBottom: '14px', color: 'var(--c-text)', fontSize: '17px', fontWeight: '700' }}>📊 處理摘要</h3>
+               <p style={{ fontSize: '14.5px', color: 'var(--c-text-soft)', marginBottom: '14px' }}>有效解析筆數:<strong style={{ color: 'var(--c-text)', fontSize: '18px', marginLeft: '4px' }}>{resultData.summary.total_pages}</strong></p>
+               <button onClick={handleDownloadPDF} style={{ background: '#f1f5f9', color: '#334155', padding: '11px 16px', borderRadius: '10px', border: '1px solid var(--c-border)', fontWeight: '700', cursor: 'pointer', width: '100%' }}>📥 下載清洗後的 PDF</button>
             </div>
-            <div style={{ flex: '2', background: 'white', padding: '20px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-               <h3 style={{ marginBottom: '15px', color: '#0f172a' }}>⚠️ 重複訂單檢測</h3>
+            <div style={{ flex: '2', background: 'white', padding: '22px', borderRadius: '18px', border: '1px solid #eef2f6', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+               <h3 style={{ marginBottom: '14px', color: 'var(--c-text)', fontSize: '17px', fontWeight: '700' }}>⚠️ 重複訂單檢測</h3>
                {resultData.summary.has_duplicates ? (
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '10px' }}><p style={{ color: '#b91c1c', fontWeight: 'bold', marginBottom: '10px' }}>發現 {resultData.duplicates.length} 筆重複資料！</p><table style={{ width: '100%', fontSize: '13px', textAlign: 'left', borderCollapse: 'collapse' }}><thead><tr style={{ borderBottom: '1px solid #fca5a5' }}><th style={{ padding: '5px' }}>商品編號</th><th style={{ padding: '5px' }}>重複次數</th><th style={{ padding: '5px' }}>出現頁數</th></tr></thead><tbody>{resultData.duplicates.map((d, idx) => (<tr key={idx}><td style={{ padding: '5px', fontWeight: 'bold' }}>{d.Product_No}</td><td style={{ padding: '5px' }}>{d.Count}</td><td style={{ padding: '5px' }}>{d.Pages}</td></tr>))}</tbody></table></div>
                ) : ( <p style={{ color: '#15803d', fontWeight: 'bold', background: '#f0fdf4', padding: '10px', borderRadius: '8px' }}>✅ 未發現重複訂單</p> )}
             </div>
           </div>
-          <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            <h3 style={{ marginBottom: '20px', color: '#0f172a' }}>📋 標籤生成清單</h3>
+          <div style={{ background: 'white', padding: '24px', borderRadius: '18px', border: '1px solid #eef2f6', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+            <h3 style={{ marginBottom: '18px', color: 'var(--c-text)', fontSize: '17px', fontWeight: '700' }}>📋 標籤生成清單</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', textAlign: 'left' }}>
                 <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid var(--c-border)', color: 'var(--c-text-soft)' }}>
                     <th style={{ padding: '12px' }}>序號</th>
                     <th style={{ padding: '12px' }}>商品編號</th>
                     <th style={{ padding: '12px', minWidth: '250px' }}>商品名稱</th>
@@ -874,15 +882,15 @@ function HomePage() {
     <div className="page-content" style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '50px' }}>
       
       {/* 標題與更新按鈕 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px', flexWrap: 'wrap', gap: '15px' }}>
-        <h1 style={{ fontSize: '36px', color: '#ea580c', margin: 0, fontWeight: '900', letterSpacing: '-0.5px' }}>🛍️ HKTVmall 智慧訂單監控儀表板</h1>
-        
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', flexWrap: 'wrap', gap: '15px' }}>
+        <h1 style={{ fontSize: '27px', color: 'var(--c-text)', margin: 0, fontWeight: '800', letterSpacing: '-0.6px' }}>🛍️ HKTVmall 智慧訂單監控儀表板</h1>
+
         {/* 🌟 修改：新增了遠端觸發按鈕 */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={fetchOrderData} disabled={isRefreshing} style={{ background: '#ffffff', color: '#0f172a', border: '1px solid #cbd5e1', padding: '12px 20px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: isRefreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', transition: 'all 0.2s' }}>
+          <button onClick={fetchOrderData} disabled={isRefreshing} style={{ background: '#ffffff', color: 'var(--c-text)', border: '1px solid var(--c-border)', padding: '11px 18px', borderRadius: '11px', fontSize: '14.5px', fontWeight: '700', cursor: isRefreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
             {isRefreshing ? '🔄 載入中...' : '🔄 重新整理畫面'}
           </button>
-          <button onClick={handleRemoteTrigger} disabled={isTriggering} style={{ background: isTriggering ? '#94a3b8' : '#ea580c', color: '#ffffff', border: 'none', padding: '12px 20px', borderRadius: '12px', fontSize: '15px', fontWeight: 'bold', cursor: isTriggering ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px rgba(234,88,12,0.2)', transition: 'all 0.2s' }}>
+          <button onClick={handleRemoteTrigger} disabled={isTriggering} style={{ background: isTriggering ? '#94a3b8' : '#ea580c', color: '#ffffff', border: 'none', padding: '11px 18px', borderRadius: '11px', fontSize: '14.5px', fontWeight: '700', cursor: isTriggering ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 6px rgba(234,88,12,0.22)' }}>
             {isTriggering ? '🚀 發送指令中...' : '🚀 遠端手動更新'}
           </button>
         </div>

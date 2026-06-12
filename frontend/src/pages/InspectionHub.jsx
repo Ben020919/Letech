@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
-// 🌟 動態判斷 API 網址(同 App.jsx / InspectionZone.jsx 一致)
-const API_BASE_URL = import.meta.env.DEV
-    ? "http://127.0.0.1:8000"
-    : "https://letech-pro.onrender.com";
+// 🌟 動態判斷 API 網址(同 App.jsx 一致;VITE_API_BASE 可覆寫俾 local 預覽用)
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE ||
+    (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://letech-pro.onrender.com");
 
 const ZONES = [
     { id: 'anymall', name: 'Anymall', color: '#4CAF50', emoji: '🛍️' },

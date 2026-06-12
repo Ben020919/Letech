@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
-const API_BASE_URL = import.meta.env.DEV
-    ? "http://127.0.0.1:8000"
-    : "https://letech-pro.onrender.com";
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE ||
+    (import.meta.env.DEV ? "http://127.0.0.1:8000" : "https://letech-pro.onrender.com");
 
 const ZONES = [
     { id: 'all', name: '全部', color: '#475569', emoji: '📋' },
