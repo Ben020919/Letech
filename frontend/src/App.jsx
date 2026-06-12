@@ -1265,6 +1265,7 @@ const LOC_TYPES = [
 const LOC_TYPE_MAP = Object.fromEntries(LOC_TYPES.map(t => [t.key, t]));
 
 function BinLocationPage() {
+  const isMobile = useIsMobile();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1408,7 +1409,7 @@ function BinLocationPage() {
                   <div key={t.key}>
                     {/* 類型標題 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '3px 12px', borderRadius: '999px', fontSize: '13px', fontWeight: '800', letterSpacing: '0.3px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '4px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: '800', letterSpacing: '0.3px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         {t.emoji} {t.key}
                       </span>
                       <span style={{ fontSize: '12px', color: '#94a3b8' }}>{binsOfType.length > 0 ? `${binsOfType.length} 個位置` : ''}</span>
@@ -1434,7 +1435,7 @@ function BinLocationPage() {
                               <input type="date" value={b.stock_date || ''}
                                 onChange={(e) => updateBinDate(item.sku, b.id, e.target.value)}
                                 title="批次日期(撳即改)"
-                                style={{ padding: '6px 8px', borderRadius: '7px', border: '1px solid #e2e8f0', background: 'white', fontSize: '13px', fontFamily: 'monospace', outline: 'none', color: b.stock_date ? '#0f172a' : '#cbd5e1' }} />
+                                style={{ padding: '7px 9px', borderRadius: '7px', border: '1px solid #e2e8f0', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '38px', boxSizing: 'border-box', color: b.stock_date ? '#0f172a' : '#cbd5e1' }} />
                             </div>
                             <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除呢個位置(要 Full Time 密碼)"
                               style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', background: 'white', border: '1px solid #fecaca', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '7px', flexShrink: 0 }}>✕</button>
@@ -1449,17 +1450,17 @@ function BinLocationPage() {
               })}
             </div>
 
-            {/* 加位置 — 先揀類型,入位置碼 + 日期 */}
+            {/* 加位置 — 先揀類型,入位置碼 + 日期(手機 stack) */}
             <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #eef2f6' }}>
               <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '10px', letterSpacing: '0.5px' }}>➕ 新增位置</div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center' }}>
                 {/* 類型 toggle */}
                 <div style={{ display: 'flex', gap: '3px', background: '#fff', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                   {LOC_TYPES.map((t) => {
                     const active = getType(item.sku) === t.key;
                     return (
                       <button key={t.key} onClick={() => setTypeChoice(prev => ({ ...prev, [item.sku]: t.key }))}
-                        style={{ background: active ? t.color : 'transparent', color: active ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '7px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.15s' }}>
+                        style={{ flex: isMobile ? 1 : 'none', background: active ? t.color : 'transparent', color: active ? 'white' : '#64748b', border: 'none', padding: '9px 14px', borderRadius: '7px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
                         {t.emoji} {t.key}
                       </button>
                     );
@@ -1469,13 +1470,17 @@ function BinLocationPage() {
                   onChange={(e) => setBinInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBin(item); } }}
                   placeholder={getType(item.sku) === '貨架' ? '貨架位 A-03-12' : '板位 P-05'}
-                  style={{ flex: '1', minWidth: '130px', padding: '10px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
-                <input type="date" value={dateInputs[item.sku] || ''}
-                  onChange={(e) => setDateInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
-                  title="批次日期(可留空)"
-                  style={{ padding: '10px 10px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '13px', fontFamily: 'monospace', outline: 'none' }} />
+                  style={{ flex: isMobile ? 'none' : '1', minWidth: '130px', padding: '11px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+                {/* 日期 — 手機加 label 唔會空白 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isMobile && <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📅 日期</span>}
+                  <input type="date" value={dateInputs[item.sku] || ''}
+                    onChange={(e) => setDateInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
+                    title="批次日期(可留空)"
+                    style={{ flex: isMobile ? 1 : 'none', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '44px', boxSizing: 'border-box', color: (dateInputs[item.sku] ? '#0f172a' : '#94a3b8') }} />
+                </div>
                 <button onClick={() => addBin(item)}
-                  style={{ background: (LOC_TYPE_MAP[getType(item.sku)] || LOC_TYPE_MAP['貨架']).color, color: 'white', border: 'none', padding: '10px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>➕ 加</button>
+                  style={{ background: (LOC_TYPE_MAP[getType(item.sku)] || LOC_TYPE_MAP['貨架']).color, color: 'white', border: 'none', padding: '12px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>➕ 加位置</button>
               </div>
             </div>
           </div>
