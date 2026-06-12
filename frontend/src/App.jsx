@@ -253,10 +253,13 @@ function UnifiedSearchInventoryPage() {
                                       {item.Bins && item.Bins.length > 0 ? (
                                           item.Bins.map((b, bi) => {
                                               const t = LOC_TYPE_MAP[b.loc_type] || LOC_TYPE_MAP['貨架'];
+                                              // Bins 已 FIFO 排序(後端):最舊日期排第一。2 個或以上 + 第一個有日期 → 標「先執呢個」
+                                              const isPickFirst = bi === 0 && item.Bins.length > 1 && !!b.stock_date;
                                               return (
-                                                  <span key={bi} style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '3px 9px', borderRadius: '6px', fontWeight: 'bold' }}>
+                                                  <span key={bi} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: isPickFirst ? '#dcfce7' : t.bg, border: `1px solid ${isPickFirst ? '#86efac' : t.border}`, color: isPickFirst ? '#166534' : t.color, padding: '3px 9px', borderRadius: '6px', fontWeight: 'bold' }}>
+                                                      {isPickFirst && <span style={{ fontSize: '11px', background: '#16a34a', color: 'white', padding: '1px 6px', borderRadius: '8px' }}>👉 先執</span>}
                                                       {t.emoji} {t.key} <span style={{ fontFamily: 'monospace' }}>{b.bin}</span>
-                                                      {b.stock_date && <span style={{ fontFamily: 'monospace', fontWeight: 'normal', marginLeft: '4px', opacity: 0.85 }}>📅{b.stock_date}</span>}
+                                                      {b.stock_date && <span style={{ fontFamily: 'monospace', fontWeight: 'normal', marginLeft: '2px', opacity: 0.85 }}>📅{b.stock_date}</span>}
                                                   </span>
                                               );
                                           })
@@ -1397,9 +1400,6 @@ function BinLocationPage() {
                             <input type="date" value={b.stock_date || ''}
                               onChange={(e) => updateBinDate(item.sku, b.id, e.target.value)}
                               style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', fontFamily: 'monospace', outline: 'none', color: b.stock_date ? '#0f172a' : '#94a3b8' }} />
-                            {bi === 0 && binsOfType.length > 1 && (
-                              <span style={{ fontSize: '11px', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>先執呢個</span>
-                            )}
                             <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除呢個位置"
                               style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '6px', padding: '4px 10px' }}>✕ 刪</button>
                           </div>
