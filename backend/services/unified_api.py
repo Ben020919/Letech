@@ -137,14 +137,15 @@ async def search_barcode(q: str = Query(..., min_length=1)):
 
     # 🌟 一次過 attach 倉位(Bin Location)— late import 避免 circular dependency
     try:
-        from services.bin_location_api import _bins_by_sku
+        from services.bin_location_api import _bins_by_sku, _sorted_formatted_bins
         skus = [str(r["ProductCode"]).strip() for r in results if str(r.get("ProductCode", "")).strip()]
         bins_map = _bins_by_sku(skus)
         for r in results:
             sku = str(r.get("ProductCode", "")).strip()
+            # FIFO sorted(舊日期前),含 loc_type + stock_date
             r["Bins"] = [
-                {"bin": b.get("bin", ""), "loc_type": b.get("loc_type") or "貨架"}
-                for b in bins_map.get(sku, [])
+                {"bin": b["bin"], "loc_type": b["loc_type"], "stock_date": b["stock_date"]}
+                for b in _sorted_formatted_bins(bins_map.get(sku, []))
             ]
     except Exception as e:
         print(f"[search] attach bins 失敗(唔影響搜尋): {e}")

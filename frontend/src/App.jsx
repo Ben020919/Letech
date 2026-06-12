@@ -256,6 +256,7 @@ function UnifiedSearchInventoryPage() {
                                               return (
                                                   <span key={bi} style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '3px 9px', borderRadius: '6px', fontWeight: 'bold' }}>
                                                       {t.emoji} {t.key} <span style={{ fontFamily: 'monospace' }}>{b.bin}</span>
+                                                      {b.stock_date && <span style={{ fontFamily: 'monospace', fontWeight: 'normal', marginLeft: '4px', opacity: 0.85 }}>📅{b.stock_date}</span>}
                                                   </span>
                                               );
                                           })
@@ -1266,9 +1267,10 @@ function BinLocationPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
-  // 每個 SKU 對應緊嘅「新增位置」輸入框內容 + 揀緊嘅類型
+  // 每個 SKU 對應緊嘅「新增位置」輸入框內容 + 揀緊嘅類型 + 日期
   const [binInputs, setBinInputs] = useState({});      // { sku: "A-03-12" }
   const [typeChoice, setTypeChoice] = useState({});    // { sku: "貨架" | "板位" }
+  const [dateInputs, setDateInputs] = useState({});    // { sku: "2024-01-15" }
   const searchIdRef = useRef(0);
 
   const getType = (sku) => typeChoice[sku] || '貨架';
@@ -1305,14 +1307,16 @@ function BinLocationPage() {
   const addBin = async (item) => {
     const binVal = (binInputs[item.sku] || '').trim();
     const locType = getType(item.sku);
+    const stockDate = (dateInputs[item.sku] || '').trim();
     if (!binVal) { alert('請輸入位置'); return; }
     try {
       const res = await fetch(`${API_BASE_URL}/api/bin/add`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku: item.sku, barcode: item.barcode, name: item.name, bin: binVal, loc_type: locType }),
+        body: JSON.stringify({ sku: item.sku, barcode: item.barcode, name: item.name, bin: binVal, loc_type: locType, stock_date: stockDate }),
       });
       if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '加位置失敗'); }
       setBinInputs(prev => ({ ...prev, [item.sku]: '' }));
+      setDateInputs(prev => ({ ...prev, [item.sku]: '' }));
       await refreshOne(item.sku);
     } catch (err) { alert('❌ ' + err.message); }
   };
@@ -1325,6 +1329,18 @@ function BinLocationPage() {
         body: JSON.stringify({ id: binId }),
       });
       if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
+      await refreshOne(sku);
+    } catch (err) { alert('❌ ' + err.message); }
+  };
+
+  // 改某個位置嘅批次日期(FIFO:舊貨執晒可改新日期)
+  const updateBinDate = async (sku, binId, newDate) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/update`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: binId, stock_date: newDate }),
+      });
+      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '改日期失敗'); }
       await refreshOne(sku);
     } catch (err) { alert('❌ ' + err.message); }
   };
@@ -1362,31 +1378,45 @@ function BinLocationPage() {
               </div>
             </div>
 
-            {/* 位置 chips — 分貨架 / 板位兩組顯示 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+            {/* 位置列表 — 分貨架 / 板位,每行一個位置 + 日期 + 刪除(已 FIFO 排序:舊日期前) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '14px' }}>
               {LOC_TYPES.map((t) => {
                 const binsOfType = (item.bins || []).filter(b => (b.loc_type || '貨架') === t.key);
                 return (
-                  <div key={t.key} style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', minWidth: '64px' }}>{t.emoji} {t.key}:</span>
-                    {binsOfType.length > 0 ? binsOfType.map((b) => (
-                      <span key={b.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '5px 10px', borderRadius: '8px', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                        {b.bin}
-                        <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除"
-                          style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}>✕</button>
-                      </span>
-                    )) : (
-                      <span style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic' }}>未設定</span>
+                  <div key={t.key}>
+                    <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', marginBottom: '5px' }}>{t.emoji} {t.key}</div>
+                    {binsOfType.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', paddingLeft: '4px' }}>
+                        {binsOfType.map((b, bi) => (
+                          <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {/* FIFO 序號 + 位置碼 */}
+                            <span style={{ minWidth: '20px', fontSize: '12px', color: '#94a3b8', fontWeight: 'bold' }}>{bi + 1}.</span>
+                            <span style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '4px 10px', borderRadius: '8px', fontWeight: 'bold', fontFamily: 'monospace', minWidth: '70px', textAlign: 'center' }}>{b.bin}</span>
+                            {/* 日期(可改) */}
+                            <span style={{ fontSize: '12px', color: '#64748b' }}>📅</span>
+                            <input type="date" value={b.stock_date || ''}
+                              onChange={(e) => updateBinDate(item.sku, b.id, e.target.value)}
+                              style={{ padding: '5px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', fontFamily: 'monospace', outline: 'none', color: b.stock_date ? '#0f172a' : '#94a3b8' }} />
+                            {bi === 0 && binsOfType.length > 1 && (
+                              <span style={{ fontSize: '11px', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>先執呢個</span>
+                            )}
+                            <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除呢個位置"
+                              style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '6px', padding: '4px 10px' }}>✕ 刪</button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic', paddingLeft: '4px' }}>未設定</span>
                     )}
                   </div>
                 );
               })}
             </div>
 
-            {/* 加位置 — 先揀類型,再入位置碼 */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* 加位置 — 先揀類型,入位置碼 + 日期 */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', background: '#f8fafc', padding: '10px', borderRadius: '10px' }}>
               {/* 類型 toggle */}
-              <div style={{ display: 'flex', gap: '4px', background: '#f1f5f9', padding: '4px', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', gap: '4px', background: '#fff', padding: '4px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                 {LOC_TYPES.map((t) => {
                   const active = getType(item.sku) === t.key;
                   return (
@@ -1400,8 +1430,12 @@ function BinLocationPage() {
               <input type="text" value={binInputs[item.sku] || ''}
                 onChange={(e) => setBinInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBin(item); } }}
-                placeholder={getType(item.sku) === '貨架' ? '貨架位,例如 A-03-12' : '板位,例如 P-05'}
-                style={{ flex: '1', minWidth: '160px', padding: '10px 12px', borderRadius: '8px', border: '2px solid #cbd5e1', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+                placeholder={getType(item.sku) === '貨架' ? '貨架位 A-03-12' : '板位 P-05'}
+                style={{ flex: '1', minWidth: '130px', padding: '10px 12px', borderRadius: '8px', border: '2px solid #cbd5e1', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
+              <input type="date" value={dateInputs[item.sku] || ''}
+                onChange={(e) => setDateInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
+                title="批次日期(可留空)"
+                style={{ padding: '10px 10px', borderRadius: '8px', border: '2px solid #cbd5e1', fontSize: '13px', fontFamily: 'monospace', outline: 'none' }} />
               <button onClick={() => addBin(item)}
                 style={{ background: '#0ea5e9', color: 'white', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>➕ 加</button>
             </div>

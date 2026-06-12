@@ -58,6 +58,28 @@ def _bins_by_sku(skus: List[str]) -> Dict[str, List[dict]]:
     return out
 
 
+def _bin_sort_key(b: dict):
+    """FIFO 排序:有日期嘅排前(舊→新),冇日期嘅排最後。"""
+    d = (b.get("stock_date") or "").strip()
+    # 空日期 → 排最後(用一個好大嘅字串);有日期 → 直接用 ISO 字串排序(YYYY-MM-DD 字典序 = 時間序)
+    return (1, "") if not d else (0, d)
+
+
+def _format_bin(b: dict) -> dict:
+    """統一 output 一個 bin 嘅 display 欄位。"""
+    return {
+        "id": b["id"],
+        "bin": b["bin"],
+        "loc_type": b.get("loc_type") or "貨架",
+        "stock_date": (b.get("stock_date") or ""),
+        "note": b.get("note", ""),
+    }
+
+
+def _sorted_formatted_bins(rows: List[dict]) -> List[dict]:
+    return [_format_bin(b) for b in sorted(rows, key=_bin_sort_key)]
+
+
 # ────────────────────────────────────────────────────────────
 # 1. 搜尋:由智能查詢中心嘅 search DB 揾產品,再 attach 倉位
 # ────────────────────────────────────────────────────────────
@@ -93,7 +115,7 @@ def search_bin(q: str, limit: int = 50):
         bins = bins_map.get(r["sku"], [])
         results.append({
             **r,
-            "bins": [{"id": b["id"], "bin": b["bin"], "loc_type": b.get("loc_type") or "貨架", "note": b.get("note", "")} for b in bins],
+            "bins": _sorted_formatted_bins(bins),
         })
     return {"results": results}
 
@@ -131,7 +153,7 @@ def lookup_bin(barcode: str = "", sku: str = ""):
     else:
         query = query.eq("barcode", barcode)
     res = query.execute()
-    bins = [{"id": b["id"], "bin": b["bin"], "loc_type": b.get("loc_type") or "貨架", "note": b.get("note", "")} for b in (res.data or [])]
+    bins = _sorted_formatted_bins(res.data or [])
 
     return {"sku": sku, "barcode": barcode, "name": name or "(無名稱)", "bins": bins}
 
@@ -139,12 +161,24 @@ def lookup_bin(barcode: str = "", sku: str = ""):
 # ────────────────────────────────────────────────────────────
 # 3. 加倉位
 # ────────────────────────────────────────────────────────────
+def _norm_date(s: str):
+    """'2024-01-15' → '2024-01-15';空 → None。簡單驗證 YYYY-MM-DD。"""
+    s = (s or "").strip()
+    if not s:
+        return None
+    import re as _re
+    if not _re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        raise HTTPException(status_code=400, detail=f"日期格式要 YYYY-MM-DD,收到:{s}")
+    return s
+
+
 class AddBinReq(BaseModel):
     sku: str
     barcode: str = ""
     name: str = ""
     bin: str
     loc_type: str = "貨架"   # '貨架' 或 '板位'
+    stock_date: str = ""      # 批次日期 YYYY-MM-DD(可空)
     note: str = ""
 
 
@@ -153,18 +187,30 @@ def add_bin(req: AddBinReq):
     sku = req.sku.strip()
     bin_val = req.bin.strip()
     loc_type = req.loc_type.strip() if req.loc_type.strip() in VALID_LOC_TYPES else "貨架"
+    stock_date = _norm_date(req.stock_date)
     if not sku:
         raise HTTPException(status_code=400, detail="SKU 不能為空")
     if not bin_val:
         raise HTTPException(status_code=400, detail="位置不能為空")
 
-    # 避免同一個 SKU + 同一類型 重複加完全一樣嘅位置
+    # 避免同一個 SKU + 同類型 + 同位置 + 同日期 重複
     existing = (
         supabase.table("bin_locations").select("id")
         .eq("sku", sku).eq("bin", bin_val).eq("loc_type", loc_type).execute()
     )
-    if existing.data:
-        raise HTTPException(status_code=409, detail=f"SKU {sku} 嘅{loc_type}已經有 {bin_val}")
+    dup = [r for r in (existing.data or [])]
+    # 進一步用 stock_date 區分(允許同位置不同日期)
+    if dup:
+        same_date = (
+            supabase.table("bin_locations").select("id")
+            .eq("sku", sku).eq("bin", bin_val).eq("loc_type", loc_type)
+        )
+        if stock_date:
+            same_date = same_date.eq("stock_date", stock_date)
+        else:
+            same_date = same_date.is_("stock_date", "null")
+        if same_date.execute().data:
+            raise HTTPException(status_code=409, detail=f"SKU {sku} 嘅{loc_type} {bin_val}({stock_date or '無日期'})已經有")
 
     supabase.table("bin_locations").insert({
         "sku": sku,
@@ -172,9 +218,27 @@ def add_bin(req: AddBinReq):
         "name": req.name.strip(),
         "bin": bin_val,
         "loc_type": loc_type,
+        "stock_date": stock_date,
         "note": req.note.strip(),
     }).execute()
     return {"status": "success", "message": f"已加{loc_type} {bin_val} 俾 {sku}"}
+
+
+# ────────────────────────────────────────────────────────────
+# 3b. 改日期(FIFO:舊貨執晒就改/刪)
+# ────────────────────────────────────────────────────────────
+class UpdateBinReq(BaseModel):
+    id: str
+    stock_date: str = ""   # 新日期 YYYY-MM-DD,空 = 清走日期
+
+
+@router.post("/update")
+def update_bin(req: UpdateBinReq):
+    if not req.id:
+        raise HTTPException(status_code=400, detail="缺少 id")
+    stock_date = _norm_date(req.stock_date)
+    supabase.table("bin_locations").update({"stock_date": stock_date}).eq("id", req.id).execute()
+    return {"status": "success", "message": "已更新日期"}
 
 
 # ────────────────────────────────────────────────────────────
