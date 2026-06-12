@@ -1275,6 +1275,7 @@ function BinLocationPage() {
   const [binInputs, setBinInputs] = useState({});      // { sku: "A-03-12" }
   const [typeChoice, setTypeChoice] = useState({});    // { sku: "貨架" | "板位" }
   const [dateInputs, setDateInputs] = useState({});    // { sku: "2024-01-15" }
+  const [addOpen, setAddOpen] = useState({});          // { sku: true } 加位置面板展開
   // 🔒 刪除密碼 modal 狀態
   const [delModal, setDelModal] = useState(null); // { sku, binId, binLabel }
   const [delPw, setDelPw] = useState('');
@@ -1401,22 +1402,24 @@ function BinLocationPage() {
               </div>
             </div>
 
-            {/* 位置列表 — 分貨架 / 板位,每行一個位置 + 日期 + 刪除(已 FIFO 排序:舊日期前) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '16px' }}>
+            {/* 位置列表 — 分貨架 / 板位;有位置先展開,未設定只係一行細字 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
               {LOC_TYPES.map((t) => {
                 const binsOfType = (item.bins || []).filter(b => (b.loc_type || '貨架') === t.key);
                 return (
                   <div key={t.key}>
-                    {/* 類型標題 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    {/* 類型標題行 — 未設定就喺同一行顯示細字 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: binsOfType.length > 0 ? '8px' : 0 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '4px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: '800', letterSpacing: '0.3px', whiteSpace: 'nowrap', flexShrink: 0 }}>
                         {t.emoji} {t.key}
                       </span>
-                      <span style={{ fontSize: '12px', color: '#94a3b8' }}>{binsOfType.length > 0 ? `${binsOfType.length} 個位置` : ''}</span>
+                      {binsOfType.length > 0
+                        ? <span style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{binsOfType.length} 個</span>
+                        : <span style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic', whiteSpace: 'nowrap' }}>未設定</span>}
                       <div style={{ flex: 1, height: '1px', background: '#f1f5f9' }} />
                     </div>
 
-                    {binsOfType.length > 0 ? (
+                    {binsOfType.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         {binsOfType.map((b, bi) => (
                           <div key={b.id} style={{
@@ -1442,17 +1445,25 @@ function BinLocationPage() {
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic', padding: '8px 12px', background: '#fafbfc', borderRadius: '8px', border: '1px dashed #e2e8f0' }}>未設定位置</div>
                     )}
                   </div>
                 );
               })}
             </div>
 
-            {/* 加位置 — 先揀類型,入位置碼 + 日期(手機 stack) */}
+            {/* 加位置 — 預設摺埋,撳掣先展開 */}
+            {!addOpen[item.sku] ? (
+              <button onClick={() => setAddOpen(prev => ({ ...prev, [item.sku]: true }))}
+                style={{ width: '100%', background: 'white', border: '1.5px dashed #cbd5e1', color: '#475569', padding: '11px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}>
+                ➕ 加位置
+              </button>
+            ) : (
             <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #eef2f6' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', marginBottom: '10px', letterSpacing: '0.5px' }}>➕ 新增位置</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>➕ 新增位置</span>
+                <button onClick={() => setAddOpen(prev => ({ ...prev, [item.sku]: false }))}
+                  style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>✕ 收起</button>
+              </div>
               <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center' }}>
                 {/* 類型 toggle */}
                 <div style={{ display: 'flex', gap: '3px', background: '#fff', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
@@ -1483,6 +1494,7 @@ function BinLocationPage() {
                   style={{ background: (LOC_TYPE_MAP[getType(item.sku)] || LOC_TYPE_MAP['貨架']).color, color: 'white', border: 'none', padding: '12px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>➕ 加位置</button>
               </div>
             </div>
+            )}
           </div>
         ))}
       </div>
