@@ -1274,6 +1274,11 @@ function BinLocationPage() {
   const [binInputs, setBinInputs] = useState({});      // { sku: "A-03-12" }
   const [typeChoice, setTypeChoice] = useState({});    // { sku: "貨架" | "板位" }
   const [dateInputs, setDateInputs] = useState({});    // { sku: "2024-01-15" }
+  // 🔒 刪除密碼 modal 狀態
+  const [delModal, setDelModal] = useState(null); // { sku, binId, binLabel }
+  const [delPw, setDelPw] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState('');
   const searchIdRef = useRef(0);
 
   const getType = (sku) => typeChoice[sku] || '貨架';
@@ -1324,18 +1329,30 @@ function BinLocationPage() {
     } catch (err) { alert('❌ ' + err.message); }
   };
 
-  const removeBin = async (sku, binId, binLabel) => {
-    // 🔒 刪除要 Full Time 密碼(後端驗證,兼職冇密碼刪唔到)
-    const pw = window.prompt(`🔒 刪除位置「${binLabel}」\n\n需要 Full Time 同事密碼:`);
-    if (pw === null) return; // 取消
+  // 🔒 撳 ✕ → 開靚 modal 要 Full Time 密碼(兼職冇密碼刪唔到)
+  const removeBin = (sku, binId, binLabel) => {
+    setDelPw(''); setDelErr('');
+    setDelModal({ sku, binId, binLabel });
+  };
+
+  const confirmDelete = async () => {
+    if (!delModal) return;
+    if (!delPw.trim()) { setDelErr('請輸入密碼'); return; }
+    setDelBusy(true); setDelErr('');
     try {
       const res = await fetch(`${API_BASE_URL}/api/bin/remove`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: binId, password: pw }),
+        body: JSON.stringify({ id: delModal.binId, password: delPw }),
       });
       if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
+      const sku = delModal.sku;
+      setDelModal(null); setDelPw('');
       await refreshOne(sku);
-    } catch (err) { alert('❌ ' + err.message); }
+    } catch (err) {
+      setDelErr(err.message);
+    } finally {
+      setDelBusy(false);
+    }
   };
 
   // 改某個位置嘅批次日期(FIFO:舊貨執晒可改新日期)
@@ -1464,6 +1481,48 @@ function BinLocationPage() {
           </div>
         ))}
       </div>
+
+      {/* 🔒 刪除密碼 modal */}
+      {delModal && (
+        <div onClick={() => !delBusy && setDelModal(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px',
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: 'white', borderRadius: '18px', padding: '26px', width: '100%', maxWidth: '380px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🔒</div>
+              <div>
+                <div style={{ fontWeight: '800', fontSize: '17px', color: '#0f172a' }}>刪除位置</div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>需要 Full Time 同事密碼</div>
+              </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px', margin: '14px 0', fontSize: '14px', color: '#334155' }}>
+              即將刪除:<strong style={{ fontFamily: 'monospace', color: '#dc2626' }}>{delModal.binLabel}</strong>
+            </div>
+
+            <input type="password" value={delPw} autoFocus
+              onChange={(e) => { setDelPw(e.target.value); setDelErr(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); }}
+              placeholder="輸入密碼"
+              style={{ width: '100%', padding: '13px 16px', fontSize: '16px', borderRadius: '12px', border: `2px solid ${delErr ? '#fca5a5' : '#cbd5e1'}`, outline: 'none', boxSizing: 'border-box', letterSpacing: '2px' }} />
+
+            {delErr && <div style={{ color: '#dc2626', fontSize: '13px', fontWeight: 'bold', marginTop: '8px' }}>❌ {delErr}</div>}
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => setDelModal(null)} disabled={delBusy}
+                style={{ flex: 1, padding: '13px', borderRadius: '12px', border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>取消</button>
+              <button onClick={confirmDelete} disabled={delBusy}
+                style={{ flex: 1, padding: '13px', borderRadius: '12px', border: 'none', background: delBusy ? '#fca5a5' : '#dc2626', color: 'white', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>
+                {delBusy ? '⏳ 驗證中...' : '🗑 確認刪除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
