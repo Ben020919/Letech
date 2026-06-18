@@ -162,6 +162,7 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
     
     nutri = {
         'Serving_Size': get_nutri_val(data, 'Serving_Size'),
+        'Servings_Per_Package': get_nutri_val(data, 'Servings_Per_Package'),
         'Energy': get_nutri_val(data, 'Energy'),
         'Protein': get_nutri_val(data, 'Protein'),
         'Total_Fat': get_nutri_val(data, 'Total_Fat'),
@@ -174,8 +175,14 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
         'Country_Of_Origin': get_nutri_val(data, 'Country_Of_Origin'),
     }
     ing_text = clean_val(data.get('Ingredients', ''))
+    # 🌟 過敏原資訊(若有,append 落 ingredient text)
+    allergen_text = clean_val(data.get('Allergen', ''))
+    if allergen_text:
+        ing_text = (ing_text + " " if ing_text else "") + f"Allergen specified ingredients: {allergen_text}"
     mfr_text = f"{clean_val(data.get('Madeby_Prefix', ''))} {clean_val(data.get('Madeby', ''))}".strip()
     if mfr_text and "Manufacturer" not in mfr_text: mfr_text = "Manufacturer: " + mfr_text
+    # 🌟 Storage 提示(紅色,放 manufacturer 下面)
+    storage_text = clean_val(data.get('Storage.1', '')) or clean_val(data.get('Storage', ''))
 
     # 動態取得日期格式 (使用 Expiry_Date_Format 作為 Key)
     expiry_raw = data.get('Expiry_Date_Format', data.get('AD', ''))
@@ -237,9 +244,9 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
         .nutri-box {{
             position: absolute;
             left: 2mm;
-            top: 8.5mm; /* 🎨 line1 下面留 1.5mm 透氣位 */
-            width: 21mm; /* 🎨 vline 喺 24.5,留 1.5mm padding 唔貼住豎線 */
-            max-height: 31mm;
+            top: 8.5mm;        /* line1 下面留 1.5mm 透氣位 */
+            width: 20mm;        /* vline 喺 24.5,左 2 + 寬 20 = 22.5,離 vline 2mm */
+            max-height: 30mm;   /* 由 31 縮到 30,line2 上面留 1mm 透氣 */
             overflow: hidden;
             font-size: 4pt;
             line-height: 1.3;
@@ -277,45 +284,40 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
         }}
 
         /* === BOTTOM 41-50mm === */
-        /* 🎨 兩邊都 flex column + justify-content: center —— 唔同 line 數(2 vs 3)
-           都垂直置中,視覺上對稱;唔再左短右長嗰種唔對齊感 */
+        /* 🎨 mfr-box 同 bb-box 都 top-align,等兩邊第一行(Manufacturer 同 Best before)
+           頂部齊頭。top 由 41.5mm 推到 42.5mm,離 line2 多 1mm 透氣 */
         .mfr-box {{
             position: absolute;
             left: 2mm;
-            top: 41.5mm;
+            top: 42.5mm;       /* 由 41.5 推到 42.5,離 line2 多 1mm */
             width: 44mm;
-            height: 8mm; /* 由 max-height 改 height,等 flex centering 有固定高 */
+            height: 7mm;
             overflow: hidden;
             font-size: 4pt;
             line-height: 1.3;
             font-weight: 900;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
         }}
 
         .bb-box {{
             position: absolute;
             left: 48mm;
-            top: 41.5mm;
+            top: 42.5mm;       /* 同 mfr-box 同步推到 42.5,離 line2 多 1mm */
             width: 20mm;
-            height: 8mm;
+            height: 7mm;
             overflow: hidden;
-            font-size: 4pt;
-            line-height: 1.4;
+            font-size: 5pt;
+            line-height: 1.35;
             font-weight: 900;
             white-space: nowrap;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            text-align: left;
         }}
 
         .ing-box {{
             position: absolute;
-            left: 26.5mm; /* 🎨 vline 喺 24.5mm,留 2mm padding 唔貼住豎線 */
-            top: 8.5mm; /* 🎨 line1 下面留 1.5mm 透氣位 */
-            width: 41mm;
-            height: 31mm;
+            left: 27mm;        /* vline 喺 24.5,離 vline 2.5mm */
+            top: 8.5mm;        /* line1 下面留 1.5mm 透氣位 */
+            width: 41mm;       /* 右邊去到 68mm,離右邊 edge 2mm */
+            height: 30mm;      /* 由 31 縮到 30,line2 上面留 1mm 透氣 */
             font-size: 4pt;
             line-height: 1.2;
             overflow: hidden;
@@ -323,6 +325,12 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             font-weight: bold;
             letter-spacing: 0.2pt;
             word-spacing: 0.5pt;
+        }}
+
+        /* 🌟 Storage line(放 manufacturer 下面)*/
+        .storage-line {{
+            margin-top: 0.5mm;
+            font-size: 3.7pt;
         }}
 
         /* 強制全域粗體 — font 本身已經係 Bold variant(YaHei 700 / SHS Bold 700),
@@ -365,7 +373,7 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
         document.querySelectorAll('.desc-text').forEach(function(el) {{ fitText(el, 4); }});
         document.querySelectorAll('.nutri-box').forEach(function(el) {{ fitText(el, 4); }});
         document.querySelectorAll('.ing-box').forEach(function(el) {{ fitText(el, 3); }});
-        document.querySelectorAll('.mfr-box').forEach(function(el) {{ fitText(el, 3.5); }});
+        document.querySelectorAll('.mfr-box').forEach(function(el) {{ fitText(el, 3); }});
         document.querySelectorAll('.bb-box').forEach(function(el) {{ fitTextWH(el, 3); }});
       }}
       if (document.readyState === 'loading') {{
@@ -383,6 +391,7 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             <div class="nutri-box">
                 <div class="nutri-title">Nutrition Information</div>
                 <br>
+                {f'<div class="nutri-row"><span>Servings Per Package:</span><span>{nutri["Servings_Per_Package"]}</span></div>' if nutri['Servings_Per_Package'] and nutri['Servings_Per_Package'] != '0' else ''}
                 <div class="nutri-row"><span>Serving Size:</span><span>{nutri['Serving_Size']}</span></div>
                 <div class="nutri-row"><span>Energy:</span><span>{nutri['Energy']}</span></div>
                 <div class="nutri-row"><span>Protein:</span><span>{nutri['Protein']}</span></div>
@@ -398,8 +407,11 @@ def create_label_html_on_the_fly(item, matched_data, qty, font_css=""):
             <div class="vline"></div>
             <div class="ing-box">{ing_text}</div>
             <div class="line2"></div>
-            <div class="mfr-box">{mfr_text}</div>
-            <div class="bb-box">Best before({en_expiry}):<br>此日期前最佳({ch_expiry})<br>Show on package(見包裝)</div>
+            <div class="mfr-box">
+                <div>{mfr_text}</div>
+                {f'<div class="storage-line">{storage_text}</div>' if storage_text else ''}
+            </div>
+            <div class="bb-box">Best before({en_expiry}):<br>Show on package</div>
         </div>
     </body></html>
     """
