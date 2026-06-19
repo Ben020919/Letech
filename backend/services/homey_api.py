@@ -238,47 +238,49 @@ def create_barcode_only_label_html(barcode_val, qty, font_css=""):
 
 def create_insects_label_html(matched_data, qty, font_css=""):
     data = matched_data if matched_data else {}
-    barcode = clean_val(data.get('Barcode', ''))         
-    desc = clean_val(data.get('Description', ''))        
-    features = clean_val(data.get('FEATURES', ''))       
-    cautions = clean_val(data.get('Cautions', ''))       
-    net_content = clean_val(data.get('Net Content', '')) 
+    barcode = clean_val(data.get('Barcode', ''))
+    desc = clean_val(data.get('Description', ''))
+    features = clean_val(data.get('FEATURES', ''))
+    cautions = clean_val(data.get('Cautions', ''))
+    net_content = clean_val(data.get('Net Content', ''))
     if not net_content: net_content = clean_val(data.get('Net_Content', ''))
-    ingredients = clean_val(data.get('Ingredients', '')) 
-    warnings = clean_val(data.get('警告字眼', ''))         
-    
+    ingredients = clean_val(data.get('Ingredients', ''))
+    warnings = clean_val(data.get('警告字眼', ''))
+
     single_label_html = f"""
     <html><head><style>
         {font_css}
         @page {{ size: 70mm 50mm; margin: 0; }}
-        
-        body {{ 
-            margin: 0; 
-            padding: 0; 
-            font-family: Helvetica, Arial, sans-serif; 
+
+        body {{
+            margin: 0;
+            padding: 0;
+            font-family: Helvetica, Arial, sans-serif;
             background-color: white;
         }}
-        
+
         .label-box {{
             width: 70mm;
             height: 50mm;
             box-sizing: border-box;
-            padding: 3mm 4mm;
+            padding: 2mm 2.5mm;
             overflow: hidden;
             background-color: white;
             color: black;
-            font-size: 3.5pt;
-            line-height: 1.1;
-            font-weight: bold;
+            font-size: 6pt;
+            line-height: 1.2;
+            font-weight: 900;
             page-break-after: always;
         }}
 
         .insect-row {{
-            margin-bottom: 6pt;
+            margin-bottom: 1.4mm;
             word-wrap: break-word;
-            min-height: 6pt;
-            font-weight: bold;
+            word-break: break-word;
+            font-weight: 900;
         }}
+
+        .insect-row:last-child {{ margin-bottom: 0; }}
 
         /* 強制全域粗體 */
         .label-box, .label-box * {{
@@ -286,41 +288,48 @@ def create_insects_label_html(matched_data, qty, font_css=""):
         }}
     </style>
     <script>
-    /* 🚀 Shrink-to-fit:label-box overflow 自動縮細字 */
+    /* 🚀 Shrink-to-fit:同步縮 font + margin + line-height,直至全部內容塞得入
+       用戶要求「70x50mm 固定,內容多就自動適應位置,要顯示所有的資料」*/
     (function() {{
-      function fitText(el, minPx) {{
-        if (!el) return;
-        var size = parseFloat(getComputedStyle(el).fontSize);
-        if (!size) return;
-        var min = minPx || 3;
+      function fitLabel(box) {{
+        if (!box) return;
+        // 由 6pt 開始試,逐步縮到 1.5pt 為止(極限可讀)
+        var size = parseFloat(getComputedStyle(box).fontSize);  // px
+        var mb = 1.4;   // margin-bottom in mm
+        var lh = 1.2;   // line-height
+        var minSize = 1.5 * 96/72;  // 1.5pt → px
         var iters = 0;
-        while (el.scrollHeight > el.clientHeight && size > min && iters < 50) {{
-          size -= 0.3;
-          el.style.fontSize = size + 'px';
+        while (box.scrollHeight > box.clientHeight + 1 && size > minSize && iters < 100) {{
+          size -= 0.2;
+          mb = Math.max(0.2, mb * 0.95);
+          lh = Math.max(1.02, lh - 0.005);
+          box.style.fontSize = size + 'px';
+          box.style.lineHeight = lh;
+          box.querySelectorAll('.insect-row').forEach(function(r) {{
+            r.style.marginBottom = mb + 'mm';
+          }});
           iters++;
         }}
       }}
-      function fitAll() {{
-        document.querySelectorAll('.label-box').forEach(function(el) {{ fitText(el, 3); }});
+      function run() {{
+        document.querySelectorAll('.label-box').forEach(fitLabel);
       }}
       if (document.readyState === 'loading') {{
-        document.addEventListener('DOMContentLoaded', fitAll);
+        document.addEventListener('DOMContentLoaded', run);
       }} else {{
-        fitAll();
+        run();
       }}
     }})();
     </script>
     </head><body>
         <div class="label-box">
-            <div class="insect-row">
-                <div>{barcode}</div>
-                <div>{desc}</div>
-            </div>
-            <div class="insect-row">{features}</div>
-            <div class="insect-row">{cautions}</div>
-            <div class="insect-row">{net_content}</div>
-            <div class="insect-row">{ingredients}</div>
-            <div style="word-wrap: break-word; min-height: 6pt;">{warnings}</div>
+            <div class="insect-row">{barcode}</div>
+            <div class="insect-row">{desc}</div>
+            {f'<div class="insect-row">{features}</div>' if features else ''}
+            {f'<div class="insect-row">{cautions}</div>' if cautions else ''}
+            {f'<div class="insect-row">{net_content}</div>' if net_content else ''}
+            {f'<div class="insect-row">{ingredients}</div>' if ingredients else ''}
+            {f'<div class="insect-row">{warnings}</div>' if warnings else ''}
         </div>
     </body></html>
     """
@@ -590,6 +599,292 @@ def create_food_label_html(item_name, barcode_text, matched_data, qty, font_css=
                 {f'<div class="storage-line">{storage_text}</div>' if storage_text else ''}
             </div>
             <div class="bb-box">Best before({en_expiry}):<br>Show on package</div>
+        </div>
+    </body></html>
+    """
+    import re as regex
+    match = regex.search(r'<body>(.*?)</body>', single_label_html, regex.DOTALL)
+    if match:
+        div_content = match.group(1)
+        full_body = div_content * qty
+        return single_label_html.replace(div_content, full_body)
+    return single_label_html
+
+
+def create_health_food_label_html(matched_data, qty, font_css=""):
+    """保健食品 layout — 仿 letech.com.hk PDF generate_health_food_label
+    左:barcode/name/ingredient/Net Content/Country/Storage/Manufacturer/Best Before
+    右:Nutrition Information(Serving Size + Energy/Protein/Fat/Carb/Sugar/Sodium)
+    中間 mm(42) 垂直分隔線"""
+    data = matched_data if matched_data else {}
+    barcode = clean_val(data.get('Barcode', ''))
+    name = clean_val(data.get('Description', ''))
+    ingredient = clean_val(data.get('Ingredients', ''))
+    net_content = clean_val(data.get('Net Content', '')) or clean_val(data.get('Net_Content', ''))
+    country = clean_val(data.get('Country_Of_Origin', ''))
+    storage = clean_val(data.get('Cautions', '')) or clean_val(data.get('Storage', ''))
+    mfr_pref = clean_val(data.get('Madeby_Prefix', ''))
+    mfr_main = clean_val(data.get('Madeby', ''))
+    mfr = (mfr_pref + ' ' + mfr_main).strip()
+    if mfr and 'Manufacturer' not in mfr:
+        mfr = 'Manufacturer:' + mfr
+
+    # Serving Size:用 Instructions(letech.com 嘅 AW,通常已含 "a day"),否則用 Serving_Size + " a day"
+    instructions = clean_val(data.get('Instructions', ''))
+    if instructions:
+        serving = instructions
+    else:
+        ss = clean_val(data.get('Serving_Size', ''))
+        serving = (ss + ' a day') if ss else ''
+
+    # Nutrition values
+    def nv(key):
+        v = clean_val(data.get(key, ''))
+        return v if v else ''
+
+    energy = nv('Energy')
+    protein = nv('Protein')
+    total_fat = nv('Total_Fat')
+    sat_fat = nv('Sat_Fat')
+    trans_fat = nv('Trans_Fat')
+    carb = nv('Carb')
+    sugar = nv('Sugar')
+    sodium = nv('Sodium')
+
+    # Expiry
+    expiry_raw = data.get('Expiry_Date_Format', '')
+    en_ex, ch_ex = format_expiry_date(expiry_raw)
+
+    single_label_html = f"""
+    <html><head><style>
+        {font_css}
+        @page {{ size: 70mm 50mm; margin: 0; }}
+
+        body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }}
+
+        .label-container {{
+            width: 70mm;
+            height: 50mm;
+            position: relative;
+            box-sizing: border-box;
+            page-break-after: always;
+            overflow: hidden;
+            font-weight: bold;
+            color: black;
+            background: white;
+        }}
+
+        /* === 垂直分隔線 mm(42) (對應 letech.com label.py:c.line(mm(42),0,mm(42),mm(50))) === */
+        .vline {{
+            position: absolute;
+            left: 42mm;
+            top: 0;
+            height: 50mm;
+            border-left: 1.5pt solid black;
+        }}
+
+        /* === 右側水平分隔線 mm(35) (右半邊上面有 Nutrition Information 區) === */
+        .hline-right {{
+            position: absolute;
+            left: 42mm;
+            right: 0;
+            top: 15mm;          /* label.py: c.line(mm(42),mm(35),...) → 50-35=15mm */
+            border-top: 1.5pt solid black;
+        }}
+
+        /* === LEFT (0-42mm) === */
+        .barcode-text {{
+            position: absolute;
+            left: 2mm;
+            top: 1mm;           /* label.py mm(47) → 50-47=3mm... 用 1mm 留多啲位 */
+            font-size: 4pt;
+            font-weight: 900;
+        }}
+
+        .name-text {{
+            position: absolute;
+            left: 2mm;
+            top: 3.5mm;         /* label.py mm(44) → 50-44=6mm... 收緊 */
+            width: 38mm;
+            max-height: 5mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.2;
+            font-weight: 900;
+        }}
+
+        .ingredient-box {{
+            position: absolute;
+            left: 2mm;
+            top: 9mm;           /* 商品名底下 */
+            width: 38mm;
+            max-height: 14mm;
+            overflow: hidden;
+            font-size: 3.5pt;
+            line-height: 1.15;
+            font-weight: 900;
+            word-wrap: break-word;
+        }}
+
+        .info-line {{
+            position: absolute;
+            left: 2mm;
+            width: 38mm;
+            font-size: 4pt;
+            line-height: 1.2;
+            font-weight: 900;
+            overflow: hidden;
+        }}
+
+        .info-net {{ top: 24mm; }}       /* label.py mm(24) → 50-24=26mm */
+        .info-country {{ top: 27mm; }}    /* label.py mm(22) → 50-22=28mm */
+
+        .storage-box {{
+            position: absolute;
+            left: 2mm;
+            top: 30mm;
+            width: 38mm;
+            max-height: 4.5mm;
+            overflow: hidden;
+            font-size: 3.5pt;
+            line-height: 1.15;
+            font-weight: 900;
+            word-wrap: break-word;
+        }}
+
+        .mfr-box {{
+            position: absolute;
+            left: 2mm;
+            top: 35mm;
+            width: 38mm;
+            max-height: 6mm;
+            overflow: hidden;
+            font-size: 3.5pt;
+            line-height: 1.15;
+            font-weight: 900;
+            word-wrap: break-word;
+        }}
+
+        .bb-box {{
+            position: absolute;
+            left: 2mm;
+            top: 42mm;          /* label.py mm(8/6/4) */
+            width: 38mm;
+            font-size: 3.7pt;
+            line-height: 1.25;
+            font-weight: 900;
+        }}
+
+        /* === RIGHT (42-70mm) === */
+        .nutri-title {{
+            position: absolute;
+            left: 44mm;
+            top: 1.5mm;
+            width: 24mm;
+            font-size: 4.5pt;
+            font-weight: 900;
+        }}
+
+        .serving-label {{
+            position: absolute;
+            left: 44mm;
+            top: 5mm;
+            width: 24mm;
+            font-size: 4pt;
+            font-weight: 900;
+        }}
+
+        .serving-val {{
+            position: absolute;
+            left: 44mm;
+            top: 8mm;
+            width: 24mm;
+            max-height: 5.5mm;
+            overflow: hidden;
+            font-size: 4pt;
+            line-height: 1.15;
+            font-weight: 900;
+            word-wrap: break-word;
+        }}
+
+        .nutri-row {{
+            position: absolute;
+            left: 44mm;
+            width: 24mm;
+            font-size: 4pt;
+            line-height: 1.2;
+            font-weight: 900;
+            overflow: hidden;
+            white-space: nowrap;
+        }}
+
+        /* label.py: Energy=mm(29), Protein=mm(26)... Sodium=mm(8) */
+        .row-energy   {{ top: 17mm; }}    /* 50-29=21mm... 但要避開分隔線(15mm),用 17mm 開始 */
+        .row-protein  {{ top: 20mm; }}
+        .row-totalfat {{ top: 23mm; }}
+        .row-satfat   {{ top: 26mm; }}
+        .row-transfat {{ top: 29mm; }}
+        .row-carb     {{ top: 32mm; }}
+        .row-sugar    {{ top: 35mm; }}
+        .row-sodium   {{ top: 38mm; }}
+
+        .label-container, .label-container * {{
+            font-weight: 900 !important;
+            -webkit-font-smoothing: antialiased;
+        }}
+    </style>
+    <script>
+    /* Shrink-to-fit:左邊 ingredient-box + storage-box + mfr-box overflow 自動縮字 */
+    (function() {{
+      function fitText(el, minPt) {{
+        if (!el) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        var minPx = (minPt || 2) * 96/72;
+        var iters = 0;
+        while (el.scrollHeight > el.clientHeight && size > minPx && iters < 50) {{
+          size -= 0.2;
+          el.style.fontSize = size + 'px';
+          iters++;
+        }}
+      }}
+      function run() {{
+        document.querySelectorAll('.name-text, .ingredient-box, .storage-box, .mfr-box, .serving-val').forEach(function(el) {{ fitText(el, 2); }});
+      }}
+      if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', run);
+      }} else {{
+        run();
+      }}
+    }})();
+    </script>
+    </head><body>
+        <div class="label-container">
+            <!-- LEFT -->
+            <div class="barcode-text">{barcode}</div>
+            <div class="name-text">{name}</div>
+            <div class="ingredient-box">Ingredient:{ingredient}</div>
+            <div class="info-line info-net">Net Content:{net_content}</div>
+            <div class="info-line info-country">Country Of Origin:{country}</div>
+            <div class="storage-box">{storage}</div>
+            <div class="mfr-box">{mfr}</div>
+            <div class="bb-box">Best before(End {en_ex}):<br>此日期前最佳({ch_ex})<br>Show on package(見包裝)</div>
+
+            <!-- DIVIDERS -->
+            <div class="vline"></div>
+            <div class="hline-right"></div>
+
+            <!-- RIGHT -->
+            <div class="nutri-title">Nutrition Information</div>
+            <div class="serving-label">Serving Size:</div>
+            <div class="serving-val">{serving}</div>
+            <div class="nutri-row row-energy">Energy: {energy}</div>
+            <div class="nutri-row row-protein">Protein: {protein}</div>
+            <div class="nutri-row row-totalfat">Total Fat: {total_fat}</div>
+            <div class="nutri-row row-satfat">Saturated: {sat_fat}</div>
+            <div class="nutri-row row-transfat">Trans Fat: {trans_fat}</div>
+            <div class="nutri-row row-carb">Carbohydrate: {carb}</div>
+            <div class="nutri-row row-sugar">Sugars: {sugar}</div>
+            <div class="nutri-row row-sodium">Sodium: {sodium}</div>
         </div>
     </body></html>
     """
