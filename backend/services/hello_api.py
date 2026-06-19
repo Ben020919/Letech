@@ -11,7 +11,9 @@ from services.pdf_core import delete_file_later, generate_barcode_b64
 from services.homey_api import (
     font_to_base64_css as homey_font_css,
     DEFAULT_FONT_PATH as HOMEY_FONT,
+    create_health_food_label_html,
 )
+from services.master_api import find_by_barcode, find_by_product_no
 
 router = APIRouter()
 PDF_OUT_DIR = "generated_pdfs"
@@ -105,19 +107,39 @@ def process_hellobear_pdf(file_bytes):
 
         if p_no not in product_no_tracker: product_no_tracker[p_no] = []
         product_no_tracker[p_no].append(i + 1)
-        
-        needs_print = False
-        if barcode_val:
-            if re.search(r'[A-Za-z]', barcode_val):
-                needs_print = True
-                
-        data_status = 'print' if needs_print else 'no_print'
-        final_html = create_hellobear_label_html(barcode_val, p_name, qty) if needs_print else ""
+
+        # 🌟 保健食品 detection:喺 master DB 揾,若 Label_Type 係「保健食品」
+        # 用 health_food layout 打印(dual-column)。否則行返舊邏輯(barcode+name)。
+        health_food_html = ""
+        try:
+            matches = find_by_product_no(p_no) if p_no else None
+            if (matches is None or matches.empty) and barcode_val:
+                matches = find_by_barcode(barcode_val)
+            if matches is not None and not matches.empty:
+                md = matches.iloc[0].fillna("").to_dict()
+                lt_str = str(md.get('Label_Type', '')).lower()
+                if '保健食品' in lt_str or 'health_food' in lt_str:
+                    health_food_html = create_health_food_label_html(md, qty, FONT_PLACEHOLDER)
+        except Exception:
+            pass
+
+        if health_food_html:
+            needs_print = True
+            final_html = health_food_html
+            data_status = 'print'
+        else:
+            needs_print = False
+            if barcode_val:
+                if re.search(r'[A-Za-z]', barcode_val):
+                    needs_print = True
+
+            data_status = 'print' if needs_print else 'no_print'
+            final_html = create_hellobear_label_html(barcode_val, p_name, qty) if needs_print else ""
 
         temp_items.append({
             "id": f"{p_no}_{i}", "Product_No": p_no, "Name": p_name,
             "Barcode": barcode_val, "Qty": qty, "Date": "N/A",
-            "status": data_status, "print_html": final_html 
+            "status": data_status, "print_html": final_html
         })
 
     out_filename = f"hellobear_{uuid.uuid4().hex}.pdf"
