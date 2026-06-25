@@ -229,6 +229,34 @@ def add_bin(req: AddBinReq):
 
 
 # ────────────────────────────────────────────────────────────
+# 2b. 攞某個位置嘅所有現有貨(批次入倉 UI 用嚟顯示「已有 N 件」)
+# ────────────────────────────────────────────────────────────
+@router.get("/by_location")
+def by_location(bin: str, loc_type: str = "貨架"):
+    bin_val = (bin or "").strip()
+    lt = loc_type.strip() if loc_type.strip() in VALID_LOC_TYPES else "貨架"
+    if not bin_val:
+        return {"bin": "", "loc_type": lt, "items": []}
+    res = (
+        supabase.table("bin_locations").select("*")
+        .eq("bin", bin_val).eq("loc_type", lt).execute()
+    )
+    rows = res.data or []
+    # 用 FIFO sort + 補返 sku/name/barcode
+    items = []
+    for b in sorted(rows, key=_bin_sort_key):
+        items.append({
+            "id": b["id"],
+            "sku": b.get("sku", ""),
+            "barcode": b.get("barcode", ""),
+            "name": b.get("name", ""),
+            "stock_date": (b.get("stock_date") or ""),
+            "note": b.get("note", ""),
+        })
+    return {"bin": bin_val, "loc_type": lt, "items": items}
+
+
+# ────────────────────────────────────────────────────────────
 # 3a. 批次加倉位 — 一個位置 × 多件貨,一次過 insert
 #     用 case:員工企喺 B1-1,手上一堆貨,scan 完一鍵入晒
 # ────────────────────────────────────────────────────────────
@@ -320,6 +348,54 @@ def update_bin(req: UpdateBinReq):
     stock_date = _norm_date(req.stock_date)
     supabase.table("bin_locations").update({"stock_date": stock_date}).eq("id", req.id).execute()
     return {"status": "success", "message": "已更新日期"}
+
+
+# ────────────────────────────────────────────────────────────
+# 3c. 移位置(轉倉) — UPDATE 一條 row 嘅 bin / loc_type / date
+#     冇 delete data,所以唔需要密碼
+# ────────────────────────────────────────────────────────────
+class MoveBinReq(BaseModel):
+    id: str
+    new_bin: str
+    new_loc_type: str = "貨架"
+    new_stock_date: str = ""   # 留空 = 清走日期
+
+
+@router.post("/move")
+def move_bin(req: MoveBinReq):
+    if not req.id:
+        raise HTTPException(status_code=400, detail="缺少 id")
+    new_bin = req.new_bin.strip()
+    if not new_bin:
+        raise HTTPException(status_code=400, detail="新位置不能為空")
+    new_lt = req.new_loc_type.strip() if req.new_loc_type.strip() in VALID_LOC_TYPES else "貨架"
+    new_date = _norm_date(req.new_stock_date)
+
+    # 先攞番呢條 record 嘅 SKU
+    src = supabase.table("bin_locations").select("sku, bin, loc_type, stock_date").eq("id", req.id).execute()
+    if not src.data:
+        raise HTTPException(status_code=404, detail="揾唔到呢條記錄")
+    sku = src.data[0]["sku"]
+
+    # check target 有冇同 sku+bin+type+date 嘅 row(避免重複)
+    chk = (
+        supabase.table("bin_locations").select("id")
+        .eq("sku", sku).eq("bin", new_bin).eq("loc_type", new_lt).neq("id", req.id)
+    )
+    if new_date:
+        chk = chk.eq("stock_date", new_date)
+    else:
+        chk = chk.is_("stock_date", "null")
+    if chk.execute().data:
+        raise HTTPException(status_code=409, detail=f"{sku} 已經喺 {new_lt} {new_bin}({new_date or '無日期'}),唔可以重複")
+
+    # UPDATE
+    supabase.table("bin_locations").update({
+        "bin": new_bin,
+        "loc_type": new_lt,
+        "stock_date": new_date,
+    }).eq("id", req.id).execute()
+    return {"status": "success", "message": f"已將 {sku} 移去 {new_lt} {new_bin}"}
 
 
 # ────────────────────────────────────────────────────────────

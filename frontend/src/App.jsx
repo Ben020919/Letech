@@ -1275,12 +1275,27 @@ const LOC_TYPE_MAP = Object.fromEntries(LOC_TYPES.map(t => [t.key, t]));
 
 function BinLocationPage() {
   const isMobile = useIsMobile();
-  const today = new Date().toISOString().slice(0, 10);
+
+  // 🌟 Page mode: 'batch_add' (批次入倉) | 'move' (轉位置)
+  const [mode, setMode] = useState('batch_add');
 
   // 位置 + 類型 + 日期(整批共用)
   const [binVal, setBinVal] = useState('');
   const [locType, setLocType] = useState('貨架');
-  const [stockDate, setStockDate] = useState(today);
+  const [stockDate, setStockDate] = useState('');     // 預設空,用戶要主動揀
+  const [locationLocked, setLocationLocked] = useState(false);   // 用戶 confirm 咗位置先 unlock scan
+
+  // === 轉位置 (move) mode state ===
+  const [moveSearch, setMoveSearch] = useState('');
+  const [moveResults, setMoveResults] = useState([]);   // [{sku, barcode, name, bins:[...]}]
+  const [moveSearching, setMoveSearching] = useState(false);
+  const [moveWarn, setMoveWarn] = useState('');
+  const [moveSource, setMoveSource] = useState(null);   // 揀咗要轉嘅 bin {id, sku, bin, loc_type, stock_date, productName}
+  const [moveNewBin, setMoveNewBin] = useState('');
+  const [moveNewType, setMoveNewType] = useState('貨架');
+  const [moveNewDate, setMoveNewDate] = useState('');
+  const [moveBusy, setMoveBusy] = useState(false);
+  const [moveLastResult, setMoveLastResult] = useState(null);
 
   // Scan / search input
   const [scanInput, setScanInput] = useState('');
@@ -1295,15 +1310,143 @@ function BinLocationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState(null);  // { added_count, skipped, bin, ... }
 
+  // 呢個位置已經有嘅貨(load 自 /api/bin/by_location)
+  const [existingItems, setExistingItems] = useState([]);
+  const [loadingExisting, setLoadingExisting] = useState(false);
+
+  // 🔒 刪除密碼 modal
+  const [delModal, setDelModal] = useState(null);   // { id, label }
+  const [delPw, setDelPw] = useState('');
+  const [delBusy, setDelBusy] = useState(false);
+  const [delErr, setDelErr] = useState('');
+
   const scanRef = useRef(null);
   const requestIdRef = useRef(0);
 
-  // Auto-focus scan input 當位置 ready
-  useEffect(() => {
-    if (binVal.trim() && scanRef.current && !suggestions.length) {
-      scanRef.current.focus();
+  // 用戶 confirm 位置(按 Enter 或者撳「✓ 確定」)→ unlock scan field + load 現有貨
+  const confirmLocation = () => {
+    if (!binVal.trim()) return;
+    setLocationLocked(true);
+    setTimeout(() => scanRef.current?.focus(), 50);
+    fetchExisting();
+  };
+
+  // Fetch 呢個位置已經有嘅貨
+  const fetchExisting = async () => {
+    if (!binVal.trim()) return;
+    setLoadingExisting(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/by_location?bin=${encodeURIComponent(binVal.trim())}&loc_type=${encodeURIComponent(locType)}`);
+      if (!res.ok) throw new Error('攞失敗');
+      const data = await res.json();
+      setExistingItems(data.items || []);
+    } catch (_) {
+      setExistingItems([]);
+    } finally {
+      setLoadingExisting(false);
     }
-  }, [binVal, suggestions.length]);
+  };
+
+  // 🔒 撳 ✕ 刪除一件已有嘅貨 → 開密碼 modal
+  const openDeleteModal = (id, label) => {
+    setDelPw(''); setDelErr('');
+    setDelModal({ id, label });
+  };
+
+  // === 轉位置 functions ===
+  const doMoveSearch = async () => {
+    const q = moveSearch.trim();
+    if (!q) return;
+    setMoveSearching(true);
+    setMoveWarn('');
+    setMoveResults([]);
+    setMoveSource(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/search?q=${encodeURIComponent(q)}&limit=20`);
+      if (!res.ok) throw new Error('搜尋失敗');
+      const data = await res.json();
+      // 只 keep 有 bins 嘅 items(冇位置就冇得轉)
+      const withBins = (data.results || []).filter(r => r.bins && r.bins.length > 0);
+      if (withBins.length === 0) {
+        setMoveWarn(`⚠️ 揾唔到「${q}」有位置嘅貨`);
+      }
+      setMoveResults(withBins);
+    } catch (err) {
+      setMoveWarn('❌ ' + err.message);
+    } finally {
+      setMoveSearching(false);
+    }
+  };
+
+  const selectMoveSource = (item, bin) => {
+    setMoveSource({
+      id: bin.id,
+      sku: item.sku,
+      productName: item.name,
+      bin: bin.bin,
+      loc_type: bin.loc_type || '貨架',
+      stock_date: bin.stock_date || '',
+    });
+    // 預填新類型 = 舊類型
+    setMoveNewType(bin.loc_type || '貨架');
+    setMoveNewBin('');
+    setMoveNewDate(bin.stock_date || '');
+    setMoveLastResult(null);
+  };
+
+  const confirmMove = async () => {
+    if (!moveSource) return;
+    if (!moveNewBin.trim()) { alert('請輸入新位置'); return; }
+    if (moveNewBin.trim() === moveSource.bin && moveNewType === moveSource.loc_type && (moveNewDate || '') === (moveSource.stock_date || '')) {
+      alert('新位置同舊位置一樣,唔需要轉');
+      return;
+    }
+    setMoveBusy(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/move`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: moveSource.id,
+          new_bin: moveNewBin.trim(),
+          new_loc_type: moveNewType,
+          new_stock_date: moveNewDate,
+        }),
+      });
+      if (!res.ok) {
+        const er = await res.json().catch(() => ({}));
+        throw new Error(er.detail || '轉位置失敗');
+      }
+      const data = await res.json();
+      setMoveLastResult({ ok: true, message: data.message, from: `${moveSource.loc_type} ${moveSource.bin}`, to: `${moveNewType} ${moveNewBin.trim()}` });
+      // 即時 refresh search results 等 user 見到更新
+      setMoveSource(null);
+      setMoveNewBin('');
+      if (moveSearch.trim()) await doMoveSearch();
+    } catch (err) {
+      setMoveLastResult({ ok: false, message: err.message });
+    } finally {
+      setMoveBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!delModal) return;
+    if (!delPw.trim()) { setDelErr('請輸入密碼'); return; }
+    setDelBusy(true); setDelErr('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/bin/remove`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: delModal.id, password: delPw }),
+      });
+      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
+      setDelModal(null); setDelPw('');
+      await fetchExisting();
+    } catch (err) {
+      setDelErr(err.message);
+    } finally {
+      setDelBusy(false);
+    }
+  };
 
   // 加入一個 item 到 pending list
   const addToPending = (item) => {
@@ -1392,7 +1535,7 @@ function BinLocationPage() {
       setLastResult(data);
       setPending([]);  // 清空 list
       // 保留 location/type/date,等用戶繼續加同一個位置
-      // 自動 focus scan input
+      await fetchExisting();   // refresh 已有貨 list,user 即刻見到啱啱加嗰啲
       setTimeout(() => scanRef.current?.focus(), 100);
     } catch (err) {
       alert('❌ ' + err.message);
@@ -1404,10 +1547,12 @@ function BinLocationPage() {
   const resetLocation = () => {
     if (pending.length && !confirm(`你仲有 ${pending.length} 件貨未 submit,確認換位置?`)) return;
     setBinVal('');
+    setLocationLocked(false);
     setPending([]);
     setLastResult(null);
     setScanWarn('');
     setSuggestions([]);
+    setExistingItems([]);
   };
 
   const locCfg = LOC_TYPE_MAP[locType] || LOC_TYPE_MAP['貨架'];
@@ -1415,21 +1560,35 @@ function BinLocationPage() {
   return (
     <div className="page-content">
       <div className="page-header">
-        <h2>📍 Bin Location 批次入倉</h2>
-        <p>先入位置,再 scan/輸入多件貨,一次過確認入晒。Scan barcode 自動加入 list,有重複會 skip。</p>
+        <h2>📍 Bin Location 倉位管理</h2>
+        <p>{mode === 'batch_add' ? '先入位置,再 scan/輸入多件貨,一次過確認入晒。Scan barcode 自動加入 list,有重複會 skip。' : '搵要轉嘅貨 → 揀原本位置 → 入新位置 → 確認'}</p>
       </div>
 
+      {/* ========== Mode toggle ========== */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', background: '#f1f5f9', padding: '5px', borderRadius: '14px', maxWidth: '420px' }}>
+        {[
+          { key: 'batch_add', label: '📦 批次入倉', color: '#0ea5e9' },
+          { key: 'move', label: '🔁 轉位置', color: '#7c3aed' },
+        ].map((m) => (
+          <button key={m.key} onClick={() => setMode(m.key)}
+            style={{ flex: 1, background: mode === m.key ? m.color : 'transparent', color: mode === m.key ? 'white' : '#475569', border: 'none', padding: '11px 16px', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', fontSize: '14px', transition: 'all 0.15s' }}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'batch_add' && (<>
       {/* ========== 1. 位置設定 ========== */}
       <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>📍 第一步:設定位置</span>
-          {binVal.trim() && (
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>📍 第一步:設定位置 {locationLocked && '✓'}</span>
+          {locationLocked && (
             <button onClick={resetLocation} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>🔄 換位置</button>
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', alignItems: isMobile ? 'stretch' : 'center' }}>
           {/* 類型 toggle */}
-          <div style={{ display: 'flex', gap: '3px', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+          <div style={{ display: 'flex', gap: '3px', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0', opacity: locationLocked ? 0.6 : 1, pointerEvents: locationLocked ? 'none' : 'auto' }}>
             {LOC_TYPES.map((t) => {
               const active = locType === t.key;
               return (
@@ -1440,22 +1599,33 @@ function BinLocationPage() {
               );
             })}
           </div>
-          <input type="text" value={binVal} autoFocus
+          <input type="text" value={binVal} autoFocus disabled={locationLocked}
             onChange={(e) => setBinVal(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && binVal.trim()) { e.preventDefault(); confirmLocation(); } }}
             placeholder={locType === '貨架' ? '位置 A-03-12' : '板位 P-05'}
-            style={{ flex: isMobile ? 'none' : '1', minWidth: '160px', padding: '13px 16px', borderRadius: '10px', border: `2px solid ${binVal.trim() ? locCfg.color : '#cbd5e1'}`, fontSize: '17px', fontFamily: 'monospace', fontWeight: 'bold', outline: 'none', boxSizing: 'border-box', color: locCfg.color }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            style={{ flex: isMobile ? 'none' : '1', minWidth: '160px', padding: '13px 16px', borderRadius: '10px', border: `2px solid ${binVal.trim() ? locCfg.color : '#cbd5e1'}`, fontSize: '17px', fontFamily: 'monospace', fontWeight: 'bold', outline: 'none', boxSizing: 'border-box', color: locCfg.color, background: locationLocked ? '#f8fafc' : 'white' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', opacity: locationLocked ? 0.6 : 1, pointerEvents: locationLocked ? 'none' : 'auto' }}>
             {isMobile && <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📅</span>}
             <input type="date" value={stockDate}
               onChange={(e) => setStockDate(e.target.value)}
-              title="批次日期(整批共用)"
-              style={{ flex: isMobile ? 1 : 'none', padding: '12px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '46px', boxSizing: 'border-box' }} />
+              title="批次日期(可留空)"
+              style={{ flex: isMobile ? 1 : 'none', padding: '12px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '46px', boxSizing: 'border-box', color: stockDate ? '#0f172a' : '#94a3b8' }} />
+            {stockDate && !locationLocked && (
+              <button onClick={() => setStockDate('')} title="清走日期"
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '16px', padding: '4px 6px' }}>✕</button>
+            )}
           </div>
+          {!locationLocked && (
+            <button onClick={confirmLocation} disabled={!binVal.trim()}
+              style={{ background: binVal.trim() ? locCfg.color : '#cbd5e1', color: 'white', border: 'none', padding: '13px 22px', borderRadius: '10px', fontWeight: 'bold', cursor: binVal.trim() ? 'pointer' : 'not-allowed', fontSize: '15px', whiteSpace: 'nowrap' }}>
+              ✓ 確定
+            </button>
+          )}
         </div>
       </div>
 
       {/* ========== 2. Scan / 輸入貨 ========== */}
-      {binVal.trim() && (
+      {locationLocked && (
         <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
           <div style={{ marginBottom: '12px', fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>🔍 第二步:Scan / 輸入貨(Enter 確認)</div>
           <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
@@ -1496,8 +1666,42 @@ function BinLocationPage() {
         </div>
       )}
 
+      {/* ========== 2.5 呢個位置已經有嘅貨(可刪) ========== */}
+      {locationLocked && (
+        <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+              📂 {locCfg.emoji} {binVal} 已經有 ({existingItems.length} 件){loadingExisting && ' ⏳'}
+            </span>
+            <button onClick={fetchExisting} disabled={loadingExisting}
+              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>🔄 refresh</button>
+          </div>
+          {existingItems.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px', color: '#cbd5e1', fontSize: '14px', fontStyle: 'italic' }}>{loadingExisting ? '載入中...' : '呢個位置仲未有貨'}</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {existingItems.map((b, i) => (
+                <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#cbd5e1', color: 'white', fontSize: '11px', fontWeight: '800', flexShrink: 0 }}>{i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || '(無名)'}</div>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '3px', fontSize: '11px', flexWrap: 'wrap' }}>
+                      <span style={{ background: '#eff6ff', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{b.sku || '—'}</span>
+                      {b.barcode && <span style={{ background: '#ecfdf5', color: '#065f46', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{b.barcode}</span>}
+                      {b.stock_date && <span style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>📅 {b.stock_date}</span>}
+                    </div>
+                  </div>
+                  <button onClick={() => openDeleteModal(b.id, `${b.name || b.sku} ${b.stock_date ? '('+b.stock_date+')' : ''}`)} title="刪除(要 Full Time 密碼)"
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', background: 'white', border: '1px solid #fecaca', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '7px', flexShrink: 0 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ========== 3. Pending list ========== */}
-      {binVal.trim() && (
+      {locationLocked && (
         <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
             <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>📦 待加入 ({pending.length} 件)</span>
@@ -1529,7 +1733,7 @@ function BinLocationPage() {
       )}
 
       {/* ========== 4. Submit ========== */}
-      {binVal.trim() && pending.length > 0 && (
+      {locationLocked && pending.length > 0 && (
         <div style={{ maxWidth: '900px', marginBottom: '14px' }}>
           <button onClick={submitBatch} disabled={submitting}
             style={{ width: '100%', background: submitting ? '#94a3b8' : locCfg.color, color: 'white', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '800', fontSize: '17px', cursor: submitting ? 'wait' : 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
@@ -1550,6 +1754,174 @@ function BinLocationPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+      </>)}
+
+      {/* ============================================================ */}
+      {/* ========== 🔁 轉位置 mode ========== */}
+      {/* ============================================================ */}
+      {mode === 'move' && (<>
+        {/* Step 1: Search */}
+        <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
+          <div style={{ marginBottom: '12px', fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>🔍 第一步:搵要轉嘅貨</div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input type="text" value={moveSearch}
+              onChange={(e) => { setMoveSearch(e.target.value); setMoveWarn(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !moveSearching) { e.preventDefault(); doMoveSearch(); } }}
+              placeholder="Scan barcode 或輸入 SKU / 商品名關鍵字"
+              disabled={moveSearching}
+              autoFocus
+              style={{ flex: 1, padding: '14px 18px', fontSize: '16px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+            <button onClick={doMoveSearch} disabled={moveSearching || !moveSearch.trim()}
+              style={{ background: moveSearching ? '#94a3b8' : '#7c3aed', color: 'white', border: 'none', padding: '14px 22px', borderRadius: '12px', fontWeight: 'bold', cursor: moveSearching ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+              {moveSearching ? '⏳' : '🔍 搜尋'}
+            </button>
+          </div>
+          {moveWarn && (
+            <div style={{ marginTop: '10px', background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '10px 14px', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold' }}>
+              {moveWarn}
+            </div>
+          )}
+        </div>
+
+        {/* Step 2: 揀要轉嘅原位置 */}
+        {moveResults.length > 0 && (
+          <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
+            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>📂 第二步:揀要轉嘅原位置</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {moveResults.map((item) => (
+                <div key={item.sku || item.barcode} style={{ border: '1px solid #eef2f6', borderRadius: '12px', padding: '14px' }}>
+                  <div style={{ fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>{item.name}</div>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', fontSize: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ background: '#eff6ff', color: '#1e40af', padding: '2px 8px', borderRadius: '5px', fontFamily: 'monospace' }}>SKU {item.sku || '—'}</span>
+                    {item.barcode && <span style={{ background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: '5px', fontFamily: 'monospace' }}>{item.barcode}</span>}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {item.bins.map((b) => {
+                      const tCfg = LOC_TYPE_MAP[b.loc_type || '貨架'] || LOC_TYPE_MAP['貨架'];
+                      const selected = moveSource && moveSource.id === b.id;
+                      return (
+                        <button key={b.id} onClick={() => selectMoveSource(item, b)}
+                          style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', background: selected ? '#ede9fe' : '#f8fafc', border: `2px solid ${selected ? '#7c3aed' : '#eef2f6'}`, borderRadius: '10px', padding: '10px 14px', cursor: 'pointer', fontSize: '14px' }}>
+                          <span style={{ background: tCfg.bg, border: `1px solid ${tCfg.border}`, color: tCfg.color, padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '800' }}>{tCfg.emoji} {b.loc_type || '貨架'}</span>
+                          <span style={{ color: tCfg.color, fontWeight: '800', fontFamily: 'monospace', fontSize: '15px' }}>{b.bin}</span>
+                          {b.stock_date && <span style={{ color: '#92400e', fontFamily: 'monospace', fontSize: '12px' }}>📅 {b.stock_date}</span>}
+                          <span style={{ marginLeft: 'auto', color: selected ? '#7c3aed' : '#94a3b8', fontWeight: 'bold', fontSize: '13px' }}>{selected ? '✓ 揀咗' : '→ 揀'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: 入新位置 */}
+        {moveSource && (
+          <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '2px solid #7c3aed', marginBottom: '14px', maxWidth: '900px' }}>
+            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#7c3aed', fontWeight: 'bold', letterSpacing: '0.5px' }}>🎯 第三步:入新位置</div>
+            <div style={{ background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px', fontSize: '14px' }}>
+              <div style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: '4px' }}>{moveSource.productName}</div>
+              <div style={{ color: '#64748b', fontSize: '13px' }}>
+                原本喺:<span style={{ marginLeft: '6px', fontFamily: 'monospace', color: (LOC_TYPE_MAP[moveSource.loc_type] || LOC_TYPE_MAP['貨架']).color, fontWeight: '800' }}>
+                  {(LOC_TYPE_MAP[moveSource.loc_type] || LOC_TYPE_MAP['貨架']).emoji} {moveSource.bin}
+                </span>
+                {moveSource.stock_date && <span style={{ marginLeft: '8px', color: '#92400e', fontFamily: 'monospace', fontSize: '12px' }}>📅 {moveSource.stock_date}</span>}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', alignItems: isMobile ? 'stretch' : 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', gap: '3px', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                {LOC_TYPES.map((t) => {
+                  const active = moveNewType === t.key;
+                  return (
+                    <button key={t.key} onClick={() => setMoveNewType(t.key)}
+                      style={{ flex: isMobile ? 1 : 'none', background: active ? t.color : 'transparent', color: active ? 'white' : '#64748b', border: 'none', padding: '11px 16px', borderRadius: '7px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap' }}>
+                      {t.emoji} {t.key}
+                    </button>
+                  );
+                })}
+              </div>
+              <input type="text" value={moveNewBin}
+                onChange={(e) => setMoveNewBin(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !moveBusy) { e.preventDefault(); confirmMove(); } }}
+                placeholder={moveNewType === '貨架' ? '新位置 A-3-12' : '板位 P-05'}
+                autoFocus
+                style={{ flex: isMobile ? 'none' : '1', minWidth: '160px', padding: '13px 16px', borderRadius: '10px', border: `2px solid ${moveNewBin.trim() ? '#7c3aed' : '#cbd5e1'}`, fontSize: '16px', fontFamily: 'monospace', fontWeight: 'bold', outline: 'none', boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isMobile && <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📅</span>}
+                <input type="date" value={moveNewDate}
+                  onChange={(e) => setMoveNewDate(e.target.value)}
+                  title="新批次日期(可留空)"
+                  style={{ flex: isMobile ? 1 : 'none', padding: '12px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '46px', boxSizing: 'border-box', color: moveNewDate ? '#0f172a' : '#94a3b8' }} />
+                {moveNewDate && (
+                  <button onClick={() => setMoveNewDate('')} title="清走日期"
+                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '16px', padding: '4px 6px' }}>✕</button>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setMoveSource(null)} disabled={moveBusy}
+                style={{ flex: 1, padding: '13px', borderRadius: '12px', border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontWeight: 'bold', fontSize: '15px', cursor: moveBusy ? 'not-allowed' : 'pointer' }}>取消</button>
+              <button onClick={confirmMove} disabled={moveBusy || !moveNewBin.trim()}
+                style={{ flex: 2, padding: '13px', borderRadius: '12px', border: 'none', background: moveBusy ? '#a78bfa' : (moveNewBin.trim() ? '#7c3aed' : '#cbd5e1'), color: 'white', fontWeight: 'bold', fontSize: '15px', cursor: (moveBusy || !moveNewBin.trim()) ? 'not-allowed' : 'pointer' }}>
+                {moveBusy ? '⏳ 轉緊...' : `✓ 確認移去 ${(LOC_TYPE_MAP[moveNewType] || LOC_TYPE_MAP['貨架']).emoji} ${moveNewBin || '...'}`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Move result */}
+        {moveLastResult && (
+          <div style={{ background: moveLastResult.ok ? '#ecfdf5' : '#fef2f2', border: `1px solid ${moveLastResult.ok ? '#d1fae5' : '#fecaca'}`, borderRadius: '14px', padding: '14px 18px', maxWidth: '900px', marginBottom: '14px' }}>
+            <div style={{ fontWeight: 'bold', color: moveLastResult.ok ? '#065f46' : '#dc2626' }}>
+              {moveLastResult.ok ? '✅' : '❌'} {moveLastResult.message}
+            </div>
+            {moveLastResult.ok && moveLastResult.from && moveLastResult.to && (
+              <div style={{ marginTop: '6px', fontSize: '13px', color: '#475569', fontFamily: 'monospace' }}>
+                {moveLastResult.from} → {moveLastResult.to}
+              </div>
+            )}
+          </div>
+        )}
+      </>)}
+
+      {/* 🔒 刪除密碼 modal */}
+      {delModal && (
+        <div onClick={() => !delBusy && setDelModal(null)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px',
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: 'white', borderRadius: '18px', padding: '26px', width: '100%', maxWidth: '380px',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🔒</div>
+              <div>
+                <div style={{ fontWeight: '800', fontSize: '17px', color: '#0f172a' }}>刪除位置記錄</div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>需要 Full Time 同事密碼</div>
+              </div>
+            </div>
+            <div style={{ background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px', margin: '14px 0', fontSize: '14px', color: '#334155' }}>
+              即將刪除:<strong style={{ color: '#dc2626' }}>{delModal.label}</strong>
+            </div>
+            <input type="password" value={delPw} autoFocus
+              onChange={(e) => { setDelPw(e.target.value); setDelErr(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); }}
+              placeholder="輸入密碼"
+              style={{ width: '100%', padding: '13px 16px', fontSize: '16px', borderRadius: '12px', border: `2px solid ${delErr ? '#fca5a5' : '#cbd5e1'}`, outline: 'none', boxSizing: 'border-box', letterSpacing: '2px' }} />
+            {delErr && <div style={{ color: '#dc2626', fontSize: '13px', fontWeight: 'bold', marginTop: '8px' }}>❌ {delErr}</div>}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => setDelModal(null)} disabled={delBusy}
+                style={{ flex: 1, padding: '13px', borderRadius: '12px', border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>取消</button>
+              <button onClick={confirmDelete} disabled={delBusy}
+                style={{ flex: 1, padding: '13px', borderRadius: '12px', border: 'none', background: delBusy ? '#fca5a5' : '#dc2626', color: 'white', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>
+                {delBusy ? '⏳ 驗證中...' : '🗑 確認刪除'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
