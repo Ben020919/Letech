@@ -417,3 +417,28 @@ def remove_bin(req: RemoveBinReq):
         raise HTTPException(status_code=403, detail="密碼錯誤,只有 Full Time 同事先可以刪除舊貨位置")
     supabase.table("bin_locations").delete().eq("id", req.id).execute()
     return {"status": "success", "message": "已刪除位置"}
+
+
+# ────────────────────────────────────────────────────────────
+# 4b. 批量刪除 — 一個密碼搞掂 N 件
+# ────────────────────────────────────────────────────────────
+class BatchRemoveReq(BaseModel):
+    ids: List[str]
+    password: str = ""
+
+
+@router.post("/batch_remove")
+def batch_remove(req: BatchRemoveReq):
+    ids = [i for i in (req.ids or []) if i]
+    if not ids:
+        raise HTTPException(status_code=400, detail="冇 id")
+    # 🔒 同單刪一樣嘅權限檢查
+    if not BIN_DELETE_PASSWORD:
+        raise HTTPException(status_code=500, detail="系統未設定刪除密碼(請喺 Render 設 BIN_DELETE_PASSWORD)")
+    if (req.password or "").strip() != BIN_DELETE_PASSWORD:
+        raise HTTPException(status_code=403, detail="密碼錯誤,只有 Full Time 同事先可以刪除舊貨位置")
+
+    # Supabase 支援 .in_() 一次過 delete
+    res = supabase.table("bin_locations").delete().in_("id", ids).execute()
+    deleted = len(res.data or [])
+    return {"status": "success", "deleted_count": deleted, "message": f"已刪除 {deleted} 件位置記錄"}

@@ -1314,11 +1314,15 @@ function BinLocationPage() {
   const [existingItems, setExistingItems] = useState([]);
   const [loadingExisting, setLoadingExisting] = useState(false);
 
-  // 🔒 刪除密碼 modal
-  const [delModal, setDelModal] = useState(null);   // { id, label }
+  // 🔒 刪除密碼 modal — 支援單 OR 批量
+  // delModal = { ids: [...], labels: [...], isBatch }  (單 = 1 個 id)
+  const [delModal, setDelModal] = useState(null);
   const [delPw, setDelPw] = useState('');
   const [delBusy, setDelBusy] = useState(false);
   const [delErr, setDelErr] = useState('');
+
+  // 批量選中嘅 ids(existing items)
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const scanRef = useRef(null);
   const requestIdRef = useRef(0);
@@ -1347,10 +1351,38 @@ function BinLocationPage() {
     }
   };
 
-  // 🔒 撳 ✕ 刪除一件已有嘅貨 → 開密碼 modal
+  // 🔒 撳 ✕ 刪除單件 → 開密碼 modal
   const openDeleteModal = (id, label) => {
     setDelPw(''); setDelErr('');
-    setDelModal({ id, label });
+    setDelModal({ ids: [id], labels: [label], isBatch: false });
+  };
+
+  // 🔒 批量刪除已選中
+  const openBatchDeleteModal = () => {
+    if (selectedIds.size === 0) return;
+    const labels = existingItems
+      .filter(b => selectedIds.has(b.id))
+      .map(b => `${b.name || b.sku || '(無名)'} ${b.stock_date ? '('+b.stock_date+')' : ''}`);
+    setDelPw(''); setDelErr('');
+    setDelModal({ ids: Array.from(selectedIds), labels, isBatch: true });
+  };
+
+  // 揀單 / 取消揀單
+  const toggleSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // 全選 / 全消
+  const toggleSelectAll = () => {
+    if (selectedIds.size === existingItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(existingItems.map(b => b.id)));
+    }
   };
 
   // === 轉位置 functions ===
@@ -1430,16 +1462,18 @@ function BinLocationPage() {
   };
 
   const confirmDelete = async () => {
-    if (!delModal) return;
+    if (!delModal || !delModal.ids || delModal.ids.length === 0) return;
     if (!delPw.trim()) { setDelErr('請輸入密碼'); return; }
     setDelBusy(true); setDelErr('');
     try {
-      const res = await fetch(`${API_BASE_URL}/api/bin/remove`, {
+      // 永遠用 batch_remove(無論 1 個定 N 個都 work,code 統一)
+      const res = await fetch(`${API_BASE_URL}/api/bin/batch_remove`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: delModal.id, password: delPw }),
+        body: JSON.stringify({ ids: delModal.ids, password: delPw }),
       });
       if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
       setDelModal(null); setDelPw('');
+      setSelectedIds(new Set());   // 清空選擇
       await fetchExisting();
     } catch (err) {
       setDelErr(err.message);
@@ -1666,36 +1700,61 @@ function BinLocationPage() {
         </div>
       )}
 
-      {/* ========== 2.5 呢個位置已經有嘅貨(可刪) ========== */}
+      {/* ========== 2.5 呢個位置已經有嘅貨(可刪 / 批量刪) ========== */}
       {locationLocked && (
         <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
             <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>
               📂 {locCfg.emoji} {binVal} 已經有 ({existingItems.length} 件){loadingExisting && ' ⏳'}
+              {selectedIds.size > 0 && <span style={{ marginLeft: '8px', color: '#dc2626' }}>• 已選 {selectedIds.size}</span>}
             </span>
-            <button onClick={fetchExisting} disabled={loadingExisting}
-              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>🔄 refresh</button>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {selectedIds.size > 0 && (
+                <button onClick={openBatchDeleteModal}
+                  style={{ background: '#dc2626', color: 'white', border: 'none', padding: '7px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>
+                  🗑 刪除選中 {selectedIds.size} 件
+                </button>
+              )}
+              <button onClick={fetchExisting} disabled={loadingExisting}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>🔄 refresh</button>
+            </div>
           </div>
           {existingItems.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '20px', color: '#cbd5e1', fontSize: '14px', fontStyle: 'italic' }}>{loadingExisting ? '載入中...' : '呢個位置仲未有貨'}</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {existingItems.map((b, i) => (
-                <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#cbd5e1', color: 'white', fontSize: '11px', fontWeight: '800', flexShrink: 0 }}>{i + 1}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || '(無名)'}</div>
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '3px', fontSize: '11px', flexWrap: 'wrap' }}>
-                      <span style={{ background: '#eff6ff', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{b.sku || '—'}</span>
-                      {b.barcode && <span style={{ background: '#ecfdf5', color: '#065f46', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{b.barcode}</span>}
-                      {b.stock_date && <span style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>📅 {b.stock_date}</span>}
+            <>
+              {/* 全選 row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 14px', marginBottom: '6px', background: '#f1f5f9', borderRadius: '8px', fontSize: '12px', color: '#475569', fontWeight: 'bold' }}>
+                <input type="checkbox"
+                  checked={selectedIds.size > 0 && selectedIds.size === existingItems.length}
+                  ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < existingItems.length; }}
+                  onChange={toggleSelectAll}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }} />
+                <span>{selectedIds.size === existingItems.length ? '全部已選' : (selectedIds.size > 0 ? `已選 ${selectedIds.size} / ${existingItems.length}` : '全選')}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {existingItems.map((b, i) => {
+                const isSelected = selectedIds.has(b.id);
+                return (
+                  <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: isSelected ? '#fef2f2' : '#f8fafc', border: `1px solid ${isSelected ? '#fecaca' : '#eef2f6'}`, borderRadius: '10px', padding: '10px 14px' }}>
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelected(b.id)}
+                      style={{ width: '18px', height: '18px', cursor: 'pointer', flexShrink: 0 }} />
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '22px', height: '22px', borderRadius: '50%', background: '#cbd5e1', color: 'white', fontSize: '11px', fontWeight: '800', flexShrink: 0 }}>{i + 1}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || '(無名)'}</div>
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '3px', fontSize: '11px', flexWrap: 'wrap' }}>
+                        <span style={{ background: '#eff6ff', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{b.sku || '—'}</span>
+                        {b.barcode && <span style={{ background: '#ecfdf5', color: '#065f46', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{b.barcode}</span>}
+                        {b.stock_date && <span style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>📅 {b.stock_date}</span>}
+                      </div>
                     </div>
+                    <button onClick={() => openDeleteModal(b.id, `${b.name || b.sku} ${b.stock_date ? '('+b.stock_date+')' : ''}`)} title="刪除呢一件(要 Full Time 密碼)"
+                      style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', background: 'white', border: '1px solid #fecaca', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '7px', flexShrink: 0 }}>✕</button>
                   </div>
-                  <button onClick={() => openDeleteModal(b.id, `${b.name || b.sku} ${b.stock_date ? '('+b.stock_date+')' : ''}`)} title="刪除(要 Full Time 密碼)"
-                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', background: 'white', border: '1px solid #fecaca', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '7px', flexShrink: 0 }}>✕</button>
-                </div>
-              ))}
-            </div>
+                );
+              })}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1900,12 +1959,17 @@ function BinLocationPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🔒</div>
               <div>
-                <div style={{ fontWeight: '800', fontSize: '17px', color: '#0f172a' }}>刪除位置記錄</div>
+                <div style={{ fontWeight: '800', fontSize: '17px', color: '#0f172a' }}>
+                  {delModal.isBatch ? `刪除 ${delModal.ids.length} 件位置記錄` : '刪除位置記錄'}
+                </div>
                 <div style={{ fontSize: '13px', color: '#64748b' }}>需要 Full Time 同事密碼</div>
               </div>
             </div>
-            <div style={{ background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px', margin: '14px 0', fontSize: '14px', color: '#334155' }}>
-              即將刪除:<strong style={{ color: '#dc2626' }}>{delModal.label}</strong>
+            <div style={{ background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px', margin: '14px 0', fontSize: '13px', color: '#334155', maxHeight: '160px', overflowY: 'auto' }}>
+              即將刪除:
+              {(delModal.labels || []).map((lbl, i) => (
+                <div key={i} style={{ marginTop: '4px', color: '#dc2626', fontWeight: 'bold' }}>• {lbl}</div>
+              ))}
             </div>
             <input type="password" value={delPw} autoFocus
               onChange={(e) => { setDelPw(e.target.value); setDelErr(''); }}
@@ -1918,7 +1982,7 @@ function BinLocationPage() {
                 style={{ flex: 1, padding: '13px', borderRadius: '12px', border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>取消</button>
               <button onClick={confirmDelete} disabled={delBusy}
                 style={{ flex: 1, padding: '13px', borderRadius: '12px', border: 'none', background: delBusy ? '#fca5a5' : '#dc2626', color: 'white', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>
-                {delBusy ? '⏳ 驗證中...' : '🗑 確認刪除'}
+                {delBusy ? '⏳ 驗證中...' : (delModal.isBatch ? `🗑 確認刪除 ${delModal.ids.length} 件` : '🗑 確認刪除')}
               </button>
             </div>
           </div>
