@@ -1265,7 +1265,7 @@ function LabelRepackPage() {
   );
 }
 
-// ================= 📍 Bin Location(倉位)管理 =================
+// ================= 📍 Bin Location(倉位)管理 — 批次入倉(location-first) =================
 // 🌟 兩種位置類型嘅顯示設定
 const LOC_TYPES = [
   { key: '貨架', emoji: '🗄', bg: '#ecfeff', border: '#a5f3fc', color: '#0e7490' },
@@ -1275,278 +1275,281 @@ const LOC_TYPE_MAP = Object.fromEntries(LOC_TYPES.map(t => [t.key, t]));
 
 function BinLocationPage() {
   const isMobile = useIsMobile();
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [hasSearched, setHasSearched] = useState(false);
-  // 每個 SKU 對應緊嘅「新增位置」輸入框內容 + 揀緊嘅類型 + 日期
-  const [binInputs, setBinInputs] = useState({});      // { sku: "A-03-12" }
-  const [typeChoice, setTypeChoice] = useState({});    // { sku: "貨架" | "板位" }
-  const [dateInputs, setDateInputs] = useState({});    // { sku: "2024-01-15" }
-  const [addOpen, setAddOpen] = useState({});          // { sku: true } 加位置面板展開
-  // 🔒 刪除密碼 modal 狀態
-  const [delModal, setDelModal] = useState(null); // { sku, binId, binLabel }
-  const [delPw, setDelPw] = useState('');
-  const [delBusy, setDelBusy] = useState(false);
-  const [delErr, setDelErr] = useState('');
-  const searchIdRef = useRef(0);
+  const today = new Date().toISOString().slice(0, 10);
 
-  const getType = (sku) => typeChoice[sku] || '貨架';
+  // 位置 + 類型 + 日期(整批共用)
+  const [binVal, setBinVal] = useState('');
+  const [locType, setLocType] = useState('貨架');
+  const [stockDate, setStockDate] = useState(today);
 
-  const doSearch = async (e) => {
-    if (e) e.preventDefault();
-    const q = query.trim();
+  // Scan / search input
+  const [scanInput, setScanInput] = useState('');
+  const [suggestions, setSuggestions] = useState([]); // 多 match 時嘅 dropdown
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanWarn, setScanWarn] = useState('');   // 揾唔到 / 重複等警告
+
+  // Pending list:即將 submit 嗰一批
+  const [pending, setPending] = useState([]);  // [{sku, barcode, name}]
+
+  // Submit state
+  const [submitting, setSubmitting] = useState(false);
+  const [lastResult, setLastResult] = useState(null);  // { added_count, skipped, bin, ... }
+
+  const scanRef = useRef(null);
+  const requestIdRef = useRef(0);
+
+  // Auto-focus scan input 當位置 ready
+  useEffect(() => {
+    if (binVal.trim() && scanRef.current && !suggestions.length) {
+      scanRef.current.focus();
+    }
+  }, [binVal, suggestions.length]);
+
+  // 加入一個 item 到 pending list
+  const addToPending = (item) => {
+    // 檢查 pending list 內部 dup(SKU 已經喺度)
+    if (pending.some(p => p.sku === item.sku)) {
+      setScanWarn(`⚠️ ${item.name} 已經喺 list 入面`);
+      setScanInput('');
+      scanRef.current?.focus();
+      return;
+    }
+    setPending(prev => [...prev, item]);
+    setScanInput('');
+    setSuggestions([]);
+    setScanWarn('');
+    scanRef.current?.focus();
+  };
+
+  // 用 search API 揾 product
+  const lookupAndAdd = async () => {
+    const q = scanInput.trim();
     if (!q) return;
-    const myId = ++searchIdRef.current;
-    setLoading(true); setError(''); setHasSearched(true);
+    if (!binVal.trim()) {
+      setScanWarn('⚠️ 請先入位置');
+      return;
+    }
+    setScanBusy(true);
+    setScanWarn('');
+    const myId = ++requestIdRef.current;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/bin/search?q=${encodeURIComponent(q)}`);
-      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '搜尋失敗'); }
+      const res = await fetch(`${API_BASE_URL}/api/bin/search?q=${encodeURIComponent(q)}&limit=20`);
+      if (!res.ok) {
+        const er = await res.json().catch(() => ({}));
+        throw new Error(er.detail || '搜尋失敗');
+      }
       const data = await res.json();
-      if (myId !== searchIdRef.current) return; // race guard
-      setResults(data.results || []);
+      if (myId !== requestIdRef.current) return;
+      const results = data.results || [];
+      if (results.length === 0) {
+        setScanWarn(`⚠️ 揾唔到「${q}」嘅貨,請確認 barcode/SKU 啱唔啱`);
+        setSuggestions([]);
+      } else if (results.length === 1) {
+        // 1 個 match → 即刻加入
+        const r = results[0];
+        addToPending({ sku: r.sku, barcode: r.barcode, name: r.name });
+      } else {
+        // 多 match → 彈 dropdown
+        setSuggestions(results);
+      }
     } catch (err) {
-      if (myId === searchIdRef.current) { setError(err.message); setResults([]); }
+      if (myId === requestIdRef.current) setScanWarn('❌ ' + err.message);
     } finally {
-      if (myId === searchIdRef.current) setLoading(false);
+      if (myId === requestIdRef.current) setScanBusy(false);
     }
   };
 
-  // 重新攞某個 SKU 嘅最新倉位(加/刪之後 refresh 嗰一行)
-  const refreshOne = async (sku) => {
+  const removePending = (sku) => {
+    setPending(prev => prev.filter(p => p.sku !== sku));
+  };
+
+  const clearPending = () => {
+    if (!pending.length) return;
+    if (!confirm(`確認清走全部 ${pending.length} 件待加入嘅貨?`)) return;
+    setPending([]);
+  };
+
+  const submitBatch = async () => {
+    if (!binVal.trim()) { alert('請先入位置'); return; }
+    if (!pending.length) { alert('未加任何貨'); return; }
+    setSubmitting(true);
+    setLastResult(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/bin/lookup?sku=${encodeURIComponent(sku)}`);
-      if (!res.ok) return;
+      const res = await fetch(`${API_BASE_URL}/api/bin/batch_add`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bin: binVal.trim(),
+          loc_type: locType,
+          stock_date: stockDate,
+          items: pending,
+        }),
+      });
+      if (!res.ok) {
+        const er = await res.json().catch(() => ({}));
+        throw new Error(er.detail || 'Submit 失敗');
+      }
       const data = await res.json();
-      setResults(prev => prev.map(r => r.sku === sku ? { ...r, bins: data.bins || [] } : r));
-    } catch (_) {}
-  };
-
-  const addBin = async (item) => {
-    const binVal = (binInputs[item.sku] || '').trim();
-    const locType = getType(item.sku);
-    const stockDate = (dateInputs[item.sku] || '').trim();
-    if (!binVal) { alert('請輸入位置'); return; }
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/bin/add`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku: item.sku, barcode: item.barcode, name: item.name, bin: binVal, loc_type: locType, stock_date: stockDate }),
-      });
-      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '加位置失敗'); }
-      setBinInputs(prev => ({ ...prev, [item.sku]: '' }));
-      setDateInputs(prev => ({ ...prev, [item.sku]: '' }));
-      await refreshOne(item.sku);
-    } catch (err) { alert('❌ ' + err.message); }
-  };
-
-  // 🔒 撳 ✕ → 開靚 modal 要 Full Time 密碼(兼職冇密碼刪唔到)
-  const removeBin = (sku, binId, binLabel) => {
-    setDelPw(''); setDelErr('');
-    setDelModal({ sku, binId, binLabel });
-  };
-
-  const confirmDelete = async () => {
-    if (!delModal) return;
-    if (!delPw.trim()) { setDelErr('請輸入密碼'); return; }
-    setDelBusy(true); setDelErr('');
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/bin/remove`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: delModal.binId, password: delPw }),
-      });
-      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
-      const sku = delModal.sku;
-      setDelModal(null); setDelPw('');
-      await refreshOne(sku);
+      setLastResult(data);
+      setPending([]);  // 清空 list
+      // 保留 location/type/date,等用戶繼續加同一個位置
+      // 自動 focus scan input
+      setTimeout(() => scanRef.current?.focus(), 100);
     } catch (err) {
-      setDelErr(err.message);
+      alert('❌ ' + err.message);
     } finally {
-      setDelBusy(false);
+      setSubmitting(false);
     }
   };
 
-  // 改某個位置嘅批次日期(FIFO:舊貨執晒可改新日期)
-  const updateBinDate = async (sku, binId, newDate) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/bin/update`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: binId, stock_date: newDate }),
-      });
-      if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '改日期失敗'); }
-      await refreshOne(sku);
-    } catch (err) { alert('❌ ' + err.message); }
+  const resetLocation = () => {
+    if (pending.length && !confirm(`你仲有 ${pending.length} 件貨未 submit,確認換位置?`)) return;
+    setBinVal('');
+    setPending([]);
+    setLastResult(null);
+    setScanWarn('');
+    setSuggestions([]);
   };
+
+  const locCfg = LOC_TYPE_MAP[locType] || LOC_TYPE_MAP['貨架'];
 
   return (
     <div className="page-content">
       <div className="page-header">
-        <h2>📍 Bin Location 倉位管理</h2>
-        <p>搜尋商品睇佢喺邊個倉位,可即時加 / 刪(一個商品可以有多個倉位,多人即時同步)</p>
+        <h2>📍 Bin Location 批次入倉</h2>
+        <p>先入位置,再 scan/輸入多件貨,一次過確認入晒。Scan barcode 自動加入 list,有重複會 skip。</p>
       </div>
 
-      <form onSubmit={doSearch} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px', maxWidth: '700px' }}>
-        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-          placeholder="輸入 Barcode / SKU / 中英文名稱..."
-          style={{ flex: '1', minWidth: '240px', padding: '14px 16px', fontSize: '16px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box' }} />
-        <button type="submit" disabled={loading}
-          style={{ background: loading ? '#94a3b8' : '#0ea5e9', color: 'white', padding: '14px 28px', borderRadius: '12px', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
-          {loading ? '⏳ 搜尋中...' : '🔍 搜尋'}
-        </button>
-      </form>
+      {/* ========== 1. 位置設定 ========== */}
+      <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>📍 第一步:設定位置</span>
+          {binVal.trim() && (
+            <button onClick={resetLocation} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>🔄 換位置</button>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', alignItems: isMobile ? 'stretch' : 'center' }}>
+          {/* 類型 toggle */}
+          <div style={{ display: 'flex', gap: '3px', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+            {LOC_TYPES.map((t) => {
+              const active = locType === t.key;
+              return (
+                <button key={t.key} onClick={() => setLocType(t.key)}
+                  style={{ flex: isMobile ? 1 : 'none', background: active ? t.color : 'transparent', color: active ? 'white' : '#64748b', border: 'none', padding: '11px 16px', borderRadius: '7px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
+                  {t.emoji} {t.key}
+                </button>
+              );
+            })}
+          </div>
+          <input type="text" value={binVal} autoFocus
+            onChange={(e) => setBinVal(e.target.value)}
+            placeholder={locType === '貨架' ? '位置 A-03-12' : '板位 P-05'}
+            style={{ flex: isMobile ? 'none' : '1', minWidth: '160px', padding: '13px 16px', borderRadius: '10px', border: `2px solid ${binVal.trim() ? locCfg.color : '#cbd5e1'}`, fontSize: '17px', fontFamily: 'monospace', fontWeight: 'bold', outline: 'none', boxSizing: 'border-box', color: locCfg.color }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isMobile && <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📅</span>}
+            <input type="date" value={stockDate}
+              onChange={(e) => setStockDate(e.target.value)}
+              title="批次日期(整批共用)"
+              style={{ flex: isMobile ? 1 : 'none', padding: '12px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '46px', boxSizing: 'border-box' }} />
+          </div>
+        </div>
+      </div>
 
-      {error && <p style={{ color: '#dc2626', fontWeight: 'bold', background: '#fef2f2', padding: '12px', borderRadius: '10px' }}>❌ {error}</p>}
-      {!loading && !error && hasSearched && results.length === 0 && (
-        <p style={{ color: '#d97706', fontWeight: 'bold', background: '#fef3c7', padding: '12px 15px', borderRadius: '12px' }}>⚠️ 搵唔到相符商品(智能查詢中心資料庫要先載入)</p>
+      {/* ========== 2. Scan / 輸入貨 ========== */}
+      {binVal.trim() && (
+        <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
+          <div style={{ marginBottom: '12px', fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>🔍 第二步:Scan / 輸入貨(Enter 確認)</div>
+          <div style={{ display: 'flex', gap: '8px', position: 'relative' }}>
+            <input type="text" ref={scanRef} value={scanInput}
+              onChange={(e) => { setScanInput(e.target.value); setScanWarn(''); setSuggestions([]); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !scanBusy) { e.preventDefault(); lookupAndAdd(); } }}
+              placeholder="Scan barcode 或輸入 SKU / 商品名關鍵字"
+              disabled={scanBusy}
+              style={{ flex: 1, padding: '14px 18px', fontSize: '16px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none', boxSizing: 'border-box', fontFamily: 'monospace' }} />
+            <button onClick={lookupAndAdd} disabled={scanBusy || !scanInput.trim()}
+              style={{ background: scanBusy ? '#94a3b8' : '#0ea5e9', color: 'white', border: 'none', padding: '14px 22px', borderRadius: '12px', fontWeight: 'bold', cursor: scanBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+              {scanBusy ? '⏳' : '加入'}
+            </button>
+          </div>
+
+          {/* Dropdown 多 match 時 */}
+          {suggestions.length > 0 && (
+            <div style={{ marginTop: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', padding: '6px 10px' }}>👇 揀一個加入:</div>
+              {suggestions.map((s) => (
+                <button key={s.sku || s.barcode} onClick={() => addToPending({ sku: s.sku, barcode: s.barcode, name: s.name })}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', background: 'white', border: '1px solid #eef2f6', borderRadius: '8px', padding: '10px 12px', marginBottom: '4px', cursor: 'pointer', fontSize: '14px' }}>
+                  <div style={{ fontWeight: 'bold', color: '#0f172a', marginBottom: '4px' }}>{s.name}</div>
+                  <div style={{ display: 'flex', gap: '8px', fontSize: '12px' }}>
+                    <span style={{ background: '#eff6ff', color: '#1e40af', padding: '2px 8px', borderRadius: '5px', fontFamily: 'monospace' }}>{s.sku || '—'}</span>
+                    <span style={{ background: '#ecfdf5', color: '#065f46', padding: '2px 8px', borderRadius: '5px', fontFamily: 'monospace' }}>{s.barcode || '—'}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {scanWarn && (
+            <div style={{ marginTop: '10px', background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '10px 14px', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold' }}>
+              {scanWarn}
+            </div>
+          )}
+        </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '900px' }}>
-        {results.map((item) => (
-          <div key={item.sku || item.barcode} style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9' }}>
-            <div style={{ marginBottom: '16px', paddingBottom: '14px', borderBottom: '1px solid #f1f5f9' }}>
-              <div style={{ fontWeight: '800', fontSize: '17px', color: '#0f172a', marginBottom: '8px', lineHeight: '1.4' }}>{item.name}</div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '13px' }}>
-                <span style={{ background: '#eff6ff', border: '1px solid #dbeafe', padding: '3px 10px', borderRadius: '7px', color: '#1e40af' }}>SKU <strong style={{ fontFamily: 'monospace', color: '#0ea5e9', marginLeft: '2px' }}>{item.sku || '—'}</strong></span>
-                <span style={{ background: '#ecfdf5', border: '1px solid #d1fae5', padding: '3px 10px', borderRadius: '7px', color: '#065f46' }}>Barcode <strong style={{ fontFamily: 'monospace', color: '#10b981', marginLeft: '2px' }}>{item.barcode || '—'}</strong></span>
-              </div>
-            </div>
-
-            {/* 位置列表 — 分貨架 / 板位;有位置先展開,未設定只係一行細字 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
-              {LOC_TYPES.map((t) => {
-                const binsOfType = (item.bins || []).filter(b => (b.loc_type || '貨架') === t.key);
-                return (
-                  <div key={t.key}>
-                    {/* 類型標題行 — 未設定就喺同一行顯示細字 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: binsOfType.length > 0 ? '8px' : 0 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', background: t.bg, border: `1px solid ${t.border}`, color: t.color, padding: '4px 14px', borderRadius: '999px', fontSize: '13px', fontWeight: '800', letterSpacing: '0.3px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                        {t.emoji} {t.key}
-                      </span>
-                      {binsOfType.length > 0
-                        ? <span style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{binsOfType.length} 個</span>
-                        : <span style={{ fontSize: '13px', color: '#cbd5e1', fontStyle: 'italic', whiteSpace: 'nowrap' }}>未設定</span>}
-                      <div style={{ flex: 1, height: '1px', background: '#f1f5f9' }} />
-                    </div>
-
-                    {binsOfType.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        {binsOfType.map((b, bi) => (
-                          <div key={b.id} style={{
-                            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                            background: bi === 0 && binsOfType.length > 1 ? '#f0fdfa' : '#f8fafc',
-                            border: `1px solid ${bi === 0 && binsOfType.length > 1 ? t.border : '#eef2f6'}`,
-                            borderRadius: '10px', padding: '8px 12px',
-                          }}>
-                            {/* FIFO 序號圓點 */}
-                            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '20px', height: '20px', borderRadius: '50%', background: t.color, color: 'white', fontSize: '11px', fontWeight: '800', flexShrink: 0 }}>{bi + 1}</span>
-                            {/* 位置碼 */}
-                            <span style={{ color: t.color, fontWeight: '800', fontFamily: 'monospace', fontSize: '15px', minWidth: '78px' }}>{b.bin}</span>
-                            {/* 日期(可改) */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginLeft: 'auto' }}>
-                              <span style={{ fontSize: '12px', color: '#94a3b8' }}>📅</span>
-                              <input type="date" value={b.stock_date || ''}
-                                onChange={(e) => updateBinDate(item.sku, b.id, e.target.value)}
-                                title="批次日期(撳即改)"
-                                style={{ padding: '7px 9px', borderRadius: '7px', border: '1px solid #e2e8f0', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '38px', boxSizing: 'border-box', color: b.stock_date ? '#0f172a' : '#cbd5e1' }} />
-                            </div>
-                            <button onClick={() => removeBin(item.sku, b.id, b.bin)} title="刪除呢個位置(要 Full Time 密碼)"
-                              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', background: 'white', border: '1px solid #fecaca', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '7px', flexShrink: 0 }}>✕</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 加位置 — 預設摺埋,撳掣先展開 */}
-            {!addOpen[item.sku] ? (
-              <button onClick={() => setAddOpen(prev => ({ ...prev, [item.sku]: true }))}
-                style={{ width: '100%', background: 'white', border: '1.5px dashed #cbd5e1', color: '#475569', padding: '11px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}>
-                ➕ 加位置
-              </button>
-            ) : (
-            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #eef2f6' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>➕ 新增位置</span>
-                <button onClick={() => setAddOpen(prev => ({ ...prev, [item.sku]: false }))}
-                  style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>✕ 收起</button>
-              </div>
-              <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center' }}>
-                {/* 類型 toggle */}
-                <div style={{ display: 'flex', gap: '3px', background: '#fff', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                  {LOC_TYPES.map((t) => {
-                    const active = getType(item.sku) === t.key;
-                    return (
-                      <button key={t.key} onClick={() => setTypeChoice(prev => ({ ...prev, [item.sku]: t.key }))}
-                        style={{ flex: isMobile ? 1 : 'none', background: active ? t.color : 'transparent', color: active ? 'white' : '#64748b', border: 'none', padding: '9px 14px', borderRadius: '7px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
-                        {t.emoji} {t.key}
-                      </button>
-                    );
-                  })}
-                </div>
-                <input type="text" value={binInputs[item.sku] || ''}
-                  onChange={(e) => setBinInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBin(item); } }}
-                  placeholder={getType(item.sku) === '貨架' ? '貨架位 A-03-12' : '板位 P-05'}
-                  style={{ flex: isMobile ? 'none' : '1', minWidth: '130px', padding: '11px 14px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
-                {/* 日期 — 手機加 label 唔會空白 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {isMobile && <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📅 日期</span>}
-                  <input type="date" value={dateInputs[item.sku] || ''}
-                    onChange={(e) => setDateInputs(prev => ({ ...prev, [item.sku]: e.target.value }))}
-                    title="批次日期(可留空)"
-                    style={{ flex: isMobile ? 1 : 'none', padding: '11px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', background: 'white', fontSize: '14px', fontFamily: 'monospace', outline: 'none', minHeight: '44px', boxSizing: 'border-box', color: (dateInputs[item.sku] ? '#0f172a' : '#94a3b8') }} />
-                </div>
-                <button onClick={() => addBin(item)}
-                  style={{ background: (LOC_TYPE_MAP[getType(item.sku)] || LOC_TYPE_MAP['貨架']).color, color: 'white', border: 'none', padding: '12px 20px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,0.12)' }}>➕ 加位置</button>
-              </div>
-            </div>
+      {/* ========== 3. Pending list ========== */}
+      {binVal.trim() && (
+        <div style={{ background: 'white', borderRadius: '16px', boxShadow: '0 4px 14px rgba(0,0,0,0.06)', padding: '20px 22px', border: '1px solid #f1f5f9', marginBottom: '14px', maxWidth: '900px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 'bold', letterSpacing: '0.5px' }}>📦 待加入 ({pending.length} 件)</span>
+            {pending.length > 0 && (
+              <button onClick={clearPending} style={{ background: 'transparent', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>清空</button>
             )}
           </div>
-        ))}
-      </div>
-
-      {/* 🔒 刪除密碼 modal */}
-      {delModal && (
-        <div onClick={() => !delBusy && setDelModal(null)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', backdropFilter: 'blur(2px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: '20px',
-        }}>
-          <div onClick={(e) => e.stopPropagation()} style={{
-            background: 'white', borderRadius: '18px', padding: '26px', width: '100%', maxWidth: '380px',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.25)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>🔒</div>
-              <div>
-                <div style={{ fontWeight: '800', fontSize: '17px', color: '#0f172a' }}>刪除位置</div>
-                <div style={{ fontSize: '13px', color: '#64748b' }}>需要 Full Time 同事密碼</div>
-              </div>
+          {pending.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px', color: '#cbd5e1', fontSize: '14px', fontStyle: 'italic' }}>仲未掃任何貨</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {pending.map((p, i) => (
+                <div key={p.sku} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', background: locCfg.color, color: 'white', fontSize: '12px', fontWeight: '800', flexShrink: 0 }}>{i + 1}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '3px', fontSize: '11px' }}>
+                      <span style={{ background: '#eff6ff', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{p.sku || '—'}</span>
+                      <span style={{ background: '#ecfdf5', color: '#065f46', padding: '1px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>{p.barcode || '—'}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => removePending(p.sku)} title="移走"
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', background: 'white', border: '1px solid #fecaca', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', borderRadius: '7px', flexShrink: 0 }}>✕</button>
+                </div>
+              ))}
             </div>
+          )}
+        </div>
+      )}
 
-            <div style={{ background: '#f8fafc', border: '1px solid #eef2f6', borderRadius: '10px', padding: '10px 14px', margin: '14px 0', fontSize: '14px', color: '#334155' }}>
-              即將刪除:<strong style={{ fontFamily: 'monospace', color: '#dc2626' }}>{delModal.binLabel}</strong>
+      {/* ========== 4. Submit ========== */}
+      {binVal.trim() && pending.length > 0 && (
+        <div style={{ maxWidth: '900px', marginBottom: '14px' }}>
+          <button onClick={submitBatch} disabled={submitting}
+            style={{ width: '100%', background: submitting ? '#94a3b8' : locCfg.color, color: 'white', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '800', fontSize: '17px', cursor: submitting ? 'wait' : 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+            {submitting ? '⏳ Submitting...' : `✅ 確認加 ${pending.length} 件入 ${locCfg.emoji} ${binVal}`}
+          </button>
+        </div>
+      )}
+
+      {/* ========== Last submit summary ========== */}
+      {lastResult && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #d1fae5', borderRadius: '14px', padding: '14px 18px', maxWidth: '900px', marginBottom: '14px' }}>
+          <div style={{ fontWeight: 'bold', color: '#065f46', marginBottom: '6px' }}>✅ {lastResult.message}</div>
+          {lastResult.skipped && lastResult.skipped.length > 0 && (
+            <div style={{ marginTop: '8px', fontSize: '13px', color: '#92400e' }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>⚠️ 跳過 ({lastResult.skipped.length}):</div>
+              {lastResult.skipped.map((s, i) => (
+                <div key={i} style={{ paddingLeft: '12px', fontFamily: 'monospace' }}>• {s.sku} {s.name && `(${s.name})`} — {s.reason}</div>
+              ))}
             </div>
-
-            <input type="password" value={delPw} autoFocus
-              onChange={(e) => { setDelPw(e.target.value); setDelErr(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') confirmDelete(); }}
-              placeholder="輸入密碼"
-              style={{ width: '100%', padding: '13px 16px', fontSize: '16px', borderRadius: '12px', border: `2px solid ${delErr ? '#fca5a5' : '#cbd5e1'}`, outline: 'none', boxSizing: 'border-box', letterSpacing: '2px' }} />
-
-            {delErr && <div style={{ color: '#dc2626', fontSize: '13px', fontWeight: 'bold', marginTop: '8px' }}>❌ {delErr}</div>}
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-              <button onClick={() => setDelModal(null)} disabled={delBusy}
-                style={{ flex: 1, padding: '13px', borderRadius: '12px', border: '1px solid #cbd5e1', background: 'white', color: '#475569', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>取消</button>
-              <button onClick={confirmDelete} disabled={delBusy}
-                style={{ flex: 1, padding: '13px', borderRadius: '12px', border: 'none', background: delBusy ? '#fca5a5' : '#dc2626', color: 'white', fontWeight: 'bold', fontSize: '15px', cursor: delBusy ? 'not-allowed' : 'pointer' }}>
-                {delBusy ? '⏳ 驗證中...' : '🗑 確認刪除'}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
       )}
     </div>

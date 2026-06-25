@@ -229,6 +229,83 @@ def add_bin(req: AddBinReq):
 
 
 # ────────────────────────────────────────────────────────────
+# 3a. 批次加倉位 — 一個位置 × 多件貨,一次過 insert
+#     用 case:員工企喺 B1-1,手上一堆貨,scan 完一鍵入晒
+# ────────────────────────────────────────────────────────────
+class BatchAddItem(BaseModel):
+    sku: str
+    barcode: str = ""
+    name: str = ""
+
+
+class BatchAddReq(BaseModel):
+    bin: str
+    loc_type: str = "貨架"      # '貨架' 或 '板位'
+    stock_date: str = ""        # 整批共用嘅批次日期
+    items: List[BatchAddItem]
+
+
+@router.post("/batch_add")
+def batch_add(req: BatchAddReq):
+    bin_val = req.bin.strip()
+    loc_type = req.loc_type.strip() if req.loc_type.strip() in VALID_LOC_TYPES else "貨架"
+    stock_date = _norm_date(req.stock_date)
+    if not bin_val:
+        raise HTTPException(status_code=400, detail="位置不能為空")
+    if not req.items:
+        raise HTTPException(status_code=400, detail="冇貨可加")
+
+    # 1. 先一次過攞所有 SKU 喺呢個位置嘅現有 row(用嚟 dedupe)
+    skus = [i.sku.strip() for i in req.items if i.sku.strip()]
+    existing_set = set()  # (sku, stock_date or '') 已經存在嘅
+    if skus:
+        q = supabase.table("bin_locations").select("sku, stock_date") \
+            .in_("sku", skus).eq("bin", bin_val).eq("loc_type", loc_type).execute()
+        for r in (q.data or []):
+            existing_set.add((r["sku"], (r.get("stock_date") or "")))
+
+    # 2. 分類:to_insert / skipped(duplicate)
+    to_insert = []
+    skipped: List[Dict[str, Any]] = []
+    for it in req.items:
+        sku = it.sku.strip()
+        if not sku:
+            skipped.append({"sku": "", "name": it.name, "reason": "SKU 空白"})
+            continue
+        key = (sku, stock_date or "")
+        if key in existing_set:
+            skipped.append({"sku": sku, "name": it.name, "reason": f"已存在於 {bin_val}({stock_date or '無日期'})"})
+            continue
+        existing_set.add(key)   # 防止 request 內部 duplicate
+        to_insert.append({
+            "sku": sku,
+            "barcode": it.barcode.strip(),
+            "name": it.name.strip(),
+            "bin": bin_val,
+            "loc_type": loc_type,
+            "stock_date": stock_date,
+            "note": "",
+        })
+
+    # 3. 批次 insert
+    added: List[str] = []
+    if to_insert:
+        res = supabase.table("bin_locations").insert(to_insert).execute()
+        added = [r["sku"] for r in (res.data or [])]
+
+    return {
+        "status": "success",
+        "bin": bin_val,
+        "loc_type": loc_type,
+        "stock_date": stock_date or "",
+        "added_count": len(added),
+        "added_skus": added,
+        "skipped": skipped,
+        "message": f"加咗 {len(added)} 件入 {loc_type} {bin_val}" + (f",跳過 {len(skipped)} 件" if skipped else ""),
+    }
+
+
+# ────────────────────────────────────────────────────────────
 # 3b. 改日期(FIFO:舊貨執晒就改/刪)
 # ────────────────────────────────────────────────────────────
 class UpdateBinReq(BaseModel):
