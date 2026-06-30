@@ -569,23 +569,28 @@ def process_yummy_pdf(file_bytes):
             if not matches.empty:
                     # ====== 1. 優先抓出 Food Label 的紀錄 (排除 Label_Type 包含 Jelly 的) ======
                     main_records = matches[~matches['Label_Type'].astype(str).str.lower().str.contains('jelly', na=False)]
-                    
+
+                    # 🐛 fix: 唔再 fall back 去 matches(會包含 Jelly row)。
+                    # 純 Jelly 產品(冇 Food companion)應該交畀 Step 2 jelly_records 處理,
+                    # 避免出現「caution label + jelly label」一模一樣 × qty,等於 double print。
                     if not main_records.empty:
                         best_match_df = get_best_results(main_records).fillna("")
+                        matched_data = best_match_df.iloc[0].to_dict()
+                        data_status = check_data_status(matched_data)
+
+                        # 🚀 改成「先做一對(food+jelly),再 × qty」,實現交替打印
+                        # 先用 qty=1 生成單份 food / caution(內部仲未做 ×qty 複製)
+                        # 🌟 傳 FONT_PLACEHOLDER 等 frontend 統一 inject 嵌入字體,中文先 render 到
+                        if data_status == 'food':
+                            final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
+                        elif data_status == 'caution':
+                            caution_text = smart_get_caution_text(matched_data) or "Caution Column Empty"
+                            final_html = create_caution_html(caution_text, 1)
                     else:
-                        best_match_df = get_best_results(matches).fillna("")
-                        
-                    matched_data = best_match_df.iloc[0].to_dict()
-                    data_status = check_data_status(matched_data)
-                    
-                    # 🚀 改成「先做一對(food+jelly),再 × qty」,實現交替打印
-                    # 先用 qty=1 生成單份 food / caution(內部仲未做 ×qty 複製)
-                    # 🌟 傳 FONT_PLACEHOLDER 等 frontend 統一 inject 嵌入字體,中文先 render 到
-                    if data_status == 'food':
-                        final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
-                    elif data_status == 'caution':
-                        caution_text = smart_get_caution_text(matched_data) or "Caution Column Empty"
-                        final_html = create_caution_html(caution_text, 1)
+                        # 純 Jelly 產品 → matched_data 仍從 matches 攞,用嚟畀 UI 顯示 status,
+                        # 但 final_html 留空,等下面 jelly_records 分支用 caution_html × qty 處理
+                        matched_data = matches.iloc[0].fillna("").to_dict()
+                        data_status = check_data_status(matched_data)
 
                     # ====== 2. 尋找 Jelly Label,單份生成 ======
                     jelly_single = ""  # 一份 Jelly 警告貼嘅 HTML div
