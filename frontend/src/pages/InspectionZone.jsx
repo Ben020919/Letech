@@ -72,9 +72,16 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     const [scanHint, setScanHint] = useState('');   // 顯示提示畀模糊鏡頭嘅同事
     const scannerRef = useRef(null);
 
-    // 📸 拍照掃碼 state(server-side decode,對模糊鏡頭最寬容)
+    // 📸 拍照掃碼 state(自製 camera preview + 一撳即 capture,冇 iOS「使用照片」確認)
     const [photoDecoding, setPhotoDecoding] = useState(false);
-    const photoInputRef = useRef(null);
+    const [isPhotoModeOpen, setIsPhotoModeOpen] = useState(false);
+    const [photoTorchOn, setPhotoTorchOn] = useState(false);
+    const [photoTorchSupported, setPhotoTorchSupported] = useState(false);
+    const videoRef = useRef(null);
+    const canvasRef = useRef(null);
+    const photoStreamRef = useRef(null);
+    const photoTrackRef = useRef(null);
+    // (legacy) photoInputRef 已經唔用,舊 flow 用 <input capture> 但會彈 iOS「使用照片」確認
 
     const inputRef = useRef(null);
     const topRef = useRef(null);
@@ -244,51 +251,135 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         }
     };
 
-    // ================= 📸 拍照掃碼 (server-side decode,對模糊鏡頭最寬容) =================
-    // 用 <input capture="environment"> 打開手機原生 camera app,
-    // 用戶影完一張定格相 → 上傳 backend → pyzbar 用多種 pre-process 策略 decode。
-    // 呢個做法比 live-stream 掃碼寬容 20+ 倍:因為
-    //   1. 用戶有時間 tap 對焦、開手電筒、防抖
-    //   2. Backend pyzbar 可以試 灰階/銳化/threshold/縮 size 8 個角度
-    //   3. 唔受 JS decoder 對高清 stream 嘅限制
-    const handlePhotoCapture = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setPhotoDecoding(true);
-        setScanHint('');
-        const formData = new FormData();
-        formData.append('file', file);
+    // ================= 📸 拍照掃碼 (自製 camera + tap-to-capture) =================
+    // 唔用 <input capture> 因為 iOS 會強制彈「使用照片 / 重拍」確認畫面。
+    // 改用 getUserMedia 直接開 video stream,用戶睇實時 preview,一撳就 capture,
+    // canvas.toBlob 拎 raw frame 上傳 backend zxing-cpp decode。
+    //
+    // 好處:
+    //   1. 冇「使用照片」確認 — 一撳直接 decode
+    //   2. 用戶睇實時 preview,可以慢慢對準先撳影
+    //   3. Backend 用多 pre-process 策略,寬容模糊鏡頭
+    //   4. 有手電筒 toggle
+    const openPhotoMode = async () => {
+        if (isPhotoModeOpen) return;
+        setIsPhotoModeOpen(true);
         try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: 'environment' },   // 後鏡頭
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
+                    // 連續對焦(部分手機支援)
+                    focusMode: 'continuous',
+                    advanced: [{ focusMode: 'continuous' }],
+                },
+                audio: false,
+            });
+            photoStreamRef.current = stream;
+            // 等 <video> render 出嚟(下面 modal JSX 條件 mount)
+            setTimeout(async () => {
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    try { await videoRef.current.play(); } catch (_) {}
+                }
+            }, 50);
+            // 檢查手電筒
+            const track = stream.getVideoTracks()[0];
+            photoTrackRef.current = track;
+            try {
+                const caps = track.getCapabilities?.();
+                if (caps && caps.torch) setPhotoTorchSupported(true);
+            } catch (_) {}
+        } catch (err) {
+            console.error('相機開唔到:', err);
+            const msg = err.name === 'NotAllowedError'
+                ? '相機權限被拒 — 請喺 browser 設定俾權限'
+                : (err.message || err);
+            showAlert('❌ ' + msg, 'error');
+            setIsPhotoModeOpen(false);
+        }
+    };
+
+    const closePhotoMode = () => {
+        if (photoStreamRef.current) {
+            photoStreamRef.current.getTracks().forEach(t => t.stop());
+            photoStreamRef.current = null;
+        }
+        photoTrackRef.current = null;
+        if (videoRef.current) videoRef.current.srcObject = null;
+        setIsPhotoModeOpen(false);
+        setPhotoTorchOn(false);
+        setPhotoTorchSupported(false);
+    };
+
+    // 撳「📸 影相 decode」→ 立即 capture 一 frame + 上傳
+    const captureAndDecode = async () => {
+        if (!videoRef.current || photoDecoding) return;
+        const video = videoRef.current;
+        if (!video.videoWidth || !video.videoHeight) {
+            showAlert('⚠️ Camera 未 ready,等 1 秒再試', 'warning');
+            return;
+        }
+        setPhotoDecoding(true);
+        try {
+            // Canvas 抓 video 當前 frame
+            if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
+            const canvas = canvasRef.current;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            // 轉 blob 上傳
+            const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
+            if (!blob) throw new Error('無法擷取影像');
+
+            const formData = new FormData();
+            formData.append('file', blob, 'capture.jpg');
             const res = await fetch(`${API_BASE_URL}/api/inspection/decode_image`, {
-                method: 'POST',
-                body: formData,
+                method: 'POST', body: formData,
             });
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || '拍照解碼失敗');
+                const er = await res.json().catch(() => ({}));
+                throw new Error(er.detail || '解碼失敗');
             }
             const data = await res.json();
             if (data.barcodes && data.barcodes.length > 0) {
-                // 用第一個 decode 到嘅 barcode
                 processBarcode(data.barcodes[0]);
                 showAlert(`✅ 掃到: ${data.barcodes[0]}`, 'success');
+                closePhotoMode();
             } else {
                 playSound('error');
-                showAlert('❌ 影嗰張相掃唔到條碼,再試多次(對準啲、光啲、慢慢郁)', 'error');
+                showAlert('❌ 呢張掃唔到,對準啲再影一張', 'error');
             }
         } catch (err) {
             playSound('error');
             showAlert('❌ ' + (err.message || err), 'error');
         } finally {
             setPhotoDecoding(false);
-            if (e.target) e.target.value = '';   // reset 等下次可以影另一張
         }
     };
 
-    const triggerPhotoCapture = () => {
-        if (photoDecoding) return;
-        photoInputRef.current?.click();
+    const togglePhotoTorch = async () => {
+        if (!photoTrackRef.current) return;
+        try {
+            await photoTrackRef.current.applyConstraints({
+                advanced: [{ torch: !photoTorchOn }],
+            });
+            setPhotoTorchOn(!photoTorchOn);
+        } catch (err) {
+            console.error('手電筒 toggle 失敗:', err);
+            showAlert('⚠️ 呢部手機唔支援手電筒', 'warning');
+        }
     };
+
+    // Cleanup:leave page 記住 stop stream
+    useEffect(() => {
+        return () => {
+            if (photoStreamRef.current) {
+                photoStreamRef.current.getTracks().forEach(t => t.stop());
+            }
+        };
+    }, []);
 
     // ================= 📷 Camera scanner (優化模糊鏡頭) =================
     const openCamera = async () => {
@@ -592,11 +683,11 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                         placeholder={focusedItem ? "在此掃描下一個..." : "掃描條碼，或輸入末幾碼..."}
                         style={{ flex: '1 1 200px', minWidth: '150px', padding: '10px', fontSize: '16px', textAlign: 'center', borderRadius: '8px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: (isCameraOpen || photoDecoding) ? '#e2e8f0' : '#ffffff', boxSizing: 'border-box' }}
                     />
-                    {/* 📸 拍照掃碼 —— server-side decode,對模糊鏡頭最寬容 */}
+                    {/* 📸 拍照掃碼 —— 自製 camera + 一撳即 capture,冇 iOS「使用照片」確認 */}
                     <button
-                        onClick={triggerPhotoCapture} disabled={isCameraOpen || photoDecoding}
-                        title="影一張相 server 幫你 decode(對模糊鏡頭最有效)"
-                        style={{ background: photoDecoding ? '#94a3b8' : '#16a34a', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: (isCameraOpen || photoDecoding) ? 'wait' : 'pointer', fontSize: '15px', whiteSpace: 'nowrap' }}
+                        onClick={openPhotoMode} disabled={isCameraOpen || isPhotoModeOpen || photoDecoding}
+                        title="開自製 camera,撳一下即 capture 上傳 decode(冇「使用照片」確認)"
+                        style={{ background: (photoDecoding || isPhotoModeOpen) ? '#94a3b8' : '#16a34a', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: (isCameraOpen || isPhotoModeOpen || photoDecoding) ? 'wait' : 'pointer', fontSize: '15px', whiteSpace: 'nowrap' }}
                     >
                         {photoDecoding ? '⏳ 解碼中...' : '📸 拍照掃碼'}
                     </button>
@@ -609,19 +700,49 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                         📷 Live 掃
                     </button>
                 </div>
-                {/* 隱藏 file input,由「📸 拍照掃碼」button 觸發 */}
-                <input
-                    ref={photoInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handlePhotoCapture}
-                    style={{ display: 'none' }}
-                />
                 <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
-                    💡 鏡頭模糊掃唔到?撳<strong style={{ color: '#16a34a' }}>📸 拍照掃碼</strong>——影一張定格相 server 幫你 decode(寬容 20x)
+                    💡 鏡頭模糊掃唔到?撳<strong style={{ color: '#16a34a' }}>📸 拍照掃碼</strong>——實時 preview,一撳即 decode(冇「使用照片」確認)
                 </div>
             </div>
+
+            {/* 📸 拍照掃碼 modal — 自製 camera view,一撳即 capture */}
+            {isPhotoModeOpen && (
+                <div style={{ position: 'fixed', inset: 0, background: 'black', zIndex: 9997, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '15px' }}>
+                    {/* Header hint */}
+                    <div style={{ color: 'white', fontSize: '15px', fontWeight: 'bold', textAlign: 'center', padding: '8px 12px', background: 'rgba(22,163,74,0.2)', border: '1px solid #16a34a', borderRadius: '10px', maxWidth: '500px' }}>
+                        📸 對準條碼,撳中間掣即影 + decode
+                    </div>
+
+                    {/* Video preview */}
+                    <div style={{ flex: 1, width: '100%', maxWidth: '600px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '15px 0', minHeight: 0 }}>
+                        <video
+                            ref={videoRef} autoPlay playsInline muted
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '12px', border: '3px solid #16a34a', background: '#0f172a' }}
+                        />
+                    </div>
+
+                    {/* Bottom buttons row */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', width: '100%', maxWidth: '500px' }}>
+                        {/* ✕ Close (left) */}
+                        <button onClick={closePhotoMode} disabled={photoDecoding}
+                            style={{ background: '#1e293b', color: 'white', border: '2px solid #475569', padding: '14px 20px', borderRadius: '12px', fontSize: '16px', fontWeight: '900', cursor: photoDecoding ? 'not-allowed' : 'pointer', minWidth: '80px' }}>
+                            ✕
+                        </button>
+                        {/* 📸 Capture BIG button (center) */}
+                        <button onClick={captureAndDecode} disabled={photoDecoding}
+                            style={{ flex: 1, minWidth: '180px', background: photoDecoding ? '#94a3b8' : '#16a34a', color: 'white', border: 'none', padding: '18px', borderRadius: '14px', fontSize: '18px', fontWeight: '900', cursor: photoDecoding ? 'wait' : 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}>
+                            {photoDecoding ? '⏳ 解碼緊...' : '📸 影相 decode'}
+                        </button>
+                        {/* 🔦 Torch (right, if supported) */}
+                        {photoTorchSupported && (
+                            <button onClick={togglePhotoTorch} disabled={photoDecoding}
+                                style={{ background: photoTorchOn ? '#fbbf24' : '#1e293b', color: 'white', border: `2px solid ${photoTorchOn ? '#fbbf24' : '#475569'}`, padding: '14px 20px', borderRadius: '12px', fontSize: '20px', fontWeight: '900', cursor: photoDecoding ? 'not-allowed' : 'pointer', minWidth: '80px' }}>
+                                🔦
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* 📷 Camera modal — 全螢幕,俾模糊鏡頭都掃到 */}
             {isCameraOpen && (
