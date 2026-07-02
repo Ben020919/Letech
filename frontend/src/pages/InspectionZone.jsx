@@ -77,6 +77,8 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     const [isPhotoModeOpen, setIsPhotoModeOpen] = useState(false);
     const [photoTorchOn, setPhotoTorchOn] = useState(false);
     const [photoTorchSupported, setPhotoTorchSupported] = useState(false);
+    // 顯示喺 modal 入面嘅 status text(等 user 直接見到 decode 狀態,唔靠 toast)
+    const [photoModalStatus, setPhotoModalStatus] = useState('');   // '', 'ok:xxx', 'err:xxx'
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const photoStreamRef = useRef(null);
@@ -311,17 +313,23 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         setIsPhotoModeOpen(false);
         setPhotoTorchOn(false);
         setPhotoTorchSupported(false);
+        setPhotoModalStatus('');
     };
 
     // 撳「📸 影相 decode」→ 立即 capture 一 frame + 上傳
     const captureAndDecode = async () => {
-        if (!videoRef.current || photoDecoding) return;
+        console.log('[decode] captureAndDecode start');
+        if (!videoRef.current || photoDecoding) {
+            console.log('[decode] skip:', !videoRef.current ? 'no video ref' : 'already decoding');
+            return;
+        }
         const video = videoRef.current;
         if (!video.videoWidth || !video.videoHeight) {
-            showAlert('⚠️ Camera 未 ready,等 1 秒再試', 'warning');
+            setPhotoModalStatus('warn:Camera 未 ready,等 1 秒再試');
             return;
         }
         setPhotoDecoding(true);
+        setPhotoModalStatus('info:📤 上傳緊 + 解碼中...');
         try {
             // Canvas 抓 video 當前 frame
             if (!canvasRef.current) canvasRef.current = document.createElement('canvas');
@@ -329,31 +337,38 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             canvas.getContext('2d').drawImage(video, 0, 0);
+            console.log(`[decode] captured ${canvas.width}x${canvas.height}`);
             // 轉 blob 上傳
             const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
-            if (!blob) throw new Error('無法擷取影像');
+            if (!blob) throw new Error('無法擷取影像 (canvas toBlob returned null)');
+            console.log(`[decode] blob size: ${blob.size} bytes`);
 
             const formData = new FormData();
             formData.append('file', blob, 'capture.jpg');
-            const res = await fetch(`${API_BASE_URL}/api/inspection/decode_image`, {
-                method: 'POST', body: formData,
-            });
+            const url = `${API_BASE_URL}/api/inspection/decode_image`;
+            console.log('[decode] POST →', url);
+            const res = await fetch(url, { method: 'POST', body: formData });
+            console.log(`[decode] response: ${res.status} ${res.statusText}`);
             if (!res.ok) {
                 const er = await res.json().catch(() => ({}));
-                throw new Error(er.detail || '解碼失敗');
+                throw new Error(er.detail || `Backend ${res.status}: ${res.statusText}`);
             }
             const data = await res.json();
+            console.log('[decode] result:', data);
             if (data.barcodes && data.barcodes.length > 0) {
-                processBarcode(data.barcodes[0]);
-                showAlert(`✅ 掃到: ${data.barcodes[0]}`, 'success');
-                closePhotoMode();
+                const bc = data.barcodes[0];
+                setPhotoModalStatus(`ok:掃到 ${bc}`);
+                processBarcode(bc);
+                // 1 秒後自動關 modal(等用戶睇到 confirm)
+                setTimeout(() => closePhotoMode(), 800);
             } else {
                 playSound('error');
-                showAlert('❌ 呢張掃唔到,對準啲再影一張', 'error');
+                setPhotoModalStatus(`err:❌ 掃唔到條碼,對準啲再影一次 (tried: ${(data.tried || []).length} 種策略)`);
             }
         } catch (err) {
+            console.error('[decode] error:', err);
             playSound('error');
-            showAlert('❌ ' + (err.message || err), 'error');
+            setPhotoModalStatus(`err:❌ ${err.message || err}`);
         } finally {
             setPhotoDecoding(false);
         }
@@ -720,6 +735,20 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '12px', border: '3px solid #16a34a', background: '#0f172a' }}
                         />
                     </div>
+
+                    {/* Modal status(直接喺 modal 顯示狀態,唔靠 toast) */}
+                    {photoModalStatus && (
+                        (() => {
+                            const [type, ...rest] = photoModalStatus.split(':');
+                            const msg = rest.join(':');
+                            const bg = type === 'ok' ? '#16a34a' : type === 'err' ? '#dc2626' : type === 'warn' ? '#f59e0b' : '#1e40af';
+                            return (
+                                <div style={{ background: bg, color: 'white', padding: '14px 18px', borderRadius: '12px', fontSize: '15px', fontWeight: '900', textAlign: 'center', maxWidth: '500px', width: '100%', marginBottom: '12px', boxShadow: '0 4px 14px rgba(0,0,0,0.4)' }}>
+                                    {msg}
+                                </div>
+                            );
+                        })()
+                    )}
 
                     {/* Bottom buttons row */}
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', width: '100%', maxWidth: '500px' }}>
