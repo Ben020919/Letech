@@ -61,6 +61,8 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     const [loading, setLoading] = useState(false);
     const [alertMsg, setAlertMsg] = useState(null);
     const [inputValue, setInputValue] = useState("");
+    // 篩選:'all' | 'not_started'(未開始) | 'in_progress'(進行中) | 'completed'(完成)
+    const [itemFilter, setItemFilter] = useState('all');
 
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -465,6 +467,18 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     // 計算進度
     const totalTarget = items.reduce((acc, curr) => acc + curr.Target_Qty, 0);
     const totalScanned = items.reduce((acc, curr) => acc + curr.Scanned_Qty, 0);
+
+    // 篩選 counts + 過濾後嘅 list
+    const notStartedCount = items.filter(i => (i.Scanned_Qty || 0) === 0).length;
+    const inProgressCount = items.filter(i => (i.Scanned_Qty || 0) > 0 && (i.Scanned_Qty || 0) < (i.Target_Qty || 0)).length;
+    const completedCount = items.filter(i => (i.Scanned_Qty || 0) >= (i.Target_Qty || 0)).length;
+    const filteredItems = items.filter(i => {
+        const s = i.Scanned_Qty || 0, t = i.Target_Qty || 0;
+        if (itemFilter === 'not_started') return s === 0;
+        if (itemFilter === 'in_progress') return s > 0 && s < t;
+        if (itemFilter === 'completed') return s >= t;
+        return true;   // 'all'
+    });
     const isAllCompleted = totalTarget > 0 && totalTarget === totalScanned;
 
     const focusedItem = focusedItemId ? items.find(i => i.id === focusedItemId) : null;
@@ -707,6 +721,26 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             ) : (
                 /* ================= 🌟 傳統清單畫面 ================= */
                 items.length > 0 && (
+                    <>
+                        {/* 🎛 篩選 tabs — 睇 未開始 / 進行中 / 完成 */}
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', background: '#f1f5f9', padding: '5px', borderRadius: '12px' }}>
+                            {[
+                                { key: 'all',         label: '全部',   count: items.length,     color: '#0f172a', bg: '#0f172a' },
+                                { key: 'not_started', label: '未開始', count: notStartedCount,  color: '#475569', bg: '#64748b' },
+                                { key: 'in_progress', label: '進行中', count: inProgressCount,  color: '#a16207', bg: '#eab308' },
+                                { key: 'completed',   label: '完成',   count: completedCount,   color: '#15803d', bg: '#16a34a' },
+                            ].map((f) => {
+                                const active = itemFilter === f.key;
+                                return (
+                                    <button key={f.key} onClick={() => setItemFilter(f.key)}
+                                        style={{ flex: '1 1 auto', minWidth: '80px', background: active ? f.bg : 'transparent', color: active ? 'white' : f.color, border: 'none', padding: '10px 14px', borderRadius: '9px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', transition: 'all 0.15s' }}>
+                                        <span>{f.label}</span>
+                                        <span style={{ background: active ? 'rgba(255,255,255,0.25)' : 'white', color: active ? 'white' : f.color, padding: '1px 8px', borderRadius: '999px', fontSize: '12px', fontWeight: '900', minWidth: '22px', textAlign: 'center' }}>{f.count}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
                     <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '700px' }}>
@@ -720,7 +754,12 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {items.map((item) => {
+                                    {filteredItems.length === 0 && (
+                                        <tr><td colSpan="5" style={{ padding: '30px 15px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '14px' }}>
+                                            呢個篩選冇 SKU
+                                        </td></tr>
+                                    )}
+                                    {filteredItems.map((item) => {
                                         const hasLetterSuffix = /[A-Za-z]+$/.test(String(item.Barcode).trim());
                                         const shouldHighlightYellow = item.is_duplicate || hasLetterSuffix;
 
@@ -765,6 +804,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             </table>
                         </div>
                     </div>
+                    </>
                 )
             )}
         </div>
