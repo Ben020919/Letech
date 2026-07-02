@@ -8,5 +8,5 @@ python-multipart
 python-dotenv
 supabase
 Pillow
-pyzbar
+zxing-cpp
 requests

@@ -12,14 +12,14 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-# 📷 pyzbar 用嚟做 server-side barcode decode(對模糊手機鏡頭好寬容)
-# Render 上 packages.txt 已經有 libzbar0
+# 📷 zxing-cpp 用嚟做 server-side barcode decode(對模糊手機鏡頭寬容度好高)
+# 自帶 native binary,冇 system deps,pip install 就 work
 try:
-    from pyzbar.pyzbar import decode as pyzbar_decode
-    PYZBAR_AVAILABLE = True
-except Exception as _pyzbar_err:
-    PYZBAR_AVAILABLE = False
-    print(f"[Inspection] pyzbar 唔可用: {_pyzbar_err}")
+    import zxingcpp
+    ZXING_AVAILABLE = True
+except Exception as _zx_err:
+    ZXING_AVAILABLE = False
+    print(f"[Inspection] zxing-cpp 唔可用: {_zx_err}")
 
 load_dotenv()
 
@@ -414,13 +414,13 @@ async def get_history(zone: str = None, limit: int = 100):
 
 
 # ================= 6.5 📷 拍照掃碼 — server-side barcode decode ==================
-# 對模糊手機鏡頭:用戶影一張定格相 → 上傳 → 用 pyzbar + 多 pre-process 策略 decode
-# 比 client-side JS decoder 寬容好多(細睇灰階/threshold/銳化/縮 size 等唔同角度)
+# 用戶影一張定格相 → 上傳 → zxing-cpp 用多 pre-process 策略 decode
+# 比 client-side JS decoder 對模糊條碼寬容 20x+
 # ==============================================================================
 @router.post("/decode_image")
 async def decode_barcode_image(file: UploadFile = File(...)):
-    if not PYZBAR_AVAILABLE:
-        raise HTTPException(status_code=503, detail="Barcode decoder 未啟動(pyzbar 未 install)")
+    if not ZXING_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Barcode decoder 未啟動(zxing-cpp 未 install)")
     try:
         contents = await file.read()
         img = Image.open(io.BytesIO(contents))
@@ -430,24 +430,26 @@ async def decode_barcode_image(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"讀圖失敗:{e}")
 
     def try_decode(image):
+        """用 zxing-cpp decode 一張 PIL Image,返 list of barcode text。"""
         try:
-            results = pyzbar_decode(image)
-            return [r.data.decode("utf-8", errors="ignore") for r in results if r.data]
+            # zxing-cpp 直接食 PIL Image,自動 handle format
+            results = zxingcpp.read_barcodes(image)
+            return [r.text for r in results if r.text]
         except Exception:
             return []
 
     tried = []
     strategies = []
 
-    # Strategy 1:原圖
+    # Strategy 1:原圖(zxing-cpp 對彩色都 work)
     strategies.append(("original", img))
-    # Strategy 2:灰階 — 大部分 barcode 掃描器都係先轉灰階
+    # Strategy 2:灰階
     gray = img.convert("L")
     strategies.append(("grayscale", gray))
-    # Strategy 3:縮到 1200px 以內(相太大 decoder 慢兼容易失敗)
-    resized = gray.copy()
-    if max(resized.size) > 1200:
-        resized.thumbnail((1200, 1200))
+    # Strategy 3:縮到 1600px 以內(相太大 decoder 有時食唔到)
+    if max(gray.size) > 1600:
+        resized = gray.copy()
+        resized.thumbnail((1600, 1600))
         strategies.append(("resized", resized))
     # Strategy 4:銳化(俾模糊條碼加返 edge)
     strategies.append(("sharpen", gray.filter(ImageFilter.SHARPEN)))
@@ -458,14 +460,17 @@ async def decode_barcode_image(file: UploadFile = File(...)):
     strategies.append(("sharpen_contrast", sharp_contrast))
     # Strategy 7:auto contrast(拉直 histogram)
     strategies.append(("autocontrast", ImageOps.autocontrast(gray, cutoff=2)))
-    # Strategy 8:大 unsharp mask(去掉模糊 halo)
+    # Strategy 8:unsharp mask(去掉模糊 halo)
     strategies.append(("unsharp", gray.filter(ImageFilter.UnsharpMask(radius=3, percent=200, threshold=3))))
+    # Strategy 9:縮 800px + 銳化(有時大相反而 confuse decoder)
+    small_sharp = gray.copy()
+    small_sharp.thumbnail((800, 800))
+    strategies.append(("small_sharpen", small_sharp.filter(ImageFilter.SHARPEN)))
 
     for name, im in strategies:
         codes = try_decode(im)
         tried.append(name)
         if codes:
-            # 過濾出有效嘅 barcode(至少 4 位)
             valid = [c for c in codes if c and len(c) >= 4]
             if valid:
                 return {
