@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { Html5Qrcode } from 'html5-qrcode';
 
 // 🌟 動態判斷 API 網址(VITE_API_BASE 可覆寫俾 local 預覽用)
 const API_BASE_URL =
@@ -65,10 +66,16 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-    const inputRef = useRef(null); 
-    const topRef = useRef(null); 
-    const itemsRef = useRef([]); 
-    const rowRefs = useRef({}); 
+    // 📷 Camera scanner state
+    const [torchOn, setTorchOn] = useState(false);
+    const [torchSupported, setTorchSupported] = useState(false);
+    const [scanHint, setScanHint] = useState('');   // 顯示提示畀模糊鏡頭嘅同事
+    const scannerRef = useRef(null);
+
+    const inputRef = useRef(null);
+    const topRef = useRef(null);
+    const itemsRef = useRef([]);
+    const rowRefs = useRef({});
 
     useEffect(() => {
         if (activeTaskCode) {
@@ -232,6 +239,122 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             processBarcode(inputValue);
         }
     };
+
+    // ================= 📷 Camera scanner (優化模糊鏡頭) =================
+    const openCamera = async () => {
+        if (isCameraOpen) return;
+        setIsCameraOpen(true);
+        setScanHint('');
+        // 等 modal render 完先 attach scanner
+        setTimeout(async () => {
+            try {
+                if (!scannerRef.current) {
+                    scannerRef.current = new Html5Qrcode('qr-scan-region', /* verbose */ false);
+                }
+                const cfg = {
+                    fps: 15,   // 15 fps 平衡電量同反應速度
+                    // 大 qrbox — 模糊鏡頭易啲對準
+                    qrbox: (w, h) => {
+                        const minEdge = Math.min(w, h);
+                        const box = Math.floor(minEdge * 0.8);
+                        return { width: box, height: box };
+                    },
+                    aspectRatio: 1.0,
+                    // 🚀 用原生 BarcodeDetector(如手機支援)—— 快 10x 且對模糊條碼更寬容
+                    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+                    // 用番去次 camera(唔使成日俾人揀)
+                    rememberLastUsedCamera: true,
+                    // 高解像度 + continuous focus
+                    videoConstraints: {
+                        facingMode: 'environment',   // 後鏡頭
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        focusMode: 'continuous',
+                        advanced: [{ focusMode: 'continuous' }],
+                    },
+                };
+
+                await scannerRef.current.start(
+                    { facingMode: 'environment' },
+                    cfg,
+                    (decodedText) => {
+                        // 掃到就即刻 process + 關 camera
+                        processBarcode(decodedText);
+                        closeCamera();
+                    },
+                    (_errMsg) => {
+                        // 不停 scan 期間會有 error,唔理
+                    }
+                );
+
+                // 檢查 torch(手電筒)支唔支援
+                try {
+                    const caps = scannerRef.current.getRunningTrackCameraCapabilities?.();
+                    if (caps && typeof caps.torchFeature === 'function' && caps.torchFeature().isSupported()) {
+                        setTorchSupported(true);
+                    } else {
+                        // 舊 API fallback
+                        const capsOld = scannerRef.current.getRunningTrackCapabilities?.();
+                        if (capsOld && capsOld.torch) setTorchSupported(true);
+                    }
+                } catch (_) {}
+
+                // 8 秒後仲未掃到 → 提示改用手動輸入
+                setTimeout(() => {
+                    if (isCameraOpen && scannerRef.current) {
+                        setScanHint('掃唔到?可以關咗 camera 用鍵盤輸入 barcode 末幾碼');
+                    }
+                }, 8000);
+            } catch (err) {
+                console.error('相機開啟失敗:', err);
+                showAlert('❌ 相機開啟失敗:' + (err.message || err), 'error');
+                setIsCameraOpen(false);
+            }
+        }, 150);
+    };
+
+    const closeCamera = () => {
+        if (scannerRef.current) {
+            scannerRef.current.stop().catch(() => {}).finally(() => {
+                try { scannerRef.current.clear(); } catch (_) {}
+                scannerRef.current = null;
+            });
+        }
+        setIsCameraOpen(false);
+        setTorchOn(false);
+        setTorchSupported(false);
+        setScanHint('');
+    };
+
+    const toggleTorch = async () => {
+        if (!scannerRef.current) return;
+        const target = !torchOn;
+        try {
+            // 新版 html5-qrcode API
+            const caps = scannerRef.current.getRunningTrackCameraCapabilities?.();
+            if (caps && typeof caps.torchFeature === 'function') {
+                await caps.torchFeature().apply(target);
+            } else {
+                // Fallback:直接 applyVideoConstraints
+                await scannerRef.current.applyVideoConstraints({
+                    advanced: [{ torch: target }],
+                });
+            }
+            setTorchOn(target);
+        } catch (err) {
+            console.error('手電筒 toggle 失敗:', err);
+            showAlert('⚠️ 呢部手機唔支援手電筒', 'warning');
+        }
+    };
+
+    // 離開 page 前記住 stop camera(避免相機 leak)
+    useEffect(() => {
+        return () => {
+            if (scannerRef.current) {
+                scannerRef.current.stop().catch(() => {});
+            }
+        };
+    }, []);
 
     const showAlert = (msg, type) => {
         setAlertMsg({ msg, type });
@@ -409,13 +532,57 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                 );
             })()}
 
-            {/* 🌟 永遠存在的掃碼引擎 (進一步壓縮高度) */}
+            {/* 🌟 永遠存在的掃碼引擎 — 手動輸入 + 📷 相機掃碼(適配模糊鏡頭) */}
             <div ref={topRef} style={{ marginBottom: '15px', background: '#f8fafc', padding: '8px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <input 
-                    ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={handleKeyDown} disabled={isCameraOpen} placeholder={focusedItem ? "在此掃描下一個..." : "掃描條碼，或輸入末幾碼..."}
-                    style={{ width: '100%', padding: '10px', fontSize: '16px', textAlign: 'center', borderRadius: '8px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: isCameraOpen ? '#e2e8f0' : '#ffffff', boxSizing: 'border-box' }}
-                />
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+                    <input
+                        ref={inputRef} type="text" value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={handleKeyDown} disabled={isCameraOpen}
+                        placeholder={focusedItem ? "在此掃描下一個..." : "掃描條碼，或輸入末幾碼..."}
+                        style={{ flex: 1, padding: '10px', fontSize: '16px', textAlign: 'center', borderRadius: '8px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: isCameraOpen ? '#e2e8f0' : '#ffffff', boxSizing: 'border-box' }}
+                    />
+                    <button
+                        onClick={openCamera} disabled={isCameraOpen}
+                        title="用手機相機掃碼"
+                        style={{ background: isCameraOpen ? '#94a3b8' : '#0ea5e9', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: isCameraOpen ? 'wait' : 'pointer', fontSize: '15px', whiteSpace: 'nowrap' }}
+                    >
+                        📷 掃碼
+                    </button>
+                </div>
             </div>
+
+            {/* 📷 Camera modal — 全螢幕,俾模糊鏡頭都掃到 */}
+            {isCameraOpen && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', zIndex: 9998, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '15px', overflow: 'auto' }}>
+                    <div style={{ color: 'white', fontSize: '18px', fontWeight: '900', marginBottom: '10px', textAlign: 'center' }}>
+                        📷 對準條碼掃描
+                    </div>
+                    <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '15px', textAlign: 'center', maxWidth: '450px' }}>
+                        💡 掃唔到?撳 <strong style={{ color: '#fbbf24' }}>🔦 手電筒</strong> 加光,或者慢慢移遠 / 移近條碼 15-25 cm
+                    </div>
+                    <div id="qr-scan-region" style={{ width: '100%', maxWidth: '500px', background: 'black', borderRadius: '12px', overflow: 'hidden', border: '3px solid #0ea5e9' }}></div>
+
+                    {scanHint && (
+                        <div style={{ marginTop: '12px', background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '10px 14px', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', maxWidth: '500px', textAlign: 'center' }}>
+                            ⚠️ {scanHint}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {torchSupported && (
+                            <button onClick={toggleTorch}
+                                style={{ background: torchOn ? '#fbbf24' : '#1e293b', color: 'white', border: `2px solid ${torchOn ? '#fbbf24' : '#475569'}`, padding: '14px 24px', borderRadius: '12px', fontSize: '16px', fontWeight: '900', cursor: 'pointer', minWidth: '150px' }}>
+                                {torchOn ? '🔦 熄手電筒' : '🔦 開手電筒'}
+                            </button>
+                        )}
+                        <button onClick={closeCamera}
+                            style={{ background: '#dc2626', color: 'white', border: 'none', padding: '14px 24px', borderRadius: '12px', fontSize: '16px', fontWeight: '900', cursor: 'pointer', minWidth: '150px' }}>
+                            ✕ 關閉相機
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {alertMsg && (
                 <div style={{ position: 'fixed', top: '15%', left: '50%', transform: 'translateX(-50%)', backgroundColor: alertMsg.type === 'error' ? '#ef4444' : alertMsg.type === 'warning' ? '#f59e0b' : '#10b981', color: 'white', padding: '15px 20px', fontSize: '16px', fontWeight: '900', borderRadius: '12px', zIndex: 9999, boxShadow: '0 10px 25px rgba(0,0,0,0.3)', textAlign: 'center', width: '80%', maxWidth: '300px' }}>
