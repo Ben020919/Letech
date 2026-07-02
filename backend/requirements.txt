@@ -8,4 +8,5 @@ python-multipart
 python-dotenv
 supabase
 Pillow
+pyzbar
 requests

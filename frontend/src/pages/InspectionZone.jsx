@@ -72,6 +72,10 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     const [scanHint, setScanHint] = useState('');   // 顯示提示畀模糊鏡頭嘅同事
     const scannerRef = useRef(null);
 
+    // 📸 拍照掃碼 state(server-side decode,對模糊鏡頭最寬容)
+    const [photoDecoding, setPhotoDecoding] = useState(false);
+    const photoInputRef = useRef(null);
+
     const inputRef = useRef(null);
     const topRef = useRef(null);
     const itemsRef = useRef([]);
@@ -238,6 +242,52 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         if (e.key === 'Enter' && inputValue.trim()) {
             processBarcode(inputValue);
         }
+    };
+
+    // ================= 📸 拍照掃碼 (server-side decode,對模糊鏡頭最寬容) =================
+    // 用 <input capture="environment"> 打開手機原生 camera app,
+    // 用戶影完一張定格相 → 上傳 backend → pyzbar 用多種 pre-process 策略 decode。
+    // 呢個做法比 live-stream 掃碼寬容 20+ 倍:因為
+    //   1. 用戶有時間 tap 對焦、開手電筒、防抖
+    //   2. Backend pyzbar 可以試 灰階/銳化/threshold/縮 size 8 個角度
+    //   3. 唔受 JS decoder 對高清 stream 嘅限制
+    const handlePhotoCapture = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setPhotoDecoding(true);
+        setScanHint('');
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/inspection/decode_image`, {
+                method: 'POST',
+                body: formData,
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || '拍照解碼失敗');
+            }
+            const data = await res.json();
+            if (data.barcodes && data.barcodes.length > 0) {
+                // 用第一個 decode 到嘅 barcode
+                processBarcode(data.barcodes[0]);
+                showAlert(`✅ 掃到: ${data.barcodes[0]}`, 'success');
+            } else {
+                playSound('error');
+                showAlert('❌ 影嗰張相掃唔到條碼,再試多次(對準啲、光啲、慢慢郁)', 'error');
+            }
+        } catch (err) {
+            playSound('error');
+            showAlert('❌ ' + (err.message || err), 'error');
+        } finally {
+            setPhotoDecoding(false);
+            if (e.target) e.target.value = '';   // reset 等下次可以影另一張
+        }
+    };
+
+    const triggerPhotoCapture = () => {
+        if (photoDecoding) return;
+        photoInputRef.current?.click();
     };
 
     // ================= 📷 Camera scanner (優化模糊鏡頭) =================
@@ -532,23 +582,44 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                 );
             })()}
 
-            {/* 🌟 永遠存在的掃碼引擎 — 手動輸入 + 📷 相機掃碼(適配模糊鏡頭) */}
+            {/* 🌟 永遠存在的掃碼引擎 — 手動輸入 + 📸 拍照掃碼 + 📷 相機 live 掃碼 */}
             <div ref={topRef} style={{ marginBottom: '15px', background: '#f8fafc', padding: '8px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'stretch', flexWrap: 'wrap' }}>
                     <input
                         ref={inputRef} type="text" value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        onKeyDown={handleKeyDown} disabled={isCameraOpen}
+                        onKeyDown={handleKeyDown} disabled={isCameraOpen || photoDecoding}
                         placeholder={focusedItem ? "在此掃描下一個..." : "掃描條碼，或輸入末幾碼..."}
-                        style={{ flex: 1, padding: '10px', fontSize: '16px', textAlign: 'center', borderRadius: '8px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: isCameraOpen ? '#e2e8f0' : '#ffffff', boxSizing: 'border-box' }}
+                        style={{ flex: '1 1 200px', minWidth: '150px', padding: '10px', fontSize: '16px', textAlign: 'center', borderRadius: '8px', border: '2px solid #3b82f6', outline: 'none', fontWeight: 'bold', color: '#0f172a', backgroundColor: (isCameraOpen || photoDecoding) ? '#e2e8f0' : '#ffffff', boxSizing: 'border-box' }}
                     />
+                    {/* 📸 拍照掃碼 —— server-side decode,對模糊鏡頭最寬容 */}
                     <button
-                        onClick={openCamera} disabled={isCameraOpen}
-                        title="用手機相機掃碼"
-                        style={{ background: isCameraOpen ? '#94a3b8' : '#0ea5e9', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: isCameraOpen ? 'wait' : 'pointer', fontSize: '15px', whiteSpace: 'nowrap' }}
+                        onClick={triggerPhotoCapture} disabled={isCameraOpen || photoDecoding}
+                        title="影一張相 server 幫你 decode(對模糊鏡頭最有效)"
+                        style={{ background: photoDecoding ? '#94a3b8' : '#16a34a', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: (isCameraOpen || photoDecoding) ? 'wait' : 'pointer', fontSize: '15px', whiteSpace: 'nowrap' }}
                     >
-                        📷 掃碼
+                        {photoDecoding ? '⏳ 解碼中...' : '📸 拍照掃碼'}
                     </button>
+                    {/* 📷 Live 相機掃碼 —— 好鏡頭手機用呢個更快 */}
+                    <button
+                        onClick={openCamera} disabled={isCameraOpen || photoDecoding}
+                        title="開相機 live 掃(鏡頭清嘅手機用呢個快啲)"
+                        style={{ background: isCameraOpen ? '#94a3b8' : '#0ea5e9', color: 'white', border: 'none', padding: '10px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: (isCameraOpen || photoDecoding) ? 'wait' : 'pointer', fontSize: '15px', whiteSpace: 'nowrap' }}
+                    >
+                        📷 Live 掃
+                    </button>
+                </div>
+                {/* 隱藏 file input,由「📸 拍照掃碼」button 觸發 */}
+                <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handlePhotoCapture}
+                    style={{ display: 'none' }}
+                />
+                <div style={{ marginTop: '6px', fontSize: '11px', color: '#64748b', textAlign: 'center' }}>
+                    💡 鏡頭模糊掃唔到?撳<strong style={{ color: '#16a34a' }}>📸 拍照掃碼</strong>——影一張定格相 server 幫你 decode(寬容 20x)
                 </div>
             </div>
 

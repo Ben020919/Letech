@@ -10,6 +10,16 @@ import random  # 🌟 新增：用於生成 5 位數任務碼
 from datetime import datetime, timezone
 from supabase import create_client, Client
 from dotenv import load_dotenv
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+
+# 📷 pyzbar 用嚟做 server-side barcode decode(對模糊手機鏡頭好寬容)
+# Render 上 packages.txt 已經有 libzbar0
+try:
+    from pyzbar.pyzbar import decode as pyzbar_decode
+    PYZBAR_AVAILABLE = True
+except Exception as _pyzbar_err:
+    PYZBAR_AVAILABLE = False
+    print(f"[Inspection] pyzbar 唔可用: {_pyzbar_err}")
 
 load_dotenv()
 
@@ -401,6 +411,75 @@ async def get_history(zone: str = None, limit: int = 100):
             "archived_at": task.get("archived_at"),
         })
     return {"history": history}
+
+
+# ================= 6.5 📷 拍照掃碼 — server-side barcode decode ==================
+# 對模糊手機鏡頭:用戶影一張定格相 → 上傳 → 用 pyzbar + 多 pre-process 策略 decode
+# 比 client-side JS decoder 寬容好多(細睇灰階/threshold/銳化/縮 size 等唔同角度)
+# ==============================================================================
+@router.post("/decode_image")
+async def decode_barcode_image(file: UploadFile = File(...)):
+    if not PYZBAR_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Barcode decoder 未啟動(pyzbar 未 install)")
+    try:
+        contents = await file.read()
+        img = Image.open(io.BytesIO(contents))
+        # 修正 EXIF 方向(iPhone 好多時 metadata 話 rotate 但實際 pixel 冇轉)
+        img = ImageOps.exif_transpose(img)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"讀圖失敗:{e}")
+
+    def try_decode(image):
+        try:
+            results = pyzbar_decode(image)
+            return [r.data.decode("utf-8", errors="ignore") for r in results if r.data]
+        except Exception:
+            return []
+
+    tried = []
+    strategies = []
+
+    # Strategy 1:原圖
+    strategies.append(("original", img))
+    # Strategy 2:灰階 — 大部分 barcode 掃描器都係先轉灰階
+    gray = img.convert("L")
+    strategies.append(("grayscale", gray))
+    # Strategy 3:縮到 1200px 以內(相太大 decoder 慢兼容易失敗)
+    resized = gray.copy()
+    if max(resized.size) > 1200:
+        resized.thumbnail((1200, 1200))
+        strategies.append(("resized", resized))
+    # Strategy 4:銳化(俾模糊條碼加返 edge)
+    strategies.append(("sharpen", gray.filter(ImageFilter.SHARPEN)))
+    # Strategy 5:加對比度
+    strategies.append(("high_contrast", ImageEnhance.Contrast(gray).enhance(2.5)))
+    # Strategy 6:銳化 + 對比
+    sharp_contrast = ImageEnhance.Contrast(gray.filter(ImageFilter.SHARPEN)).enhance(2.0)
+    strategies.append(("sharpen_contrast", sharp_contrast))
+    # Strategy 7:auto contrast(拉直 histogram)
+    strategies.append(("autocontrast", ImageOps.autocontrast(gray, cutoff=2)))
+    # Strategy 8:大 unsharp mask(去掉模糊 halo)
+    strategies.append(("unsharp", gray.filter(ImageFilter.UnsharpMask(radius=3, percent=200, threshold=3))))
+
+    for name, im in strategies:
+        codes = try_decode(im)
+        tried.append(name)
+        if codes:
+            # 過濾出有效嘅 barcode(至少 4 位)
+            valid = [c for c in codes if c and len(c) >= 4]
+            if valid:
+                return {
+                    "barcodes": valid,
+                    "strategy": name,
+                    "tried": tried,
+                }
+
+    return {
+        "barcodes": [],
+        "strategy": None,
+        "tried": tried,
+        "message": "掃唔到條碼,可以再影一次(對準啲、光啲、慢慢郁)或直接用鍵盤輸入末幾碼",
+    }
 
 
 # ================= 7. History detail(睇返一個已歸檔任務嘅完整 items)=================
