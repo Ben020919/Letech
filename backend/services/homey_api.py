@@ -1030,7 +1030,11 @@ def create_pet_food_label_html(matched_data, qty, font_css=""):
             font-size: 3.8pt;
             line-height: 1.3;
             font-weight: 900;
-            text-align: right;   /* 靠右對齊,fill 右邊空位 */
+            text-align: right;   /* align inner block 靠右 */
+        }}
+        .bb-inner {{
+            display: inline-block;
+            text-align: left;    /* 兩行 text 內部左對齊,兩行 start 位一致 */
         }}
 
         .label-container, .label-container * {{
@@ -1096,9 +1100,9 @@ def create_pet_food_label_html(matched_data, qty, font_css=""):
                 <div class="line">{storage_txt}</div>
             </div>
 
-            <!-- BOTTOM RIGHT: Best before + Show on package -->
+            <!-- BOTTOM RIGHT: Best before + Show on package (inline-block 令兩行同 start 位 + 貼右) -->
             <div class="bb-box">
-                Best before({best_before_fmt}):<br>{show_on_pkg}
+                <div class="bb-inner">Best before({best_before_fmt}):<br>{show_on_pkg}</div>
             </div>
         </div>
     </body></html>
