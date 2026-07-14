@@ -17,6 +17,7 @@ from services.homey_api import (
     create_food_label_html,
     create_insects_label_html,
     create_health_food_label_html,
+    create_pet_food_label_html,
     create_homey_repack_label_html,
     create_barcode_only_label_html,
     font_to_base64_css as homey_font_css,
@@ -57,9 +58,11 @@ def detect_label_types_from_matches(matches) -> List[str]:
             md = best.iloc[0].to_dict()
             lt_md = str(md.get('Label_Type', '')).lower()
             status = check_data_status(md)
-            # 🌟 保健食品優先(避免被 status='food' 抢先)
+            # 🌟 特殊 label_type 優先(避免被 status='food' 抢先)
             if '保健食品' in lt_md or 'health_food' in lt_md:
                 types.append('health_food')
+            elif 'pet food' in lt_md or 'pet_food' in lt_md:
+                types.append('pet_food')
             elif status == 'food':
                 types.append('food')
             elif status == 'caution':
@@ -172,10 +175,11 @@ def smart_print(req: PrintRequest):
         main_records = matches
         jelly_records = matches.iloc[0:0]  # empty
 
-    # ── 主標(health_food / insects / food / caution)
+    # ── 主標(health_food / pet_food / insects / food / caution)
     food_single = ""
     insects_single = ""
     health_food_single = ""
+    pet_food_single = ""
     used_status = None
     p_name = ""
     if not main_records.empty:
@@ -185,10 +189,13 @@ def smart_print(req: PrintRequest):
             p_name = str(md.get('Name', '') or md.get('Description', '')).strip()
             status = check_data_status(md)
             lt_str = str(md.get('Label_Type', '')).lower()
-            # 🌟 保健食品 (放第一,因為佢 Label_Type 係「保健食品」但 status 多數係 'food')
+            # 🌟 特殊 label_type 優先(避免被 status='food' 抢先)
             if '保健食品' in lt_str or 'health_food' in lt_str:
                 health_food_single = create_health_food_label_html(md, 1, FONT_PLACEHOLDER)
                 used_status = 'health_food'
+            elif 'pet food' in lt_str or 'pet_food' in lt_str:
+                pet_food_single = create_pet_food_label_html(md, 1, FONT_PLACEHOLDER)
+                used_status = 'pet_food'
             elif '蟲' in lt_str or 'insect' in lt_str:
                 insects_single = create_insects_label_html(md, 1, FONT_PLACEHOLDER)
                 used_status = 'insects'
@@ -221,6 +228,9 @@ def smart_print(req: PrintRequest):
     elif health_food_single:
         html = _multiply_label(health_food_single, req.qty)
         msg = f"health_food × {req.qty}"
+    elif pet_food_single:
+        html = _multiply_label(pet_food_single, req.qty)
+        msg = f"pet_food × {req.qty}"
     elif insects_single:
         html = _multiply_label(insects_single, req.qty)
         msg = f"insects × {req.qty}"

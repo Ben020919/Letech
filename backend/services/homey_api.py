@@ -897,6 +897,220 @@ def create_health_food_label_html(matched_data, qty, font_css=""):
     return single_label_html
 
 
+def create_pet_food_label_html(matched_data, qty, font_css=""):
+    """Pet Food layout — 仿用戶 sample PDF。
+    左:9 個 nutrition rows (Servings Per Package / Serving Size / Energy /
+       Crude Protein / Crude Fat / Crude Fibre / Moisture / Net Content /
+       Country Of Origin)
+    右:Ingredients (column AT = pandas header 'Ingredients.1')
+    底:Distributor + Storage + Best Before + Show on package
+    Excel column letter → header name:
+      A=Barcode, B=Description, AT=Ingredients.1,
+      AU=Servings Per Package:, AV=Serving Size:, AW=Energy:,
+      AX=Crude Protein:, AY=Crude Fat:, AZ=Crude Fibre:,
+      BA=Moisture:, BB=Net Content:, BC=Country Of Origin:,
+      BD=Distributor:, BE=. (storage txt), BF=Best before:, BG=..1 (show on pkg)
+    """
+    data = matched_data if matched_data else {}
+    barcode = clean_val(data.get('Barcode', ''))
+    name = clean_val(data.get('Description', ''))
+    ing = clean_val(data.get('Ingredients.1', '')) or clean_val(data.get('Ingredients', ''))
+    servings_pkg = clean_val(data.get('Servings Per Package:', ''))
+    serving_size = clean_val(data.get('Serving Size:', ''))
+    energy = clean_val(data.get('Energy:', ''))
+    protein = clean_val(data.get('Crude Protein:', ''))
+    fat = clean_val(data.get('Crude Fat:', ''))
+    fibre = clean_val(data.get('Crude Fibre:', ''))
+    moisture = clean_val(data.get('Moisture:', ''))
+    net_content = clean_val(data.get('Net Content:', '')) or clean_val(data.get('Net_Content', ''))
+    country = clean_val(data.get('Country Of Origin:', '')) or clean_val(data.get('Country_Of_Origin', ''))
+    distributor = clean_val(data.get('Distributor:', ''))
+    storage_txt = clean_val(data.get('.', '')) or clean_val(data.get('Storage', ''))
+    best_before_fmt = clean_val(data.get('Best before:', '')) or 'YYYY-MM-DD'
+    show_on_pkg = clean_val(data.get('..1', '')) or 'Show on package'
+
+    single_label_html = f"""
+    <html><head><style>
+        {font_css}
+        @page {{ size: 70mm 50mm; margin: 0; }}
+        body {{ margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; }}
+
+        .label-container {{
+            width: 70mm; height: 50mm;
+            position: relative;
+            box-sizing: border-box;
+            page-break-after: always;
+            overflow: hidden;
+            font-weight: bold;
+            color: black;
+            background: white;
+        }}
+
+        /* === TOP 0-7mm — barcode + product name === */
+        .barcode-text {{
+            position: absolute;
+            left: 2mm; top: 0.7mm;
+            font-size: 4.5pt;
+            font-weight: 900;
+        }}
+        .name-text {{
+            position: absolute;
+            left: 2mm; top: 3.3mm;
+            width: 66mm;
+            max-height: 3.5mm;
+            overflow: hidden;
+            font-size: 4.5pt;
+            line-height: 1.15;
+            font-weight: 900;
+        }}
+        .line1 {{
+            position: absolute;
+            left: 0; right: 0;
+            top: 7mm;
+            border-top: 1.5pt solid black;
+        }}
+
+        /* === MIDDLE 7-40mm — nutrition (left) + ingredients (right) === */
+        .nutri-box {{
+            position: absolute;
+            left: 2mm; top: 8mm;
+            width: 26mm; max-height: 31mm;
+            overflow: hidden;
+            font-size: 3.7pt;
+            line-height: 1.35;
+            font-weight: 900;
+        }}
+        .nutri-title {{ margin-bottom: 0.8mm; font-weight: 900; font-size: 4pt; }}
+        .nutri-row {{ display: flex; justify-content: space-between; gap: 3px; }}
+        .nutri-row span:last-child {{ text-align: right; }}
+
+        .vline {{
+            position: absolute;
+            left: 29mm; top: 7mm;
+            height: 33mm;
+            border-left: 1.5pt solid black;
+        }}
+
+        .ing-box {{
+            position: absolute;
+            left: 30mm; top: 8mm;
+            width: 38mm; height: 31mm;
+            overflow: hidden;
+            font-size: 3.4pt;
+            line-height: 1.2;
+            font-weight: 900;
+            text-align: left;
+            letter-spacing: 0.15pt;
+        }}
+
+        .line2 {{
+            position: absolute;
+            left: 0; right: 0;
+            top: 40mm;
+            border-top: 1.5pt solid black;
+        }}
+
+        /* === BOTTOM 40-50mm — distributor+storage (left) + best before (right) === */
+        .mfr-box {{
+            position: absolute;
+            left: 2mm; top: 41mm;
+            width: 44mm; height: 8.5mm;
+            overflow: hidden;
+            font-size: 3.4pt;
+            line-height: 1.2;
+            font-weight: 900;
+        }}
+        .mfr-box .line {{ margin-bottom: 0.4mm; }}
+
+        .bb-box {{
+            position: absolute;
+            left: 47mm; top: 41mm;
+            width: 21mm; height: 8.5mm;
+            overflow: hidden;
+            font-size: 3.8pt;
+            line-height: 1.3;
+            font-weight: 900;
+        }}
+
+        .label-container, .label-container * {{
+            font-weight: 900 !important;
+            -webkit-font-smoothing: antialiased;
+        }}
+    </style>
+    <script>
+    /* Shrink-to-fit:內容超咗自動縮字 */
+    (function() {{
+      function fitText(el, minPt) {{
+        if (!el) return;
+        var size = parseFloat(getComputedStyle(el).fontSize);
+        var minPx = (minPt || 2) * 96/72;
+        var iters = 0;
+        while (el.scrollHeight > el.clientHeight && size > minPx && iters < 50) {{
+          size -= 0.2;
+          el.style.fontSize = size + 'px';
+          iters++;
+        }}
+      }}
+      function run() {{
+        document.querySelectorAll('.name-text, .nutri-box, .ing-box, .mfr-box, .bb-box').forEach(function(el) {{ fitText(el, 2); }});
+      }}
+      if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', run);
+      }} else {{
+        run();
+      }}
+    }})();
+    </script>
+    </head><body>
+        <div class="label-container">
+            <!-- TOP -->
+            <div class="barcode-text">{barcode}</div>
+            <div class="name-text">{name}</div>
+            <div class="line1"></div>
+
+            <!-- MIDDLE LEFT: Nutrition -->
+            <div class="nutri-box">
+                <div class="nutri-title">Nutrition Information</div>
+                <div class="nutri-row"><span>Servings Per Package:</span><span>{servings_pkg}</span></div>
+                <div class="nutri-row"><span>Serving Size:</span><span>{serving_size}</span></div>
+                <div class="nutri-row"><span>Energy:</span><span>{energy}</span></div>
+                <div class="nutri-row"><span>Crude Protein:</span><span>{protein}</span></div>
+                <div class="nutri-row"><span>Crude Fat:</span><span>{fat}</span></div>
+                <div class="nutri-row"><span>Crude Fibre:</span><span>{fibre}</span></div>
+                <div class="nutri-row"><span>Moisture:</span><span>{moisture}</span></div>
+                <div class="nutri-row"><span>Net Content:</span><span>{net_content}</span></div>
+                <div class="nutri-row"><span>Country Of Origin:</span><span>{country}</span></div>
+            </div>
+
+            <div class="vline"></div>
+
+            <!-- MIDDLE RIGHT: Ingredients (long text) -->
+            <div class="ing-box">{ing}</div>
+
+            <div class="line2"></div>
+
+            <!-- BOTTOM LEFT: Distributor + Storage -->
+            <div class="mfr-box">
+                <div class="line">Distributor:{distributor}</div>
+                <div class="line">{storage_txt}</div>
+            </div>
+
+            <!-- BOTTOM RIGHT: Best before + Show on package -->
+            <div class="bb-box">
+                Best before({best_before_fmt}):<br>{show_on_pkg}
+            </div>
+        </div>
+    </body></html>
+    """
+    import re as regex
+    match = regex.search(r'<body>(.*?)</body>', single_label_html, regex.DOTALL)
+    if match:
+        div_content = match.group(1)
+        full_body = div_content * qty
+        return single_label_html.replace(div_content, full_body)
+    return single_label_html
+
+
 def process_homey_pdf(file_bytes):
     pdf_file = io.BytesIO(file_bytes)
     reader = PdfReader(pdf_file)
