@@ -1030,6 +1030,7 @@ def create_pet_food_label_html(matched_data, qty, font_css=""):
             font-size: 3.8pt;
             line-height: 1.3;
             font-weight: 900;
+            text-align: right;   /* 靠右對齊,fill 右邊空位 */
         }}
 
         .label-container, .label-container * {{
