@@ -11,12 +11,8 @@ import gc
 # 🌟 統一向 master_api 借大腦
 from services.master_api import load_master_db, find_by_product_no, find_by_barcode
 from services.pdf_core import delete_file_later
-# 🌟 保健食品 + Pet Food + Best Before(用 Repack layout)專屬 dispatcher
-from services.homey_api import (
-    create_health_food_label_html,
-    create_pet_food_label_html,
-    create_homey_repack_label_html,
-)
+# 🌟 保健食品 + Pet Food 專屬 layout(避免掉 fall back 到 food_label 出錯 layout)
+from services.homey_api import create_health_food_label_html, create_pet_food_label_html
 
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
@@ -596,11 +592,6 @@ def process_yummy_pdf(file_bytes):
                         elif 'pet food' in lt_low or 'pet_food' in lt_low:
                             final_html = create_pet_food_label_html(matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
                             data_status = 'pet_food'
-                        elif 'best before' in lt_low:
-                            # Best Before 只需 barcode + 商品名(日期靠員工手寫)
-                            _bc_print = barcode_val if barcode_val and barcode_val != "(N/A)" else p_no
-                            final_html = create_homey_repack_label_html(p_name_pdf, _bc_print, 1, "/* FONT_CSS_PLACEHOLDER */")
-                            data_status = 'best_before'
                         elif data_status == 'food':
                             final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
                         elif data_status == 'caution':
@@ -619,10 +610,8 @@ def process_yummy_pdf(file_bytes):
                     if not jelly_records.empty:
                         jelly_data = jelly_records.iloc[0].to_dict()
                         jelly_cautions_text = smart_get_caution_text(jelly_data)
-                        # 🌟 Cautions 空 → 用果凍標準警告字(所有果凍都應該有呢個警告)
-                        if not jelly_cautions_text or str(jelly_cautions_text).strip().lower() in ('', 'nan'):
-                            jelly_cautions_text = "注意：勿一口吞食，長者及兒童須在監護下食用。Caution: Do not swallow whole. Elderly and children must consume under supervision."
-                        jelly_single = generate_jelly_html(jelly_cautions_text, 1)
+                        if jelly_cautions_text:
+                            jelly_single = generate_jelly_html(jelly_cautions_text, 1)
 
                     # ====== 3. 組合一對(food+jelly)然後 × qty,實現交替 ======
                     if final_html and "</body></html>" in final_html:

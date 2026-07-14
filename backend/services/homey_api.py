@@ -1213,9 +1213,6 @@ def process_homey_pdf(file_bytes):
             final_label = "保健食品"
         elif "pet food" in excel_label_lower or "pet_food" in excel_label_lower:
             final_label = "Pet Food"
-        # 🌟 Best Before → 用 Repack 樣式(barcode + 商品名),員工可以手寫日期
-        elif "best before" in excel_label_lower:
-            final_label = "Best Before"
         elif "food" in excel_label_lower:
             final_label = "Food Label"
         # 🌟 增強：同時支援繁體「蟲」與簡體「虫」
@@ -1238,11 +1235,6 @@ def process_homey_pdf(file_bytes):
         elif final_label == "Pet Food":
             needs_print = True
             final_html = create_pet_food_label_html(matched_data, qty, FONT_PLACEHOLDER)
-        elif final_label == "Best Before":
-            # Best Before 只需要 barcode + 商品名(日期靠員工用 marker 寫),同 Repack 一樣
-            needs_print = True
-            print_barcode = p_no if not barcode_val or barcode_val == "(N/A)" else barcode_val
-            final_html = create_homey_repack_label_html(p_name, print_barcode, qty, FONT_PLACEHOLDER)
         elif final_label == "Food Label":
             needs_print = True
             final_html = create_food_label_html(p_name, barcode_val, matched_data, qty, FONT_PLACEHOLDER)
