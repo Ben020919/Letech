@@ -1081,6 +1081,7 @@ function LabelSearchPage() {
     food: { label: '🍱 Food Label', color: '#2563eb', bg: '#eff6ff' },
     health_food: { label: '💊 保健食品', color: '#7c3aed', bg: '#f5f3ff' },
     pet_food: { label: '🐾 Pet Food', color: '#c2410c', bg: '#ffedd5' },
+    best_before: { label: '📅 Best Before', color: '#0891b2', bg: '#cffafe' },
     jelly: { label: '⚠️ Jelly 警告', color: '#b45309', bg: '#fef3c7' },
     insects: { label: '🐛 蟲蟲 Label', color: '#16a34a', bg: '#dcfce7' },
     caution: { label: '⚠️ Caution', color: '#dc2626', bg: '#fee2e2' },

@@ -63,6 +63,8 @@ def detect_label_types_from_matches(matches) -> List[str]:
                 types.append('health_food')
             elif 'pet food' in lt_md or 'pet_food' in lt_md:
                 types.append('pet_food')
+            elif 'best before' in lt_md:
+                types.append('best_before')
             elif status == 'food':
                 types.append('food')
             elif status == 'caution':
@@ -196,6 +198,10 @@ def smart_print(req: PrintRequest):
             elif 'pet food' in lt_str or 'pet_food' in lt_str:
                 pet_food_single = create_pet_food_label_html(md, 1, FONT_PLACEHOLDER)
                 used_status = 'pet_food'
+            elif 'best before' in lt_str:
+                # Best Before 只需 barcode + 商品名(日期員工手寫),用 Repack layout
+                food_single = create_homey_repack_label_html(p_name, bc, 1, FONT_PLACEHOLDER)
+                used_status = 'best_before'
             elif '蟲' in lt_str or 'insect' in lt_str:
                 insects_single = create_insects_label_html(md, 1, FONT_PLACEHOLDER)
                 used_status = 'insects'
@@ -214,8 +220,10 @@ def smart_print(req: PrintRequest):
     if not jelly_records.empty:
         jd = jelly_records.iloc[0].fillna("").to_dict()
         ctext = smart_get_caution_text(jd) or jd.get('Cautions', '')
-        if ctext:
-            jelly_single = generate_jelly_html(ctext, 1)
+        # 🌟 Cautions 空 → 用果凍標準警告字(所有果凍都應該有呢個警告)
+        if not ctext or str(ctext).strip().lower() in ('', 'nan'):
+            ctext = "注意:勿一口吞食,長者及兒童須在監護下食用。Caution: Do not swallow whole. Elderly and children must consume under supervision."
+        jelly_single = generate_jelly_html(ctext, 1)
 
     # ── 合併 + ×qty
     if food_single and jelly_single:
