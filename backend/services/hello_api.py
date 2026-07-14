@@ -12,7 +12,6 @@ from services.homey_api import (
     font_to_base64_css as homey_font_css,
     DEFAULT_FONT_PATH as HOMEY_FONT,
     create_health_food_label_html,
-    create_pet_food_label_html,
 )
 from services.master_api import find_by_barcode, find_by_product_no
 
@@ -109,7 +108,7 @@ def process_hellobear_pdf(file_bytes):
         if p_no not in product_no_tracker: product_no_tracker[p_no] = []
         product_no_tracker[p_no].append(i + 1)
 
-        # 🌟 保健食品 / Pet Food detection:喺 master DB 揾,若 Label_Type 對得上
+        # 🌟 保健食品 detection:喺 master DB 揾,若 Label_Type 係「保健食品」
         # 用 special layout 打印。否則行返舊邏輯(barcode+name)。
         special_html = ""
         try:
@@ -121,8 +120,6 @@ def process_hellobear_pdf(file_bytes):
                 lt_str = str(md.get('Label_Type', '')).lower()
                 if '保健食品' in lt_str or 'health_food' in lt_str:
                     special_html = create_health_food_label_html(md, qty, FONT_PLACEHOLDER)
-                elif 'pet food' in lt_str or 'pet_food' in lt_str:
-                    special_html = create_pet_food_label_html(md, qty, FONT_PLACEHOLDER)
         except Exception:
             pass
 

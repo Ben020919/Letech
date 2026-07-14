@@ -11,8 +11,8 @@ import gc
 # 🌟 統一向 master_api 借大腦
 from services.master_api import load_master_db, find_by_product_no, find_by_barcode
 from services.pdf_core import delete_file_later
-# 🌟 保健食品 + Pet Food 專屬 layout(避免掉 fall back 到 food_label 出錯 layout)
-from services.homey_api import create_health_food_label_html, create_pet_food_label_html
+# 🌟 保健食品 專屬 layout(避免掉 fall back 到 food_label 出錯 layout)
+from services.homey_api import create_health_food_label_html
 
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
@@ -579,8 +579,8 @@ def process_yummy_pdf(file_bytes):
                         best_match_df = get_best_results(main_records).fillna("")
                         matched_data = best_match_df.iloc[0].to_dict()
                         data_status = check_data_status(matched_data)
-                        # 🌟 特殊 Label_Type(保健食品 / Pet Food)要 special layout,
-                        # 因為佢哋有 nutrition data → status='food' 會被搶咗,行到 Food Label layout 顯示錯
+                        # 🌟 特殊 Label_Type(保健食品)要 special layout,
+                        # 因為佢有 nutrition data → status='food' 會被搶咗,行到 Food Label layout 顯示錯
                         lt_low = str(matched_data.get('Label_Type', '')).lower()
 
                         # 🚀 改成「先做一對(food+jelly),再 × qty」,實現交替打印
@@ -589,9 +589,6 @@ def process_yummy_pdf(file_bytes):
                         if '保健食品' in lt_low or 'health_food' in lt_low:
                             final_html = create_health_food_label_html(matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
                             data_status = 'health_food'
-                        elif 'pet food' in lt_low or 'pet_food' in lt_low:
-                            final_html = create_pet_food_label_html(matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
-                            data_status = 'pet_food'
                         elif data_status == 'food':
                             final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
                         elif data_status == 'caution':
