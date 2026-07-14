@@ -1202,24 +1202,35 @@ def process_homey_pdf(file_bytes):
                         
         final_label = "普通Label"
         excel_label_lower = excel_label.lower()
-        
-        if "food" in excel_label_lower: 
+
+        # 🌟 保健食品 / Pet Food 要行專屬 layout(要放喺 "food" 之前判斷)
+        if "保健食品" in excel_label or "health_food" in excel_label_lower:
+            final_label = "保健食品"
+        elif "pet food" in excel_label_lower or "pet_food" in excel_label_lower:
+            final_label = "Pet Food"
+        elif "food" in excel_label_lower:
             final_label = "Food Label"
         # 🌟 增強：同時支援繁體「蟲」與簡體「虫」
-        elif "蟲" in excel_label or "虫" in excel_label or "insect" in excel_label_lower: 
+        elif "蟲" in excel_label or "虫" in excel_label or "insect" in excel_label_lower:
             final_label = "蟲蟲Label"
-        elif (barcode_val and barcode_val[-1].isalpha()) or (not barcode_val or barcode_val.strip() == "" or barcode_val == p_no or barcode_val == "(N/A)"): 
+        elif (barcode_val and barcode_val[-1].isalpha()) or (not barcode_val or barcode_val.strip() == "" or barcode_val == p_no or barcode_val == "(N/A)"):
             final_label = "Repack Lable"
-        else: 
+        else:
             final_label = "普通Label"
-            
+
         final_html = ""
         needs_print = False
-        
+
         # 🚀 用 placeholder 取代 inline embed,response 由 ~2GB 縮到 ~19MB
         # frontend handlePrint 會用 resultData.font_css 喺 print 嗰刻先 replace
         FONT_PLACEHOLDER = "/* FONT_CSS_PLACEHOLDER */"
-        if final_label == "Food Label":
+        if final_label == "保健食品":
+            needs_print = True
+            final_html = create_health_food_label_html(matched_data, qty, FONT_PLACEHOLDER)
+        elif final_label == "Pet Food":
+            needs_print = True
+            final_html = create_pet_food_label_html(matched_data, qty, FONT_PLACEHOLDER)
+        elif final_label == "Food Label":
             needs_print = True
             final_html = create_food_label_html(p_name, barcode_val, matched_data, qty, FONT_PLACEHOLDER)
         elif final_label == "蟲蟲Label":
