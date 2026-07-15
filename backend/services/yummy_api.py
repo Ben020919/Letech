@@ -11,8 +11,8 @@ import gc
 # 🌟 統一向 master_api 借大腦
 from services.master_api import load_master_db, find_by_product_no, find_by_barcode
 from services.pdf_core import delete_file_later
-# 🌟 保健食品 專屬 layout(避免掉 fall back 到 food_label 出錯 layout)
-from services.homey_api import create_health_food_label_html
+# 🌟 保健食品 + Pet 專屬 layout(避免掉 fall back 到 food_label 出錯 layout)
+from services.homey_api import create_health_food_label_html, create_pet_food_label_html
 
 DATA_DIR = "data"
 PDF_OUT_DIR = "generated_pdfs"
@@ -589,6 +589,9 @@ def process_yummy_pdf(file_bytes):
                         if '保健食品' in lt_low or 'health_food' in lt_low:
                             final_html = create_health_food_label_html(matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
                             data_status = 'health_food'
+                        elif lt_low.strip() == 'pet' or 'pet food' in lt_low or 'pet_food' in lt_low:
+                            final_html = create_pet_food_label_html(matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
+                            data_status = 'pet'
                         elif data_status == 'food':
                             final_html = create_label_html_on_the_fly({"Name": p_name_pdf, "Barcode": barcode_val}, matched_data, 1, "/* FONT_CSS_PLACEHOLDER */")
                         elif data_status == 'caution':
