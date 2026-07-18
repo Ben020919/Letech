@@ -911,9 +911,6 @@ function HomePage() {
             <span style={{ fontSize: '10px', color: autoRefreshOn ? '#16a34a' : '#94a3b8' }}>●</span>
             {autoRefreshOn ? '自動刷新: 開 (10秒)' : '自動刷新: 關'}
           </button>
-          <button onClick={fetchOrderData} disabled={isRefreshing} style={{ background: '#ffffff', color: 'var(--c-text)', border: '1px solid var(--c-border)', padding: '11px 18px', borderRadius: '11px', fontSize: '14.5px', fontWeight: '700', cursor: isRefreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
-            {isRefreshing ? '🔄 載入中...' : '🔄 重新整理畫面'}
-          </button>
           <button onClick={handleRemoteTrigger} disabled={isTriggering} style={{ background: isTriggering ? '#94a3b8' : '#ea580c', color: '#ffffff', border: 'none', padding: '11px 18px', borderRadius: '11px', fontSize: '14.5px', fontWeight: '700', cursor: isTriggering ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 6px rgba(234,88,12,0.22)' }}>
             {isTriggering ? '🚀 發送指令中...' : '🚀 遠端手動更新'}
           </button>
