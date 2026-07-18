@@ -737,6 +737,11 @@ function HomePage() {
   const [cancelInputs, setCancelInputs] = useState({ today: '', tomorrow: '' });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isTriggering, setIsTriggering] = useState(false); // 🌟 新增：遠端觸發狀態
+  // 🌟 自動刷新開關(記住喺 localStorage,下次仲會生效)
+  const [autoRefreshOn, setAutoRefreshOn] = useState(() => {
+    const saved = localStorage.getItem('hktv_auto_refresh');
+    return saved === null ? true : saved === 'true';   // default: on
+  });
 
   // 從 Render 後端抓取最新資料
   const fetchOrderData = async () => {
@@ -755,10 +760,22 @@ function HomePage() {
   };
 
   useEffect(() => {
-    fetchOrderData();
-    const interval = setInterval(fetchOrderData, 30000); // 30秒自動更新
+    fetchOrderData();   // 第一次 mount 一定 fetch 一次
+    // 只喺 autoRefreshOn=true 先開 interval
+    // useEffect cleanup return 保證離開 HomePage 或 toggle 關咗 auto refresh 就 stop
+    if (!autoRefreshOn) return;
+    const interval = setInterval(fetchOrderData, 10000); // 10 秒 auto refresh
     return () => clearInterval(interval);
-  }, []);
+  }, [autoRefreshOn]);
+
+  // Toggle handler:同步 state + localStorage
+  const toggleAutoRefresh = () => {
+    setAutoRefreshOn(prev => {
+      const next = !prev;
+      localStorage.setItem('hktv_auto_refresh', String(next));
+      return next;
+    });
+  };
 
   // 🌟 新增：發送遠端指令給 Render 伺服器
   const handleRemoteTrigger = async () => {
@@ -886,7 +903,14 @@ function HomePage() {
         <h1 style={{ fontSize: '27px', color: 'var(--c-text)', margin: 0, fontWeight: '800', letterSpacing: '-0.6px' }}>🛍️ HKTVmall 智慧訂單監控儀表板</h1>
 
         {/* 🌟 修改：新增了遠端觸發按鈕 */}
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* 🌟 Auto refresh toggle — 只影響本頁,離開自動 stop */}
+          <button onClick={toggleAutoRefresh}
+            title={autoRefreshOn ? '按下停止 10 秒自動刷新' : '按下開啟 10 秒自動刷新'}
+            style={{ background: autoRefreshOn ? '#dcfce7' : '#f1f5f9', color: autoRefreshOn ? '#166534' : '#64748b', border: `1px solid ${autoRefreshOn ? '#86efac' : '#cbd5e1'}`, padding: '11px 16px', borderRadius: '11px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '10px', color: autoRefreshOn ? '#16a34a' : '#94a3b8' }}>●</span>
+            {autoRefreshOn ? '自動刷新: 開 (10秒)' : '自動刷新: 關'}
+          </button>
           <button onClick={fetchOrderData} disabled={isRefreshing} style={{ background: '#ffffff', color: 'var(--c-text)', border: '1px solid var(--c-border)', padding: '11px 18px', borderRadius: '11px', fontSize: '14.5px', fontWeight: '700', cursor: isRefreshing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 1px 2px rgba(15,23,42,0.04)' }}>
             {isRefreshing ? '🔄 載入中...' : '🔄 重新整理畫面'}
           </button>
