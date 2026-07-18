@@ -734,7 +734,6 @@ function ThreePLPage({ config }) {
 }
 function HomePage() {
   const [orderData, setOrderData] = useState(null);
-  const [cancelInputs, setCancelInputs] = useState({ today: '', tomorrow: '' });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isTriggering, setIsTriggering] = useState(false); // 🌟 新增：遠端觸發狀態
   // 🌟 自動刷新開關(記住喺 localStorage,下次仲會生效)
@@ -796,35 +795,6 @@ function HomePage() {
     }
   };
 
-  // 處理前端手動增加取消訂單，並同步回 Render 伺服器
-  const handleCancelSubmit = async (dayKey) => {
-    const qty = parseInt(cancelInputs[dayKey] || 0, 10);
-    if (qty <= 0) return;
-
-    // 複製一份當前的資料來修改
-    const newData = JSON.parse(JSON.stringify(orderData));
-    if (!newData[dayKey]) return;
-    
-    const currentCanceled = parseInt(newData[dayKey].CANCELED || "0", 10);
-    newData[dayKey].CANCELED = (currentCanceled + qty).toString();
-
-    try {
-      // 傳送更新後的整包資料給後端
-      const res = await fetch(`${API_BASE_URL}/api/hktvmall/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newData)
-      });
-      if (res.ok) {
-        setOrderData(newData);
-        setCancelInputs({ ...cancelInputs, [dayKey]: '' }); // 清空輸入框
-        alert(`✅ 已成功記錄 ${qty} 筆取消訂單，並同步至系統！`);
-      }
-    } catch (err) {
-      alert("更新失敗：" + err.message);
-    }
-  };
-
   // 渲染訂單區塊 (今日 / 明日) 的模組化函數
   const renderOrderSection = (titlePrefix, dayKey, dayData) => {
     if (!dayData || Object.keys(dayData).length === 0) return null;
@@ -854,10 +824,6 @@ function HomePage() {
             <div style={{ color: '#2563eb', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>📦 已出貨 / 總目標</div>
             <div style={{ fontSize: '32px', color: '#1e3a8a', fontWeight: '900' }}>{picked} / {totalTarget}</div>
           </div>
-          <div style={{ background: '#fef2f2', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '1px solid #fecaca' }}>
-            <div style={{ color: '#ef4444', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>❌ 已取消</div>
-            <div style={{ fontSize: '32px', color: '#b91c1c', fontWeight: '900' }}>{dayData.CANCELED || '0'}</div>
-          </div>
         </div>
 
         {/* 綠色出貨進度條 */}
@@ -871,26 +837,6 @@ function HomePage() {
           </div>
         </div>
 
-        {/* 手動紀錄取消區塊 (改用 details 摺疊面板，大幅節省空間) */}
-        <details style={{ background: '#ffffff', padding: '15px 20px', borderRadius: '16px', border: '1px dashed #cbd5e1', cursor: 'pointer' }}>
-          <summary style={{ fontSize: '16px', fontWeight: 'bold', color: '#0f172a', outline: 'none', userSelect: 'none' }}>
-            ⚙️ 手動紀錄取消訂單 <span style={{ fontSize: '13px', color: '#3b82f6', fontWeight: 'normal', marginLeft: '10px' }}>(點擊展開 ▼)</span>
-          </summary>
-          <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #f1f5f9', cursor: 'default' }}>
-            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '15px', marginTop: 0 }}>如果發現客人取消訂單，您可以在此手動紀錄取消的數量（總目標數會自動跟隨系統校正）：</p>
-            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-              <input 
-                type="number" min="1" step="1" placeholder="請輸入數量..."
-                value={cancelInputs[dayKey] || ''} 
-                onChange={(e) => setCancelInputs({...cancelInputs, [dayKey]: e.target.value})}
-                style={{ padding: '12px 15px', borderRadius: '10px', border: '2px solid #cbd5e1', outline: 'none', width: '150px', fontSize: '16px' }}
-              />
-              <button onClick={() => handleCancelSubmit(dayKey)} style={{ background: '#0f172a', color: 'white', border: 'none', padding: '12px 25px', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', transition: 'background 0.2s' }} onMouseOver={(e) => e.target.style.background = '#334155'} onMouseOut={(e) => e.target.style.background = '#0f172a'}>
-                📝 記錄取消
-              </button>
-            </div>
-          </div>
-        </details>
       </div>
     );
   };
