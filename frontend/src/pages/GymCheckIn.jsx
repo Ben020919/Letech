@@ -464,6 +464,7 @@ function Dashboard({ onLock }) {
   const [showPlanEditor, setShowPlanEditor] = useState(false);
   const [reasonWeek, setReasonWeek] = useState(null);
   const [viewWeekOffset, setViewWeekOffset] = useState(0);
+  const [planExpanded, setPlanExpanded] = useState(false);
 
   useEffect(() => saveJSON(LS_PLAN, plan), [plan]);
   useEffect(() => saveJSON(LS_LOGS, logs), [logs]);
@@ -606,46 +607,68 @@ function Dashboard({ onLock }) {
       </div>
 
       {/* Today card */}
-      {logs[toDateKey(today)] && (
-        <div style={{ background: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 4 }}>今日 · {toDateKey(today)}</div>
-              <div style={{ fontSize: 20, fontWeight: 700 }}>
-                {logs[toDateKey(today)].type === 'workout'
-                  ? plan[logs[toDateKey(today)].dayKey]?.name || '訓練'
-                  : '休息日'}
+      {(() => {
+        const todayKey = toDateKey(today);
+        const todayLog = logs[todayKey];
+        if (!todayLog) return null;
+        const todayPlan = todayLog.type === 'workout' ? plan[todayLog.dayKey] : null;
+
+        return (
+          <div style={{ background: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 4 }}>今日 · {todayKey}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>
+                  {todayLog.type === 'workout' ? (todayPlan?.name || '訓練') : '休息日'}
+                </div>
+                {todayLog.note && (
+                  <div style={{ marginTop: 8, color: '#475569', fontSize: 13 }}>{todayLog.note}</div>
+                )}
               </div>
-              {logs[toDateKey(today)].note && (
-                <div style={{ marginTop: 8, color: '#475569', fontSize: 13 }}>{logs[toDateKey(today)].note}</div>
-              )}
+              <button onClick={() => setCheckInDate(todayKey)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>編輯</button>
             </div>
-            <button onClick={() => setCheckInDate(toDateKey(today))} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 13 }}>編輯</button>
+
+            {todayPlan && (
+              <div style={{ marginTop: 16, background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 10 }}>今日訓練內容</div>
+                <ol style={{ margin: 0, paddingLeft: 22, fontSize: 13.5, color: '#334155', lineHeight: 1.7 }}>
+                  {todayPlan.exercises.map((ex, i) => <li key={i}>{ex}</li>)}
+                </ol>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Monthly summary */}
       <MonthlySummary monthKey={monthKey} monthLabel={monthLabel} plan={plan} logs={logs} />
 
-      {/* Training plan */}
+      {/* Training plan (collapsible) */}
       <div style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0 }}>📋 訓練計劃</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            onClick={() => setPlanExpanded(!planExpanded)}
+            style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            <h3 style={{ margin: 0 }}>📋 完整訓練計劃</h3>
+            <span style={{ color: '#94a3b8', fontSize: 14, transition: 'transform 0.2s', display: 'inline-block', transform: planExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+          </button>
           <button onClick={() => setShowPlanEditor(true)} style={{ background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>✏️ 編輯</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
-          {Object.entries(plan).map(([k, d]) => (
-            <div key={k} style={{ background: '#f8fafc', padding: 14, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>
-                {d.name} <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 500 }}>({k})</span>
+        {planExpanded && (
+          <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+            {Object.entries(plan).map(([k, d]) => (
+              <div key={k} style={{ background: '#f8fafc', padding: 14, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 10 }}>
+                  {d.name} <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 500 }}>({k})</span>
+                </div>
+                <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12.5, color: '#475569', lineHeight: 1.6 }}>
+                  {d.exercises.map((ex, i) => <li key={i}>{ex}</li>)}
+                </ol>
               </div>
-              <ol style={{ margin: 0, paddingLeft: 20, fontSize: 12.5, color: '#475569', lineHeight: 1.6 }}>
-                {d.exercises.map((ex, i) => <li key={i}>{ex}</li>)}
-              </ol>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Modals */}

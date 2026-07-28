@@ -32,11 +32,8 @@ function useIsMobile(breakpoint = 640) {
 function Sidebar() {
   const location = useLocation();
   const [isOpen, setIsOpen] = useState(false);
-  const [gymUnlocked, setGymUnlocked] = useState(() =>
-    typeof window !== 'undefined' && localStorage.getItem('gym_unlocked_v1') === 'true'
-  );
 
-  const baseMenuItems = [
+  const menuItems = [
     { path: '/', icon: '🏠', label: '系統首頁' },
     { path: '/search', icon: '🔍', label: '智能查詢中心' }, // 👈 整合後的新選單
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
@@ -47,26 +44,11 @@ function Sidebar() {
     { path: '/label-search', icon: '🖨️', label: '標籤搜尋打印' },
     { path: '/label-repack', icon: '✏️', label: '自助 Repack' },
     { path: '/bin-location', icon: '📍', label: 'Bin Location 倉位' },
+    { path: '/gym', icon: '🏋️', label: '健身打卡' },
   ];
-
-  // 健身打卡只有解鎖過先出現喺 sidebar,同事永遠見唔到
-  const menuItems = gymUnlocked
-    ? [...baseMenuItems, { path: '/gym', icon: '🏋️', label: '健身打卡' }]
-    : baseMenuItems;
 
   useEffect(() => {
     setIsOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    const check = () => setGymUnlocked(localStorage.getItem('gym_unlocked_v1') === 'true');
-    check(); // 每次路由變都重新 check
-    window.addEventListener('gym-auth-changed', check);
-    window.addEventListener('storage', check);
-    return () => {
-      window.removeEventListener('gym-auth-changed', check);
-      window.removeEventListener('storage', check);
-    };
   }, [location.pathname]);
 
   return (
