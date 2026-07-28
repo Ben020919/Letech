@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, useNavigate, Route, Link, useLocation 
 import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
 import InspectionHistory from './pages/InspectionHistory';
+import GymCheckIn from './pages/GymCheckIn';
 import './App.css';
 
 // 🌟 自動切換測試與正式環境的 API 網址
@@ -30,10 +31,13 @@ function useIsMobile(breakpoint = 640) {
 // 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false); 
+  const [isOpen, setIsOpen] = useState(false);
+  const [gymUnlocked, setGymUnlocked] = useState(() =>
+    typeof window !== 'undefined' && localStorage.getItem('gym_unlocked_v1') === 'true'
+  );
 
-  const menuItems = [
-    { path: '/', icon: '🏠', label: '系統首頁' }, 
+  const baseMenuItems = [
+    { path: '/', icon: '🏠', label: '系統首頁' },
     { path: '/search', icon: '🔍', label: '智能查詢中心' }, // 👈 整合後的新選單
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
@@ -45,8 +49,24 @@ function Sidebar() {
     { path: '/bin-location', icon: '📍', label: 'Bin Location 倉位' },
   ];
 
+  // 健身打卡只有解鎖過先出現喺 sidebar,同事永遠見唔到
+  const menuItems = gymUnlocked
+    ? [...baseMenuItems, { path: '/gym', icon: '🏋️', label: '健身打卡' }]
+    : baseMenuItems;
+
   useEffect(() => {
     setIsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const check = () => setGymUnlocked(localStorage.getItem('gym_unlocked_v1') === 'true');
+    check(); // 每次路由變都重新 check
+    window.addEventListener('gym-auth-changed', check);
+    window.addEventListener('storage', check);
+    return () => {
+      window.removeEventListener('gym-auth-changed', check);
+      window.removeEventListener('storage', check);
+    };
   }, [location.pathname]);
 
   return (
@@ -2077,6 +2097,7 @@ function App() {
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />
             <Route path="/inspection/yummy" element={<InspectionZone zoneName="Yummy" />} />
             <Route path="/inspection/homey" element={<InspectionZone zoneName="Homey" />} />
+            <Route path="/gym" element={<GymCheckIn />} />
           </Routes>
         </div>
       </div>
