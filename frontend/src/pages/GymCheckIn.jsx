@@ -197,7 +197,7 @@ function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose })
           <button
             onClick={() => setType('workout')}
             style={{
-              flex: 1, padding: '14px', borderRadius: 12,
+              flexGrow: 1, flexBasis: 0, minWidth: 0, padding: '14px', borderRadius: 12,
               background: type === 'workout' ? '#3b82f6' : '#f1f5f9',
               color: type === 'workout' ? '#fff' : '#334155',
               border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer',
@@ -206,7 +206,7 @@ function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose })
           <button
             onClick={() => { setType('rest'); setDayKey(''); }}
             style={{
-              flex: 1, padding: '14px', borderRadius: 12,
+              flexGrow: 1, flexBasis: 0, minWidth: 0, padding: '14px', borderRadius: 12,
               background: type === 'rest' ? '#f59e0b' : '#f1f5f9',
               color: type === 'rest' ? '#fff' : '#334155',
               border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer',
@@ -310,14 +310,14 @@ function PlanEditorModal({ plan, onSave, onClose }) {
                 value={d.name}
                 onChange={(e) => updateField(dayKey, 'name', e.target.value)}
                 placeholder="全名（例:胸部訓練日）"
-                style={{ flex: 2, padding: 8, border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, fontWeight: 700, outline: 'none' }}
+                style={{ flexGrow: 2, flexBasis: 0, minWidth: 0, padding: 8, border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 14, fontWeight: 700, outline: 'none' }}
               />
               <input
                 value={d.short || ''}
                 onChange={(e) => updateField(dayKey, 'short', e.target.value)}
                 placeholder="簡稱（例:胸部）"
                 maxLength={4}
-                style={{ flex: 1, padding: 8, border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, outline: 'none' }}
+                style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, padding: 8, border: '1px solid #cbd5e1', borderRadius: 8, fontSize: 13, outline: 'none' }}
               />
             </div>
             {d.exercises.map((ex, idx) => (
@@ -325,7 +325,7 @@ function PlanEditorModal({ plan, onSave, onClose }) {
                 <input
                   value={ex}
                   onChange={(e) => updateExercise(dayKey, idx, e.target.value)}
-                  style={{ flex: 1, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none' }}
+                  style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, padding: 8, border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13, outline: 'none' }}
                 />
                 <button onClick={() => delExercise(dayKey, idx)} style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 8, padding: '0 10px', cursor: 'pointer', fontSize: 16 }}>−</button>
               </div>
@@ -335,8 +335,8 @@ function PlanEditorModal({ plan, onSave, onClose }) {
         ))}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 14, background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>取消</button>
-          <button onClick={() => onSave(draft)} style={{ flex: 2, padding: 14, background: '#10b981', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>💾 儲存</button>
+          <button onClick={onClose} style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, padding: 14, background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>取消</button>
+          <button onClick={() => onSave(draft)} style={{ flexGrow: 2, flexBasis: 0, minWidth: 0, padding: 14, background: '#10b981', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>💾 儲存</button>
         </div>
       </div>
     </div>
@@ -377,8 +377,8 @@ function ReasonModal({ weekKey, monthLabel, workoutCount, existing, onSave, onCl
           }}
         />
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 12, background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>之後再填</button>
-          <button onClick={() => onSave(reason)} disabled={!reason.trim()} style={{ flex: 2, padding: 12, background: reason.trim() ? '#3b82f6' : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: reason.trim() ? 'pointer' : 'not-allowed' }}>💾 記錄原因</button>
+          <button onClick={onClose} style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, padding: 12, background: '#f1f5f9', color: '#334155', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer' }}>之後再填</button>
+          <button onClick={() => onSave(reason)} disabled={!reason.trim()} style={{ flexGrow: 2, flexBasis: 0, minWidth: 0, padding: 12, background: reason.trim() ? '#3b82f6' : '#cbd5e1', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: reason.trim() ? 'pointer' : 'not-allowed' }}>💾 記錄原因</button>
         </div>
       </div>
     </div>
@@ -533,15 +533,15 @@ function Dashboard({ onLock }) {
         </div>
 
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-          <div style={{ flex: 1, background: '#ecfdf5', padding: 12, borderRadius: 10, textAlign: 'center' }}>
+          <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: '#ecfdf5', padding: 12, borderRadius: 10, textAlign: 'center' }}>
             <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981' }}>{workoutCount}</div>
             <div style={{ fontSize: 12, color: '#065f46' }}>已打卡</div>
           </div>
-          <div style={{ flex: 1, background: '#fef3c7', padding: 12, borderRadius: 10, textAlign: 'center' }}>
+          <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: '#fef3c7', padding: 12, borderRadius: 10, textAlign: 'center' }}>
             <div style={{ fontSize: 24, fontWeight: 800, color: '#d97706' }}>{restCount}</div>
             <div style={{ fontSize: 12, color: '#92400e' }}>休息日</div>
           </div>
-          <div style={{ flex: 1, background: workoutCount >= WEEKLY_TARGET ? '#dbeafe' : '#fee2e2', padding: 12, borderRadius: 10, textAlign: 'center' }}>
+          <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: workoutCount >= WEEKLY_TARGET ? '#dbeafe' : '#fee2e2', padding: 12, borderRadius: 10, textAlign: 'center' }}>
             <div style={{ fontSize: 24, fontWeight: 800, color: workoutCount >= WEEKLY_TARGET ? '#1d4ed8' : '#dc2626' }}>{workoutCount}/{WEEKLY_TARGET}</div>
             <div style={{ fontSize: 12, color: workoutCount >= WEEKLY_TARGET ? '#1e3a8a' : '#7f1d1d' }}>目標</div>
           </div>
