@@ -512,7 +512,7 @@ function Dashboard({ onLock }) {
   };
 
   return (
-    <div style={{ maxWidth: 920, margin: '0 auto' }}>
+    <div className="page-content" style={{ maxWidth: 920, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 28 }}>🏋️ 健身打卡</h2>
