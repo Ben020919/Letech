@@ -110,6 +110,29 @@ function getMonthLabel(weekStart) {
 function getMonthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
+// 拎某月完整月曆網格 (由當月頭嘅星期一開始,到當月尾嘅星期日)
+function getMonthGrid(year, month) {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  const start = getWeekStart(first);
+  const end = new Date(last);
+  const dayOfLast = end.getDay();
+  const diffToSun = dayOfLast === 0 ? 0 : 7 - dayOfLast;
+  end.setDate(end.getDate() + diffToSun);
+  end.setHours(23, 59, 59, 999);
+  const days = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+// log 拎狀態:未指定 status 當 'done' (舊資料 backwards compat)
+function logStatus(log) {
+  if (!log) return null;
+  return log.status || 'done';
+}
 
 // ─── LocalStorage helpers ─────────────────────────────────
 function loadJSON(key, fallback) {
@@ -188,19 +211,39 @@ function PasswordGate({ onUnlock }) {
 // ═══════════════════════════════════════════════════════════
 // Check-in Modal
 // ═══════════════════════════════════════════════════════════
-function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose }) {
+function CheckInModal({ dateKey, plan, existingLog, today, onSave, onDelete, onClose }) {
   const [type, setType] = useState(existingLog?.type || '');
   const [dayKey, setDayKey] = useState(existingLog?.dayKey || '');
   const [note, setNote] = useState(existingLog?.note || '');
 
+  const entryDate = new Date(dateKey);
+  entryDate.setHours(0, 0, 0, 0);
+  const isFuture = entryDate > today;
+  // mode: 'plan' = 預先安排 (future date) / 'checkin' = 打卡 (today/past)
+  const [mode, setMode] = useState(() => {
+    if (existingLog?.status === 'planned' && !isFuture) return 'plan_or_confirm'; // planned entry viewed on/after
+    return isFuture ? 'plan' : 'checkin';
+  });
+
   const canSave = type === 'rest' || (type === 'workout' && dayKey);
 
-  const save = () => {
+  const save = (asStatus) => {
     if (!canSave) return;
-    const log = { type, note };
+    const log = { type, note, status: asStatus };
     if (type === 'workout') log.dayKey = dayKey;
     onSave(dateKey, log);
   };
+
+  const primarySaveLabel = mode === 'plan' ? '💾 儲存安排' : '💾 儲存打卡';
+  const saveStatus = mode === 'plan' ? 'planned' : 'done';
+  const workoutBtnLabel = mode === 'plan' ? '安排訓練' : '已打卡';
+  const restBtnLabel = mode === 'plan' ? '安排休息' : '休息日';
+
+  const modeLabel = mode === 'plan'
+    ? { text: '📅 預先安排 (未到當日,可以先揀想練咩)', bg: '#eff6ff', color: '#1d4ed8' }
+    : mode === 'plan_or_confirm'
+    ? { text: '📅 已安排 — 撳「打卡完成」確認今日已完成', bg: '#eff6ff', color: '#1d4ed8' }
+    : { text: '✅ 今日/過去打卡', bg: '#ecfdf5', color: '#065f46' };
 
   return (
     <div style={{
@@ -212,9 +255,13 @@ function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose })
         background: '#fff', borderRadius: 20, padding: 24,
         width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>{dateKey}</h3>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
+        </div>
+
+        <div style={{ padding: '8px 12px', background: modeLabel.bg, color: modeLabel.color, borderRadius: 8, fontSize: 12, fontWeight: 600, marginBottom: 16 }}>
+          {modeLabel.text}
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
@@ -226,7 +273,7 @@ function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose })
               color: type === 'workout' ? '#fff' : '#334155',
               border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer',
             }}
-          >已打卡</button>
+          >{workoutBtnLabel}</button>
           <button
             onClick={() => { setType('rest'); setDayKey(''); }}
             style={{
@@ -235,23 +282,29 @@ function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose })
               color: type === 'rest' ? '#fff' : '#334155',
               border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer',
             }}
-          >休息日</button>
+          >{restBtnLabel}</button>
         </div>
 
         {type === 'workout' && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 13, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>練咩？</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-              {Object.entries(plan).map(([k, d]) => (
-                <button key={k} onClick={() => setDayKey(k)} style={{
-                  padding: '12px 8px', borderRadius: 10,
-                  background: dayKey === k ? '#0f172a' : '#f8fafc',
-                  color: dayKey === k ? '#fff' : '#334155',
-                  border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer', textAlign: 'left',
-                }}>{d.name}</button>
-              ))}
-            </div>
+            {Object.keys(plan).length === 0 ? (
+              <div style={{ padding: 12, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: 13 }}>
+                ⚠️ 訓練計劃係空,去下面「📋 完整訓練計劃 → ✏️ 編輯」加返日子先。
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                {Object.entries(plan).map(([k, d]) => (
+                  <button key={k} onClick={() => setDayKey(k)} style={{
+                    padding: '12px 8px', borderRadius: 10,
+                    background: dayKey === k ? '#0f172a' : '#f8fafc',
+                    color: dayKey === k ? '#fff' : '#334155',
+                    border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer', textAlign: 'left',
+                  }}>{d.name}</button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -267,12 +320,21 @@ function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose })
           }}
         />
 
-        <button onClick={save} disabled={!canSave} style={{
-          marginTop: 16, width: '100%', padding: 14,
-          background: canSave ? '#10b981' : '#cbd5e1',
+        {mode === 'plan_or_confirm' && (
+          <button onClick={() => save('done')} disabled={!canSave} style={{
+            marginTop: 16, width: '100%', padding: 14,
+            background: canSave ? '#10b981' : '#cbd5e1',
+            color: '#fff', border: 'none', borderRadius: 12,
+            fontWeight: 700, fontSize: 16, cursor: canSave ? 'pointer' : 'not-allowed',
+          }}>🎯 打卡完成 (確認今日已練)</button>
+        )}
+
+        <button onClick={() => save(saveStatus)} disabled={!canSave} style={{
+          marginTop: mode === 'plan_or_confirm' ? 8 : 16, width: '100%', padding: 14,
+          background: canSave ? (mode === 'plan_or_confirm' ? '#3b82f6' : '#10b981') : '#cbd5e1',
           color: '#fff', border: 'none', borderRadius: 12,
           fontWeight: 700, fontSize: 16, cursor: canSave ? 'pointer' : 'not-allowed',
-        }}>儲存</button>
+        }}>{mode === 'plan_or_confirm' ? '💾 只更新安排 (未打卡)' : primarySaveLabel}</button>
 
         {existingLog && (
           <button onClick={() => onDelete(dateKey)} style={{
@@ -280,7 +342,7 @@ function CheckInModal({ dateKey, plan, existingLog, onSave, onDelete, onClose })
             background: '#fef2f2', color: '#dc2626',
             border: '1px solid #fecaca', borderRadius: 10,
             fontWeight: 600, fontSize: 14, cursor: 'pointer',
-          }}>🗑️ 清除呢日打卡</button>
+          }}>🗑️ 清除呢日</button>
         )}
       </div>
     </div>
@@ -420,7 +482,12 @@ function MonthlySummary({ monthKey, monthLabel, plan, logs }) {
   let workoutCount = 0;
   let restCount = 0;
 
+  let plannedCount = 0;
   monthLogs.forEach(([, log]) => {
+    if (logStatus(log) !== 'done') {
+      plannedCount++;
+      return;
+    }
     if (log.type === 'workout') {
       workoutCount++;
       if (log.dayKey && perDayType.hasOwnProperty(log.dayKey)) {
@@ -517,7 +584,7 @@ function Dashboard({ onLock }) {
   const [checkInDate, setCheckInDate] = useState(null);
   const [showPlanEditor, setShowPlanEditor] = useState(false);
   const [reasonWeek, setReasonWeek] = useState(null);
-  const [viewWeekOffset, setViewWeekOffset] = useState(0);
+  const [viewMonthOffset, setViewMonthOffset] = useState(0);
   const [planExpanded, setPlanExpanded] = useState(false);
 
   // ─── Sync ─────────────────────────────────────────────
@@ -532,7 +599,8 @@ function Dashboard({ onLock }) {
     (async () => {
       try {
         const data = await apiGetGym();
-        if (data.plan) setPlan(data.plan);
+        // Backend 可能返回 empty {} plan — 保留現有 (DEFAULT_PLAN / localStorage)
+        if (data.plan && Object.keys(data.plan).length > 0) setPlan(data.plan);
         if (data.logs) setLogs(data.logs);
         if (data.reasons) setReasons(data.reasons);
         setLastSyncedAt(data.updated_at);
@@ -574,29 +642,78 @@ function Dashboard({ onLock }) {
     return d;
   }, []);
 
-  const weekStart = useMemo(() => {
-    const w = getWeekStart(today);
-    w.setDate(w.getDate() + viewWeekOffset * 7);
-    return w;
-  }, [today, viewWeekOffset]);
+  // 現時 view 緊嘅月份
+  const viewMonth = useMemo(() => {
+    return new Date(today.getFullYear(), today.getMonth() + viewMonthOffset, 1);
+  }, [today, viewMonthOffset]);
 
-  const weekDays = useMemo(() => {
+  const monthGrid = useMemo(() => getMonthGrid(viewMonth.getFullYear(), viewMonth.getMonth()), [viewMonth]);
+  const monthLabel = `${viewMonth.getFullYear()} 年 ${viewMonth.getMonth() + 1} 月`;
+  const monthKey = getMonthKey(viewMonth);
+
+  // 本星期(今日所在星期)進度 — 只 count status='done'
+  const thisWeekStart = useMemo(() => getWeekStart(today), [today]);
+  const thisWeekDays = useMemo(() => {
     const days = [];
     for (let i = 0; i < 7; i++) {
-      const d = new Date(weekStart);
+      const d = new Date(thisWeekStart);
       d.setDate(d.getDate() + i);
       days.push(d);
     }
     return days;
-  }, [weekStart]);
+  }, [thisWeekStart]);
+  const thisWeekWorkouts = thisWeekDays.filter((d) => {
+    const l = logs[toDateKey(d)];
+    return l?.type === 'workout' && logStatus(l) === 'done';
+  }).length;
 
-  const monthLabel = getMonthLabel(weekStart);
-  const monthKey = getMonthKey(getWeekThursday(weekStart));
-  // 用 monthLabel+start date 做 unique week identifier (for reasons)
-  const weekIdent = `${toDateKey(weekDays[0])}`;
-  const workoutCount = weekDays.filter((d) => logs[toDateKey(d)]?.type === 'workout').length;
-  const restCount = weekDays.filter((d) => logs[toDateKey(d)]?.type === 'rest').length;
-  const isPastWeek = weekStart < getWeekStart(today);
+  // 呢個月已完成/剩餘計 (顯示喺 header)
+  const monthDoneWorkouts = monthGrid.filter((d) => {
+    if (d.getMonth() !== viewMonth.getMonth()) return false;
+    const l = logs[toDateKey(d)];
+    return l?.type === 'workout' && logStatus(l) === 'done';
+  }).length;
+  const monthPlannedWorkouts = monthGrid.filter((d) => {
+    if (d.getMonth() !== viewMonth.getMonth()) return false;
+    const l = logs[toDateKey(d)];
+    return l?.type === 'workout' && logStatus(l) === 'planned';
+  }).length;
+  const monthRestDays = monthGrid.filter((d) => {
+    if (d.getMonth() !== viewMonth.getMonth()) return false;
+    const l = logs[toDateKey(d)];
+    return l?.type === 'rest' && logStatus(l) === 'done';
+  }).length;
+
+  // 過去嘅星期(該月內)如果 done < target 就標記
+  const pastWeeksInMonth = useMemo(() => {
+    const weeks = [];
+    const seen = new Set();
+    for (const d of monthGrid) {
+      if (d.getMonth() !== viewMonth.getMonth()) continue;
+      const wStart = getWeekStart(d);
+      const wKey = toDateKey(wStart);
+      if (seen.has(wKey)) continue;
+      seen.add(wKey);
+      const wEnd = new Date(wStart);
+      wEnd.setDate(wEnd.getDate() + 6);
+      wEnd.setHours(23, 59, 59, 999);
+      if (wEnd >= today) continue; // 未過完就唔判
+      const wDays = [];
+      for (let i = 0; i < 7; i++) {
+        const wd = new Date(wStart);
+        wd.setDate(wd.getDate() + i);
+        wDays.push(wd);
+      }
+      const done = wDays.filter((wd) => {
+        const l = logs[toDateKey(wd)];
+        return l?.type === 'workout' && logStatus(l) === 'done';
+      }).length;
+      if (done < WEEKLY_TARGET) {
+        weeks.push({ ident: wKey, start: wStart, end: wEnd, done });
+      }
+    }
+    return weeks;
+  }, [monthGrid, viewMonth, logs, today]);
 
   const saveLog = (dateKey, log) => {
     setLogs({ ...logs, [dateKey]: log });
@@ -622,87 +739,120 @@ function Dashboard({ onLock }) {
         </div>
       </div>
 
-      {/* Week nav + calendar */}
+      {/* Month nav + calendar */}
       <div style={{ background: '#fff', borderRadius: 16, padding: 20, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <button onClick={() => setViewWeekOffset(viewWeekOffset - 1)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 15 }}>◀</button>
+          <button onClick={() => setViewMonthOffset(viewMonthOffset - 1)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 15 }}>◀</button>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontWeight: 700, fontSize: 18 }}>{monthLabel}</div>
-            <div style={{ color: '#64748b', fontSize: 12 }}>{toDateKey(weekDays[0])} → {toDateKey(weekDays[6])}</div>
+            <div style={{ fontWeight: 700, fontSize: 20 }}>{monthLabel}</div>
           </div>
-          <button onClick={() => setViewWeekOffset(viewWeekOffset + 1)} disabled={viewWeekOffset >= 0} style={{ background: viewWeekOffset >= 0 ? '#f8fafc' : '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: viewWeekOffset >= 0 ? 'not-allowed' : 'pointer', fontSize: 15, opacity: viewWeekOffset >= 0 ? 0.4 : 1 }}>▶</button>
+          <button onClick={() => setViewMonthOffset(viewMonthOffset + 1)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 15 }}>▶</button>
         </div>
 
         <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
           <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: '#ecfdf5', padding: 12, borderRadius: 10, textAlign: 'center' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981' }}>{workoutCount}</div>
-            <div style={{ fontSize: 12, color: '#065f46' }}>已打卡</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#10b981' }}>{monthDoneWorkouts}</div>
+            <div style={{ fontSize: 12, color: '#065f46' }}>本月已練</div>
+          </div>
+          <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: '#eff6ff', padding: 12, borderRadius: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#1d4ed8' }}>{monthPlannedWorkouts}</div>
+            <div style={{ fontSize: 12, color: '#1e3a8a' }}>已安排</div>
           </div>
           <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: '#fef3c7', padding: 12, borderRadius: 10, textAlign: 'center' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#d97706' }}>{restCount}</div>
-            <div style={{ fontSize: 12, color: '#92400e' }}>休息日</div>
-          </div>
-          <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: workoutCount >= WEEKLY_TARGET ? '#dbeafe' : '#fee2e2', padding: 12, borderRadius: 10, textAlign: 'center' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: workoutCount >= WEEKLY_TARGET ? '#1d4ed8' : '#dc2626' }}>{workoutCount}/{WEEKLY_TARGET}</div>
-            <div style={{ fontSize: 12, color: workoutCount >= WEEKLY_TARGET ? '#1e3a8a' : '#7f1d1d' }}>目標</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#d97706' }}>{monthRestDays}</div>
+            <div style={{ fontSize: 12, color: '#92400e' }}>休息</div>
           </div>
         </div>
 
-        {/* Week grid */}
+        {/* 本週進度 mini */}
+        {viewMonthOffset === 0 && (
+          <div style={{ marginBottom: 14, padding: 10, background: thisWeekWorkouts >= WEEKLY_TARGET ? '#dbeafe' : '#fff7ed', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+            <span style={{ color: thisWeekWorkouts >= WEEKLY_TARGET ? '#1e3a8a' : '#7c2d12', fontWeight: 600 }}>
+              📅 本週已練 <b style={{ fontSize: 16 }}>{thisWeekWorkouts}</b> / {WEEKLY_TARGET}-4 日
+            </span>
+            <span style={{ fontSize: 11, color: '#64748b' }}>{toDateKey(thisWeekDays[0])} → {toDateKey(thisWeekDays[6])}</span>
+          </div>
+        )}
+
+        {/* Month grid */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
           {['一','二','三','四','五','六','日'].map((n, i) => (
             <div key={i} style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', fontWeight: 700, marginBottom: 4 }}>{n}</div>
           ))}
-          {weekDays.map((d) => {
+          {monthGrid.map((d) => {
             const key = toDateKey(d);
             const log = logs[key];
             const isToday = key === toDateKey(today);
-            const isFuture = d > today;
-            const bg = log?.type === 'workout' ? '#10b981'
-              : log?.type === 'rest' ? '#f59e0b'
-              : isFuture ? '#f8fafc'
-              : '#fff';
-            const fg = log ? '#fff' : isFuture ? '#cbd5e1' : '#334155';
+            const isCurrentMonth = d.getMonth() === viewMonth.getMonth();
+            const status = logStatus(log);
+            const isPlanned = status === 'planned';
+
+            // 跨月嘅 cell 用透明佔位,keep grid alignment
+            if (!isCurrentMonth) {
+              return <div key={key} style={{ aspectRatio: '1' }} />;
+            }
+
+            let bg = '#fff';
+            let fg = '#334155';
+            let border = '1px solid #e2e8f0';
+            if (log?.type === 'workout' && status === 'done') { bg = '#10b981'; fg = '#fff'; }
+            else if (log?.type === 'rest' && status === 'done') { bg = '#f59e0b'; fg = '#fff'; }
+            else if (log?.type === 'workout' && isPlanned) { bg = '#d1fae5'; fg = '#065f46'; border = '1px dashed #10b981'; }
+            else if (log?.type === 'rest' && isPlanned) { bg = '#fef3c7'; fg = '#92400e'; border = '1px dashed #f59e0b'; }
+
+            if (isToday) border = '2px solid #0f172a';
+
             const label = log?.type === 'workout' ? (plan[log.dayKey]?.short || '訓練')
-              : log?.type === 'rest' ? '休息日'
+              : log?.type === 'rest' ? '休息'
               : '';
+
             return (
               <button
                 key={key}
-                onClick={() => !isFuture && setCheckInDate(key)}
-                disabled={isFuture}
+                onClick={() => setCheckInDate(key)}
                 style={{
-                  aspectRatio: '1', background: bg, color: fg,
-                  border: isToday ? '2px solid #0f172a' : '1px solid #e2e8f0',
-                  borderRadius: 10, padding: 4, cursor: isFuture ? 'not-allowed' : 'pointer',
+                  aspectRatio: '1', background: bg, color: fg, border,
+                  borderRadius: 10, padding: 4, cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  gap: 2, transition: 'transform 0.1s',
+                  gap: 2, position: 'relative',
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 700 }}>{d.getDate()}</div>
                 {label && <div style={{ fontSize: 10, fontWeight: 600, textAlign: 'center', lineHeight: 1.1 }}>{label}</div>}
+                {isPlanned && <div style={{ position: 'absolute', top: 2, right: 3, fontSize: 9 }}>📅</div>}
               </button>
             );
           })}
         </div>
 
-        {/* Week reason */}
-        {isPastWeek && workoutCount < WEEKLY_TARGET && (
-          <div style={{ marginTop: 16, padding: 12, background: reasons[weekIdent] ? '#f0fdf4' : '#fef2f2', borderRadius: 10, border: `1px solid ${reasons[weekIdent] ? '#bbf7d0' : '#fecaca'}` }}>
-            {reasons[weekIdent] ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', marginBottom: 4 }}>📝 未達標原因</div>
-                  <div style={{ fontSize: 13, color: '#14532d' }}>{reasons[weekIdent]}</div>
-                </div>
-                <button onClick={() => setReasonWeek(weekIdent)} style={{ background: 'transparent', border: 'none', color: '#059669', cursor: 'pointer', fontSize: 12 }}>編輯</button>
+        {/* 圖例 */}
+        <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 11, color: '#64748b' }}>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#10b981', borderRadius: 3, verticalAlign: 'middle', marginRight: 4 }} />已打卡</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#f59e0b', borderRadius: 3, verticalAlign: 'middle', marginRight: 4 }} />休息</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#d1fae5', border: '1px dashed #10b981', borderRadius: 3, verticalAlign: 'middle', marginRight: 4 }} />已安排 📅</span>
+        </div>
+
+        {/* 過去未達標星期 */}
+        {pastWeeksInMonth.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            {pastWeeksInMonth.map((w) => (
+              <div key={w.ident} style={{ marginBottom: 8, padding: 10, background: reasons[w.ident] ? '#f0fdf4' : '#fef2f2', borderRadius: 8, border: `1px solid ${reasons[w.ident] ? '#bbf7d0' : '#fecaca'}` }}>
+                {reasons[w.ident] ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#166534' }}>📝 {toDateKey(w.start)} → {toDateKey(w.end)} · 只練 {w.done}/{WEEKLY_TARGET}</div>
+                      <div style={{ fontSize: 13, color: '#14532d', marginTop: 2 }}>{reasons[w.ident]}</div>
+                    </div>
+                    <button onClick={() => setReasonWeek(w.ident)} style={{ background: 'transparent', border: 'none', color: '#059669', cursor: 'pointer', fontSize: 12 }}>編輯</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 12, color: '#7f1d1d' }}>⚠️ {toDateKey(w.start)} → {toDateKey(w.end)} 只練 {w.done}/{WEEKLY_TARGET}</div>
+                    <button onClick={() => setReasonWeek(w.ident)} style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11, fontWeight: 700 }}>填原因</button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <div style={{ fontSize: 13, color: '#7f1d1d' }}>⚠️ 呢星期練得唔夠 3-4 日,填返個原因</div>
-                <button onClick={() => setReasonWeek(weekIdent)} style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>填原因</button>
-              </div>
-            )}
+            ))}
           </div>
         )}
       </div>
@@ -778,6 +928,7 @@ function Dashboard({ onLock }) {
           dateKey={checkInDate}
           plan={plan}
           existingLog={logs[checkInDate]}
+          today={today}
           onSave={saveLog}
           onDelete={deleteLog}
           onClose={() => setCheckInDate(null)}
@@ -790,16 +941,19 @@ function Dashboard({ onLock }) {
           onClose={() => setShowPlanEditor(false)}
         />
       )}
-      {reasonWeek && (
-        <ReasonModal
-          weekKey={reasonWeek}
-          monthLabel={monthLabel}
-          workoutCount={workoutCount}
-          existing={reasons[reasonWeek]}
-          onSave={(r) => { setReasons({ ...reasons, [reasonWeek]: r }); setReasonWeek(null); }}
-          onClose={() => setReasonWeek(null)}
-        />
-      )}
+      {reasonWeek && (() => {
+        const w = pastWeeksInMonth.find((x) => x.ident === reasonWeek);
+        return (
+          <ReasonModal
+            weekKey={reasonWeek}
+            monthLabel={monthLabel}
+            workoutCount={w?.done ?? 0}
+            existing={reasons[reasonWeek]}
+            onSave={(r) => { setReasons({ ...reasons, [reasonWeek]: r }); setReasonWeek(null); }}
+            onClose={() => setReasonWeek(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
