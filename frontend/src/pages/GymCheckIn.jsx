@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 
 const LS_UNLOCK = 'gym_unlocked_v1';
 const LS_PLAN = 'gym_plan_v1';
@@ -6,6 +6,30 @@ const LS_LOGS = 'gym_logs_v1';
 const LS_REASONS = 'gym_week_reasons_v1';
 const PASSWORD = '020919';
 const WEEKLY_TARGET = 3;
+
+// Backend API base(自動切換 local vs Render)
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE ||
+  (import.meta.env.DEV ? 'http://127.0.0.1:8000' : 'https://letech-pro.onrender.com');
+
+async function apiGetGym() {
+  const r = await fetch(`${API_BASE_URL}/api/gym/data?password=${encodeURIComponent(PASSWORD)}`);
+  if (!r.ok) throw new Error(`GET failed ${r.status}`);
+  return r.json();
+}
+async function apiSaveGym({ plan, logs, reasons }) {
+  const body = { password: PASSWORD };
+  if (plan !== undefined) body.plan = plan;
+  if (logs !== undefined) body.logs = logs;
+  if (reasons !== undefined) body.reasons = reasons;
+  const r = await fetch(`${API_BASE_URL}/api/gym/data`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`POST failed ${r.status}`);
+  return r.json();
+}
 
 const DEFAULT_PLAN = {
   Day1: {
@@ -443,6 +467,36 @@ function MonthlySummary({ monthKey, monthLabel, plan, logs }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Sync status badge
+// ═══════════════════════════════════════════════════════════
+function SyncBadge({ status, lastSyncedAt }) {
+  const config = {
+    loading:  { bg: '#f1f5f9', color: '#64748b', text: '⏳ 載入中...' },
+    saving:   { bg: '#fef3c7', color: '#92400e', text: '💾 同步中...' },
+    synced:   { bg: '#ecfdf5', color: '#065f46', text: '✅ 已同步' },
+    error:    { bg: '#fef2f2', color: '#991b1b', text: '⚠️ 同步失敗' },
+    offline:  { bg: '#fef3c7', color: '#92400e', text: '📡 離線模式' },
+  }[status] || { bg: '#f1f5f9', color: '#64748b', text: status };
+  return (
+    <span
+      title={lastSyncedAt ? `最後同步:${new Date(lastSyncedAt).toLocaleString()}` : ''}
+      style={{
+        display: 'inline-block',
+        padding: '6px 10px',
+        borderRadius: 8,
+        background: config.bg,
+        color: config.color,
+        fontSize: 12,
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {config.text}
+    </span>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // Main Dashboard
 // ═══════════════════════════════════════════════════════════
 function Dashboard({ onLock }) {
@@ -466,9 +520,53 @@ function Dashboard({ onLock }) {
   const [viewWeekOffset, setViewWeekOffset] = useState(0);
   const [planExpanded, setPlanExpanded] = useState(false);
 
-  useEffect(() => saveJSON(LS_PLAN, plan), [plan]);
-  useEffect(() => saveJSON(LS_LOGS, logs), [logs]);
-  useEffect(() => saveJSON(LS_REASONS, reasons), [reasons]);
+  // ─── Sync ─────────────────────────────────────────────
+  // status: 'loading' | 'synced' | 'saving' | 'error' | 'offline'
+  const [syncStatus, setSyncStatus] = useState('loading');
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const initialLoadDone = useRef(false);
+  const saveTimer = useRef(null);
+
+  // 首次載入:由 backend 拎最新資料 覆蓋 localStorage
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await apiGetGym();
+        if (data.plan) setPlan(data.plan);
+        if (data.logs) setLogs(data.logs);
+        if (data.reasons) setReasons(data.reasons);
+        setLastSyncedAt(data.updated_at);
+        setSyncStatus('synced');
+      } catch (e) {
+        console.warn('Gym sync fetch fail, using localStorage:', e);
+        setSyncStatus('offline');
+      } finally {
+        initialLoadDone.current = true;
+      }
+    })();
+  }, []);
+
+  // Debounced save 落 backend + localStorage
+  useEffect(() => {
+    saveJSON(LS_PLAN, plan);
+    saveJSON(LS_LOGS, logs);
+    saveJSON(LS_REASONS, reasons);
+
+    if (!initialLoadDone.current) return; // 唔好 push 初始 default state
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSyncStatus('saving');
+    saveTimer.current = setTimeout(async () => {
+      try {
+        const res = await apiSaveGym({ plan, logs, reasons });
+        setLastSyncedAt(res.row?.updated_at || new Date().toISOString());
+        setSyncStatus('synced');
+      } catch (e) {
+        console.warn('Gym sync save fail:', e);
+        setSyncStatus('error');
+      }
+    }, 500);
+    return () => saveTimer.current && clearTimeout(saveTimer.current);
+  }, [plan, logs, reasons]);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -513,12 +611,15 @@ function Dashboard({ onLock }) {
 
   return (
     <div className="page-content" style={{ maxWidth: 920, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 28 }}>🏋️ 健身打卡</h2>
           <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>目標:每星期練 {WEEKLY_TARGET}-4 日</p>
         </div>
-        <button onClick={onLock} style={{ background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 13, color: '#64748b' }}>🔒 鎖定</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <SyncBadge status={syncStatus} lastSyncedAt={lastSyncedAt} />
+          <button onClick={onLock} style={{ background: 'transparent', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 14px', cursor: 'pointer', fontSize: 13, color: '#64748b' }}>🔒 鎖定</button>
+        </div>
       </div>
 
       {/* Week nav + calendar */}
