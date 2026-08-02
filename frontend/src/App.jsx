@@ -4,7 +4,6 @@ import { BrowserRouter as Router, Routes, useNavigate, Route, Link, useLocation 
 import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
 import InspectionHistory from './pages/InspectionHistory';
-import GymCheckIn from './pages/GymCheckIn';
 import './App.css';
 
 // 🌟 自動切換測試與正式環境的 API 網址
@@ -44,7 +43,6 @@ function Sidebar() {
     { path: '/label-search', icon: '🖨️', label: '標籤搜尋打印' },
     { path: '/label-repack', icon: '✏️', label: '自助 Repack' },
     { path: '/bin-location', icon: '📍', label: 'Bin Location 倉位' },
-    { path: '/gym', icon: '🏋️', label: '健身打卡' },
   ];
 
   useEffect(() => {
@@ -2079,7 +2077,6 @@ function App() {
             <Route path="/inspection/hellobear" element={<InspectionZone zoneName="Hello Bear" />} />
             <Route path="/inspection/yummy" element={<InspectionZone zoneName="Yummy" />} />
             <Route path="/inspection/homey" element={<InspectionZone zoneName="Homey" />} />
-            <Route path="/gym" element={<GymCheckIn />} />
           </Routes>
         </div>
       </div>
