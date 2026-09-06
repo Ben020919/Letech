@@ -1255,7 +1255,7 @@ function LabelRepackPage() {
             🔢 純 Barcode
           </button>
           <button onClick={() => setMode('location')} style={tabStyle(mode === 'location')}>
-            📍 地點 Label
+            📍 TV區Label
           </button>
         </div>
 
@@ -1373,7 +1373,7 @@ function LabelRepackPage() {
             ) : mode === 'barcode_only' ? (
               <>ℹ️ <strong>純 Barcode label</strong>:70mm × 50mm,大尺寸條碼圖 + 條碼數字(18pt),冇商品名,適合純標識用。</>
             ) : (
-              <>ℹ️ <strong>地點 label</strong>:100mm × 150mm,超大字自動填滿。直向 = 窄邊向上正住讀;橫向 = 字轉 90°,label 打側讀。</>
+              <>ℹ️ <strong>TV區Label</strong>:100mm × 150mm,超大字自動填滿。直向 = 窄邊向上正住讀;橫向 = 字轉 90°,label 打側讀。</>
             )}
           </div>
         </div>
