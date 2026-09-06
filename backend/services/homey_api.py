@@ -10,7 +10,7 @@ import uuid
 import gc
 # 🌟 統一借大腦，不自己建立 cache
 from services.master_api import load_master_db, find_by_product_no, find_by_barcode
-from services.pdf_core import delete_file_later, generate_barcode_b64
+from services.pdf_core import delete_file_later, generate_barcode_b64, parse_new_format_page
 
 router = APIRouter()
 DATA_DIR = "data"
@@ -1187,7 +1187,12 @@ def process_homey_pdf(file_bytes):
             if clean_line == p_no or clean_line == p_no.replace("-", ""):
                 barcode_val = clean_line
                 break
-        
+
+        # 🌟 新格式 (2026-08) 支援:「數量: N」+ *barcode*,認到就覆蓋舊解析
+        nf = parse_new_format_page(lines)
+        if nf:
+            p_no, p_name, qty, barcode_val = nf["p_no"], nf["name"], nf["qty"], nf["barcode"]
+
         excel_label = ""
         matched_data = {}
         if df_master is not None and not df_master.empty:

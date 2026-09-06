@@ -6,7 +6,7 @@ import os
 import asyncio
 import uuid
 import gc
-from services.pdf_core import delete_file_later, generate_barcode_b64
+from services.pdf_core import delete_file_later, generate_barcode_b64, parse_new_format_page
 
 router = APIRouter()
 PDF_OUT_DIR = "generated_pdfs"
@@ -57,6 +57,11 @@ def process_anymall_pdf(file_bytes):
             bc_text = re.sub(r'[\s\*]', '', "".join([l for l in raw if "N/A" not in l and "PAGE" not in l]))
             if bc_text: barcode_val = bc_text
         if not barcode_val: barcode_val = "(N/A)"
+
+        # 🌟 新格式 (2026-08) 支援:「數量: N」+ *barcode*,認到就覆蓋舊解析
+        nf = parse_new_format_page(lines)
+        if nf:
+            p_no, p_name, qty, barcode_val = nf["p_no"], nf["name"], nf["qty"], nf["barcode"]
 
         if p_no not in product_no_tracker: product_no_tracker[p_no] = []
         product_no_tracker[p_no].append(i + 1)

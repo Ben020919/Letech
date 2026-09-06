@@ -6,7 +6,7 @@ import os
 import asyncio
 import uuid
 import gc
-from services.pdf_core import delete_file_later, generate_barcode_b64
+from services.pdf_core import delete_file_later, generate_barcode_b64, parse_new_format_page
 # 🌟 用 Homey 嘅 font helper 統一 embed font1.ttf + syst.ttf,確保 Chinese 商品名 render 到
 from services.homey_api import (
     font_to_base64_css as homey_font_css,
@@ -103,8 +103,13 @@ def process_hellobear_pdf(file_bytes):
 
         # 🌟 絕對防線：如果經歷了上面的重重關卡，barcode_val 還是空的
         # 或者它短得不可思議 (例如只剩一個殘留的符號)，就強制變成 Product_No！
-        if not barcode_val or len(barcode_val) < 4: 
+        if not barcode_val or len(barcode_val) < 4:
             barcode_val = p_no
+
+        # 🌟 新格式 (2026-08) 支援:「數量: N」+ *barcode*,認到就覆蓋舊解析
+        nf = parse_new_format_page(lines)
+        if nf:
+            p_no, p_name, qty, barcode_val = nf["p_no"], nf["name"], nf["qty"], nf["barcode"]
 
         if p_no not in product_no_tracker: product_no_tracker[p_no] = []
         product_no_tracker[p_no].append(i + 1)

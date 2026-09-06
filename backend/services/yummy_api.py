@@ -10,7 +10,7 @@ import base64
 import gc
 # 🌟 統一向 master_api 借大腦
 from services.master_api import load_master_db, find_by_product_no, find_by_barcode
-from services.pdf_core import delete_file_later
+from services.pdf_core import delete_file_later, parse_new_format_page
 # 🌟 保健食品 + Pet 專屬 layout(避免掉 fall back 到 food_label 出錯 layout)
 from services.homey_api import create_health_food_label_html, create_pet_food_label_html
 
@@ -557,7 +557,15 @@ def process_yummy_pdf(file_bytes):
                 barcode_val = clean_line
                 break
         if barcode_val == "未偵測到": barcode_val = "(N/A)"
-        
+
+        # 🌟 新格式 (2026-08) 支援:「數量: N」+ *barcode*,認到就覆蓋舊解析
+        nf = parse_new_format_page(lines)
+        if nf:
+            p_no, p_name_pdf, qty, barcode_val = nf["p_no"], nf["name"], nf["qty"], nf["barcode"]
+            if nf["exp_date"]:
+                d = nf["exp_date"]
+                p_date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+
         matched_data = {}
         data_status = 'empty'
         final_html = ""
