@@ -1144,14 +1144,68 @@ function LabelSearchPage() {
 }
 
 // ================= ✏️ 自助 Repack Label =================
+// 📍 地點 Label 選項 — 要加新地點,喺呢度 append 就得
+const REPACK_LOCATIONS = ['青衣8/F', '青衣9/F', '觀塘', '屯門', '將軍澳', '上水'];
+
+// 100×150mm 地點 label HTML(純前端生成,唔使 backend)
+function buildLocationLabelHtml(text, orientation, qty) {
+  const esc = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rotClass = orientation === 'landscape' ? ' rot' : '';
+  const single = `<div class="page"><div class="txt${rotClass}">${esc}</div></div>`;
+  return `<html><head><style>
+    @page { size: 100mm 150mm; margin: 0; }
+    html, body { margin: 0; padding: 0; background: white; }
+    .page { width: 100mm; height: 150mm; display: flex; align-items: center; justify-content: center; page-break-after: always; overflow: hidden; }
+    .txt { font-family: -apple-system, 'PingFang TC', 'Microsoft JhengHei', 'Heiti TC', sans-serif; font-weight: 900; text-align: center; line-height: 1.15; font-size: 38mm; width: 94mm; word-break: break-all; }
+    .txt.rot { transform: rotate(90deg); width: 144mm; }
+  </style></head><body>${single.repeat(qty)}
+  <script>
+    document.querySelectorAll('.txt').forEach(function(el) {
+      var page = el.parentElement;
+      var isRot = el.classList.contains('rot');
+      var maxW = (isRot ? page.clientHeight : page.clientWidth) * 0.94;
+      var maxH = (isRot ? page.clientWidth : page.clientHeight) * 0.92;
+      var size = 38;
+      while (size > 6) {
+        el.style.fontSize = size + 'mm';
+        var prev = el.style.transform;
+        el.style.transform = 'none';
+        var r = el.getBoundingClientRect();
+        el.style.transform = prev;
+        if (r.width <= maxW && r.height <= maxH) break;
+        size -= 1;
+      }
+    });
+  <\/script></body></html>`;
+}
+
 function LabelRepackPage() {
-  const [mode, setMode] = useState('repack'); // 'repack' | 'barcode_only'
+  const [mode, setMode] = useState('repack'); // 'repack' | 'barcode_only' | 'location'
   const [barcode, setBarcode] = useState('');
   const [name, setName] = useState('');
   const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(false);
+  // 📍 地點 label state
+  const [locText, setLocText] = useState('');
+  const [customLoc, setCustomLoc] = useState('');
+  const [orientation, setOrientation] = useState('portrait'); // 'portrait' | 'landscape'
 
   const handlePrint = async () => {
+    const nQty = parseInt(qty || 1, 10);
+    if (!nQty || nQty < 1) { alert('請輸入有效數量'); return; }
+
+    // 📍 地點 label — 純前端生成即印
+    if (mode === 'location') {
+      if (!locText.trim()) { alert('請揀一個地點(或自訂輸入)'); return; }
+      setLoading(true);
+      try {
+        const html = buildLocationLabelHtml(locText.trim(), orientation, nQty);
+        await printHtmlInIframe(html, '');
+      } catch (err) { alert('❌ ' + err.message); }
+      finally { setLoading(false); }
+      return;
+    }
+
     if (!barcode.trim()) { alert('請輸入 barcode'); return; }
     if (mode === 'repack' && !name.trim()) { alert('請輸入商品名稱(或切換到「純 Barcode」模式)'); return; }
     setLoading(true);
@@ -1161,7 +1215,7 @@ function LabelRepackPage() {
         body: JSON.stringify({
           barcode: barcode.trim(),
           name: name.trim(),
-          qty: parseInt(qty || 1, 10),
+          qty: nQty,
           only_barcode: mode === 'barcode_only',
         })
       });
@@ -1200,15 +1254,20 @@ function LabelRepackPage() {
           <button onClick={() => setMode('barcode_only')} style={tabStyle(mode === 'barcode_only')}>
             🔢 純 Barcode
           </button>
+          <button onClick={() => setMode('location')} style={tabStyle(mode === 'location')}>
+            📍 地點 Label
+          </button>
         </div>
 
         <div style={{ padding: '30px' }}>
+          {mode !== 'location' && (
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>📊 Barcode(數字 / 字母)</label>
             <input type="text" value={barcode} onChange={(e) => setBarcode(e.target.value)}
               placeholder="例如 49568102370 67A"
               style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '2px solid #cbd5e1', fontSize: '16px', fontFamily: 'monospace', outline: 'none', boxSizing: 'border-box' }} />
           </div>
+          )}
 
           {mode === 'repack' && (
             <div style={{ marginBottom: '20px' }}>
@@ -1217,6 +1276,84 @@ function LabelRepackPage() {
                 placeholder="例如:日本 Bitatto Okuchi 清新蜂膠便攜除菌漱口水 - 檸檬味 (11ml x 5條) x2"
                 style={{ width: '100%', padding: '14px', borderRadius: '10px', border: '2px solid #cbd5e1', fontSize: '15px', lineHeight: '1.5', outline: 'none', boxSizing: 'border-box', resize: 'vertical' }} />
             </div>
+          )}
+
+          {mode === 'location' && (
+            <>
+              {/* 地點揀擇 */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>📍 揀地點</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px' }}>
+                  {REPACK_LOCATIONS.map((loc) => (
+                    <button key={loc} onClick={() => { setLocText(loc); setCustomLoc(''); }}
+                      style={{
+                        padding: '14px 8px', borderRadius: '10px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer',
+                        border: locText === loc ? '2px solid #7c3aed' : '2px solid #e2e8f0',
+                        background: locText === loc ? '#7c3aed' : '#f8fafc',
+                        color: locText === loc ? 'white' : '#334155',
+                      }}>{loc}</button>
+                  ))}
+                </div>
+                <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', color: '#64748b', whiteSpace: 'nowrap' }}>✏️ 自訂:</span>
+                  <input type="text" value={customLoc}
+                    onChange={(e) => { setCustomLoc(e.target.value); setLocText(e.target.value); }}
+                    placeholder="輸入其他地點(例如:元朗)"
+                    style={{ flexGrow: 1, minWidth: 0, padding: '10px 14px', borderRadius: '10px', border: `2px solid ${customLoc ? '#7c3aed' : '#e2e8f0'}`, fontSize: '15px', outline: 'none' }} />
+                </div>
+              </div>
+
+              {/* 方向揀擇 */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>🔄 打印方向</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => setOrientation('portrait')}
+                    style={{
+                      flexGrow: 1, flexBasis: 0, minWidth: 0, padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer',
+                      border: orientation === 'portrait' ? '2px solid #7c3aed' : '2px solid #e2e8f0',
+                      background: orientation === 'portrait' ? '#f5f3ff' : '#f8fafc',
+                      color: orientation === 'portrait' ? '#7c3aed' : '#64748b',
+                    }}>⬆️ 直向(字正住讀)</button>
+                  <button onClick={() => setOrientation('landscape')}
+                    style={{
+                      flexGrow: 1, flexBasis: 0, minWidth: 0, padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer',
+                      border: orientation === 'landscape' ? '2px solid #7c3aed' : '2px solid #e2e8f0',
+                      background: orientation === 'landscape' ? '#f5f3ff' : '#f8fafc',
+                      color: orientation === 'landscape' ? '#7c3aed' : '#64748b',
+                    }}>➡️ 橫向(轉 90° 讀)</button>
+                </div>
+              </div>
+
+              {/* Sample 預覽 */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>👀 Sample 預覽(100mm × 150mm)</label>
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '16px', background: '#f1f5f9', borderRadius: '12px' }}>
+                  <div style={{
+                    width: '160px', height: '240px', background: 'white',
+                    border: '2px dashed #94a3b8', borderRadius: '4px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  }}>
+                    {locText.trim() ? (() => {
+                      // 估算 preview font:CJK 當 1 格,英數當 0.6 格
+                      const units = [...locText.trim()].reduce((s, ch) => s + (/[㐀-鿿＀-￯]/.test(ch) ? 1 : 0.6), 0) || 1;
+                      const mainAxisPx = orientation === 'landscape' ? 226 : 150;
+                      const fs = Math.max(14, Math.min(64, mainAxisPx * 0.94 / units));
+                      return (
+                        <div style={{
+                          fontWeight: 900, textAlign: 'center', lineHeight: 1.15,
+                          fontSize: `${fs}px`, whiteSpace: 'nowrap',
+                          transform: orientation === 'landscape' ? 'rotate(90deg)' : 'none',
+                          fontFamily: "-apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif",
+                        }}>{locText.trim()}</div>
+                      );
+                    })() : (
+                      <span style={{ color: '#cbd5e1', fontSize: '13px' }}>揀咗地點就見到 sample</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           <div style={{ marginBottom: '25px' }}>
@@ -1233,8 +1370,10 @@ function LabelRepackPage() {
           <div style={{ marginTop: '20px', padding: '15px', background: '#f8fafc', borderRadius: '10px', fontSize: '13px', color: '#64748b' }}>
             {mode === 'repack' ? (
               <>ℹ️ <strong>Repack label</strong>:70mm × 50mm,自動生成 Code128 條碼圖 + 條碼數字 + 商品名。</>
-            ) : (
+            ) : mode === 'barcode_only' ? (
               <>ℹ️ <strong>純 Barcode label</strong>:70mm × 50mm,大尺寸條碼圖 + 條碼數字(18pt),冇商品名,適合純標識用。</>
+            ) : (
+              <>ℹ️ <strong>地點 label</strong>:100mm × 150mm,超大字自動填滿。直向 = 窄邊向上正住讀;橫向 = 字轉 90°,label 打側讀。</>
             )}
           </div>
         </div>
