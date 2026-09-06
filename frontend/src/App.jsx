@@ -991,6 +991,8 @@ function LabelSearchPage() {
   const [printingKey, setPrintingKey] = useState(null);
   // 🛡️ Race-condition 防護:每次搜尋遞增,只接受最新嗰次嘅 response
   const searchIdRef = useRef(0);
+  // 🔫 連續 scan 支援:打印後自動清空 query + focus 返搜尋框
+  const searchInputRef = useRef(null);
 
   const keyOf = (it) => it.Barcode || it.Product_No || it.Name;
 
@@ -1039,7 +1041,14 @@ function LabelSearchPage() {
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || '打印失敗'); }
       const data = await res.json();
-      printHtmlInIframe(data.html, data.font_css);
+      await printHtmlInIframe(data.html, data.font_css);
+      // 🔫 打印成功 → 清空搜尋框 + focus 返去,直接繼續 scan 下一件
+      setQuery('');
+      const refocus = () => searchInputRef.current?.focus();
+      refocus();
+      // 打印 dialog 關閉後 browser 先還返 focus 畀 page,補多兩下確保搶得返
+      setTimeout(refocus, 300);
+      setTimeout(refocus, 1000);
     } catch (err) { alert('❌ ' + err.message); }
     finally { setPrintingKey(null); }
   };
@@ -1062,7 +1071,8 @@ function LabelSearchPage() {
 
       <div style={{ background: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', marginBottom: '20px' }}>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKey}
+          <input type="text" ref={searchInputRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKey}
+            autoFocus
             placeholder="輸入中文名稱、條碼或商品編號...(例如:愛玉、果凍、4710626256410)"
             style={{ flex: '1', minWidth: '250px', padding: '14px 18px', fontSize: '16px', borderRadius: '12px', border: '2px solid #cbd5e1', outline: 'none' }} />
           <button onClick={handleSearch} disabled={loading}
