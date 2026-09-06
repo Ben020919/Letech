@@ -98,6 +98,51 @@ def fetch_og_image(full_code: str):
         return None
 
 
+_stats_total_cache = None
+
+@router.get("/stats")
+def get_image_stats():
+    """進度統計:cache 咗幾多 / 總數(有 HKTV code 嘅商品)。"""
+    global _stats_total_cache
+    sb = _get_supabase()
+    counts = {"ok": 0, "not_found": 0}
+    total_cached = 0
+    if sb is not None:
+        try:
+            for st in ("ok", "not_found"):
+                res = sb.table("product_images").select("sku", count="exact") \
+                        .eq("status", st).limit(1).execute()
+                counts[st] = res.count or 0
+            total_cached = counts["ok"] + counts["not_found"]
+        except Exception as e:
+            print(f"[product_image] stats fail: {e}")
+
+    if _stats_total_cache is None:
+        try:
+            from services.unified_api import load_search_db
+            df = load_search_db()
+            if df is not None and not df.empty:
+                n = 0
+                for _, row in df.iterrows():
+                    for v in row.values:
+                        s = str(v).strip()
+                        if s and HKTV_CODE_RE.match(s):
+                            n += 1
+                            break
+                _stats_total_cache = n
+        except Exception as e:
+            print(f"[product_image] total calc fail: {e}")
+    total = _stats_total_cache or 20700
+
+    return {
+        "cached": total_cached,
+        "ok": counts["ok"],
+        "not_found": counts["not_found"],
+        "total": total,
+        "pct": round(total_cached / total * 100, 1) if total else 0,
+    }
+
+
 @router.get("/")
 def get_product_image(sku: str = Query(..., min_length=1)):
     sku = sku.strip()

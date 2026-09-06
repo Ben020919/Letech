@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商品圖 Cache 進度</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+    background: #f4f7f9; color: #0f172a;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 20px;
+  }
+  .card {
+    background: #fff; border-radius: 20px; padding: 32px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    width: 100%; max-width: 480px; text-align: center;
+  }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  .sub { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+  .pct { font-size: 56px; font-weight: 900; color: #10b981; line-height: 1; }
+  .nums { color: #475569; font-size: 15px; margin: 10px 0 20px; }
+  .bar-track {
+    height: 18px; background: #e2e8f0; border-radius: 999px; overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .bar-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #10b981, #06b6d4);
+    border-radius: 999px; transition: width 0.8s ease;
+  }
+  .grid { display: flex; gap: 10px; }
+  .stat { flex: 1; background: #f8fafc; border-radius: 12px; padding: 12px; }
+  .stat .v { font-size: 20px; font-weight: 800; }
+  .stat .k { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .eta { margin-top: 18px; font-size: 13px; color: #64748b; }
+  .upd { margin-top: 6px; font-size: 11px; color: #cbd5e1; }
+  .err { color: #dc2626; font-size: 13px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🖼️ 商品圖 Cache 進度</h1>
+  <div class="sub">GitHub Actions 艦隊(8 機並行)爬緊 HKTV 商品圖</div>
+  <div class="pct" id="pct">--%</div>
+  <div class="nums" id="nums">載入中...</div>
+  <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
+  <div class="grid">
+    <div class="stat"><div class="v" id="ok" style="color:#10b981">-</div><div class="k">有圖</div></div>
+    <div class="stat"><div class="v" id="nf" style="color:#d97706">-</div><div class="k">HKTV 冇頁</div></div>
+    <div class="stat"><div class="v" id="left" style="color:#3b82f6">-</div><div class="k">仲剩</div></div>
+  </div>
+  <div class="eta" id="eta"></div>
+  <div class="upd" id="upd"></div>
+  <div class="err" id="err"></div>
+</div>
+<script>
+const API = 'https://letech-pro.onrender.com/api/product_image/stats';
+let history = [];  // [{t, cached}]
+
+async function refresh() {
+  try {
+    const r = await fetch(API);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    document.getElementById('err').textContent = '';
+    document.getElementById('pct').textContent = d.pct + '%';
+    document.getElementById('nums').textContent =
+      d.cached.toLocaleString() + ' / ' + d.total.toLocaleString();
+    document.getElementById('bar').style.width = Math.min(100, d.pct) + '%';
+    document.getElementById('ok').textContent = d.ok.toLocaleString();
+    document.getElementById('nf').textContent = d.not_found.toLocaleString();
+    document.getElementById('left').textContent = Math.max(0, d.total - d.cached).toLocaleString();
+
+    const now = Date.now();
+    history.push({ t: now, cached: d.cached });
+    history = history.filter(h => now - h.t < 15 * 60 * 1000); // keep 15min
+    if (history.length >= 2) {
+      const first = history[0];
+      const mins = (now - first.t) / 60000;
+      const rate = (d.cached - first.cached) / Math.max(mins, 0.1);
+      if (rate > 0.5) {
+        const etaMin = (d.total - d.cached) / rate;
+        const h = Math.floor(etaMin / 60), m = Math.round(etaMin % 60);
+        document.getElementById('eta').textContent =
+          '⚡ ' + Math.round(rate) + ' 個/分鐘 · 預計仲有 ' + (h > 0 ? h + ' 小時 ' : '') + m + ' 分鐘';
+      } else if (d.total - d.cached <= 50) {
+        document.getElementById('eta').textContent = '🎉 基本完成!';
+      }
+    }
+    document.getElementById('upd').textContent =
+      '最後更新 ' + new Date().toLocaleTimeString('zh-HK');
+  } catch (e) {
+    document.getElementById('err').textContent =
+      '⚠️ 攞唔到數據(' + e.message + '),15 秒後再試';
+  }
+}
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
