@@ -1156,8 +1156,8 @@ function buildLocationLabelHtml(text, orientation, qty) {
     @page { size: 100mm 150mm; margin: 0; }
     html, body { margin: 0; padding: 0; background: white; }
     .page { width: 100mm; height: 150mm; display: flex; align-items: center; justify-content: center; page-break-after: always; overflow: hidden; }
-    .txt { font-family: -apple-system, 'PingFang TC', 'Microsoft JhengHei', 'Heiti TC', sans-serif; font-weight: 900; text-align: center; line-height: 1.15; font-size: 38mm; width: 94mm; word-break: break-all; }
-    .txt.rot { transform: rotate(90deg); width: 144mm; }
+    .txt { font-family: -apple-system, 'PingFang TC', 'Microsoft JhengHei', 'Heiti TC', sans-serif; font-weight: 900; text-align: center; line-height: 1.1; font-size: 38mm; white-space: nowrap; }
+    .txt.rot { transform: rotate(90deg); }
   </style></head><body>${single.repeat(qty)}
   <script>
     document.querySelectorAll('.txt').forEach(function(el) {
