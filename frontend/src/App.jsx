@@ -1188,7 +1188,7 @@ function LabelRepackPage() {
   // 📍 地點 label state
   const [locText, setLocText] = useState('');
   const [customLoc, setCustomLoc] = useState('');
-  const [orientation, setOrientation] = useState('portrait'); // 'portrait' | 'landscape'
+  const orientation = 'landscape'; // 統一橫向(字轉90°),唔畀揀
 
   const handlePrint = async () => {
     const nQty = parseInt(qty || 1, 10);
@@ -1303,27 +1303,6 @@ function LabelRepackPage() {
                 </div>
               </div>
 
-              {/* 方向揀擇 */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>🔄 打印方向</label>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => setOrientation('portrait')}
-                    style={{
-                      flexGrow: 1, flexBasis: 0, minWidth: 0, padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer',
-                      border: orientation === 'portrait' ? '2px solid #7c3aed' : '2px solid #e2e8f0',
-                      background: orientation === 'portrait' ? '#f5f3ff' : '#f8fafc',
-                      color: orientation === 'portrait' ? '#7c3aed' : '#64748b',
-                    }}>⬆️ 直向(字正住讀)</button>
-                  <button onClick={() => setOrientation('landscape')}
-                    style={{
-                      flexGrow: 1, flexBasis: 0, minWidth: 0, padding: '12px', borderRadius: '10px', fontWeight: 'bold', fontSize: '15px', cursor: 'pointer',
-                      border: orientation === 'landscape' ? '2px solid #7c3aed' : '2px solid #e2e8f0',
-                      background: orientation === 'landscape' ? '#f5f3ff' : '#f8fafc',
-                      color: orientation === 'landscape' ? '#7c3aed' : '#64748b',
-                    }}>➡️ 橫向(轉 90° 讀)</button>
-                </div>
-              </div>
-
               {/* Sample 預覽 */}
               <div style={{ marginBottom: '20px' }}>
                 <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#0f172a' }}>👀 Sample 預覽(100mm × 150mm)</label>
@@ -1373,7 +1352,7 @@ function LabelRepackPage() {
             ) : mode === 'barcode_only' ? (
               <>ℹ️ <strong>純 Barcode label</strong>:70mm × 50mm,大尺寸條碼圖 + 條碼數字(18pt),冇商品名,適合純標識用。</>
             ) : (
-              <>ℹ️ <strong>TV區Label</strong>:100mm × 150mm,超大字自動填滿。直向 = 窄邊向上正住讀;橫向 = 字轉 90°,label 打側讀。</>
+              <>ℹ️ <strong>TV區Label</strong>:100mm × 150mm,超大字自動填滿一行,統一橫向(字轉 90°,label 打側讀)。</>
             )}
           </div>
         </div>
