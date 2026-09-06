@@ -109,8 +109,20 @@ def get_product_image(sku: str = Query(..., min_length=1)):
             res = sb.table("product_images").select("*").eq("sku", sku).execute()
             if res.data:
                 row = res.data[0]
-                return {"sku": sku, "image_url": row.get("image_url") or "",
-                        "status": row.get("status"), "cached": True}
+                # not_found 超過 7 日就重試 —
+                # 可能係當時未入 search DB / 未上架,而家已經有
+                stale_nf = False
+                if row.get("status") == "not_found":
+                    try:
+                        from datetime import datetime, timezone, timedelta
+                        ts = str(row.get("updated_at", ""))[:19]
+                        upd = datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
+                        stale_nf = datetime.now(timezone.utc) - upd > timedelta(days=7)
+                    except Exception:
+                        stale_nf = True
+                if not stale_nf:
+                    return {"sku": sku, "image_url": row.get("image_url") or "",
+                            "status": row.get("status"), "cached": True}
         except Exception as e:
             print(f"[product_image] cache read fail: {e}")
 
@@ -127,8 +139,10 @@ def get_product_image(sku: str = Query(..., min_length=1)):
     # 3. save cache (真 not_found 都 cache,避免每次都翻 fetch)
     if sb is not None:
         try:
+            from datetime import datetime, timezone
             sb.table("product_images").upsert({
                 "sku": sku, "hktv_code": code, "image_url": img, "status": status,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
         except Exception as e:
             print(f"[product_image] cache write fail: {e}")
