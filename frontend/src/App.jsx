@@ -27,6 +27,42 @@ function useIsMobile(breakpoint = 640) {
   return isMobile;
 }
 
+// 🖼️ 商品縮圖 — lazy fetch /api/product_image,module-level cache 避免重複請求
+const _productImgCache = {};
+function ProductThumb({ sku }) {
+  const [url, setUrl] = useState(() => (sku ? _productImgCache[sku] : null));
+  const [loading, setLoading] = useState(() => !!sku && _productImgCache[sku] === undefined);
+
+  useEffect(() => {
+    if (!sku) return;
+    if (_productImgCache[sku] !== undefined) { setUrl(_productImgCache[sku]); setLoading(false); return; }
+    let dead = false;
+    setLoading(true);
+    fetch(`${API_BASE_URL}/api/product_image/?sku=${encodeURIComponent(sku)}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        const u = d && d.image_url ? d.image_url : null;
+        _productImgCache[sku] = u;
+        if (!dead) { setUrl(u); setLoading(false); }
+      })
+      .catch(() => { _productImgCache[sku] = null; if (!dead) { setUrl(null); setLoading(false); } });
+    return () => { dead = true; };
+  }, [sku]);
+
+  const box = {
+    width: '64px', height: '64px', borderRadius: '10px', flexShrink: 0,
+    border: '1px solid #e2e8f0', background: '#f8fafc',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  };
+  if (loading) return <div style={box}><span style={{ fontSize: '11px', color: '#cbd5e1' }}>⏳</span></div>;
+  if (!url) return <div style={box}><span style={{ fontSize: '20px', opacity: 0.25 }}>📷</span></div>;
+  return (
+    <div style={{ ...box, cursor: 'zoom-in', background: '#fff' }} onClick={() => window.open(url, '_blank')} title="撳一下放大">
+      <img src={url} alt={sku} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+    </div>
+  );
+}
+
 // 🌟 升級版 Sidebar (支援手機側滑選單)
 function Sidebar() {
   const location = useLocation();
@@ -248,6 +284,7 @@ function UnifiedSearchInventoryPage() {
                   <div style={{ maxHeight: '350px', overflowY: 'auto', paddingRight: '5px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {searchResults.map((item, index) => (
                       <div key={index} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', background: '#ffffff', border: '1px solid var(--c-border-soft)', borderRadius: '14px', padding: '15px', gap: '15px', boxShadow: '0 1px 2px rgba(15,23,42,0.03)' }}>
+                          <ProductThumb sku={item.ProductCode} />
                           <div style={{ flex: '1', minWidth: '200px' }}>
                               <div style={{ fontSize: '15.5px', fontWeight: '700', color: 'var(--c-text)', marginBottom: '9px', lineHeight: '1.45' }}>{item.Name}</div>
                               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '13px', alignItems: 'center' }}>
