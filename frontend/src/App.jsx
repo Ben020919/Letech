@@ -129,6 +129,9 @@ function UnifiedSearchInventoryPage() {
   const [invError, setInvError] = useState('');
   
   const inventorySectionRef = useRef(null);
+  // 🔤 撳 ✕ 清空之後即刻對焦返輸入框(手機會彈返鍵盤,唔使撳多次)
+  const searchInputRef = useRef(null);
+  const invInputRef = useRef(null);
 
   // 處理 DEAR 庫存資料的輔助函數
   const processInventoryData = (invArray) => {
@@ -261,6 +264,7 @@ function UnifiedSearchInventoryPage() {
               <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
                   <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
                       <input
+                          ref={searchInputRef}
                           type="text"
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
@@ -268,7 +272,14 @@ function UnifiedSearchInventoryPage() {
                           style={{ width: '100%', padding: '13px 16px', fontSize: '15px', borderRadius: '12px', border: '1.5px solid var(--c-border)', outline: 'none', boxSizing: 'border-box' }}
                       />
                       {searchQuery && (
-                          <button type="button" onClick={() => { setSearchQuery(''); setSearchResults([]); setHasSearched(false); }} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setSearchQuery(''); setSearchResults([]); setHasSearched(false);
+                              searchInputRef.current?.focus();
+                            }}
+                            style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
                       )}
                   </div>
                   <button type="submit" disabled={searchLoading} style={{ background: searchLoading ? '#94a3b8' : 'var(--c-primary)', color: 'white', padding: '13px 24px', fontSize: '15px', borderRadius: '12px', border: 'none', fontWeight: '700', cursor: searchLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -348,6 +359,7 @@ function UnifiedSearchInventoryPage() {
             <form onSubmit={handleInvSubmit} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
                 <div style={{ position: 'relative', flex: '1', minWidth: '220px' }}>
                     <input
+                        ref={invInputRef}
                         type="text"
                         value={invQuery}
                         onChange={(e) => setInvQuery(e.target.value)}
@@ -355,7 +367,11 @@ function UnifiedSearchInventoryPage() {
                         style={{ width: '100%', padding: '13px 16px', fontSize: '15px', borderRadius: '12px', border: '1.5px solid var(--c-border)', outline: 'none', boxSizing: 'border-box' }}
                     />
                     {invQuery && (
-                        <button type="button" onClick={() => { setInvQuery(''); }} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => { setInvQuery(''); invInputRef.current?.focus(); }}
+                          style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', padding: '5px', cursor: 'pointer' }}>✕</button>
                     )}
                 </div>
                 <button type="submit" disabled={invLoading} style={{ background: invLoading ? '#94a3b8' : '#10b981', color: 'white', padding: '13px 24px', fontSize: '15px', borderRadius: '12px', border: 'none', fontWeight: '700', cursor: invLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
