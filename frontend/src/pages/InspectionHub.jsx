@@ -411,7 +411,12 @@ export default function InspectionHub() {
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#64748b' }}>
                                         <span><strong style={{ color: '#0f172a' }}>{t.total_scanned}</strong> / {t.total_target} 件 ({pct}%)</span>
-                                        <span>{t.items_count} SKU</span>
+                                        <span style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                            {(t.total_box || 0) > 0 && (
+                                                <span style={{ color: '#9a3412', fontWeight: 'bold' }}>📦 {t.total_box} 箱</span>
+                                            )}
+                                            <span>{t.items_count} SKU</span>
+                                        </span>
                                     </div>
                                     <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', display: 'flex', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
                                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }} title={t.filename}>

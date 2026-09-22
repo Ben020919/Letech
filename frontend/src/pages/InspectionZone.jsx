@@ -56,6 +56,8 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         }
     }, [urlTaskCode]);
     const [focusedItemId, setFocusedItemId] = useState(null);
+    // 📦 箱數輸入緩衝 — {id, value}。打字期間唔畀 2 秒一次嘅 polling 覆蓋住個輸入框
+    const [boxDraft, setBoxDraft] = useState(null);
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -99,6 +101,9 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     }, []);
 
     useEffect(() => { itemsRef.current = items; }, [items]);
+
+    // 換咗另一件貨就唔好帶住上一件嘅箱數 draft
+    useEffect(() => { setBoxDraft(null); }, [focusedItemId]);
 
     const fetchTaskStatus = async () => {
         if (!activeTaskCode) return; 
@@ -194,6 +199,31 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                 } 
             }
         } catch (err) { console.error("更新數量失敗", err); }
+    };
+
+    // 📦 更新箱數 — 同掃描數量完全獨立,唔會影響 Scanned_Qty / Status
+    const updateItemBox = async (itemId, rawValue) => {
+        const val = Math.max(0, parseInt(rawValue, 10) || 0);
+        setBoxDraft(null);
+        // 樂觀更新,等員工即刻見到個數
+        setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: val } : i)));
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/inspection/update-box/${apiZoneStr}`, {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item_id: itemId, box_qty: val })
+            });
+            if (!res.ok) {
+                const er = await res.json().catch(() => ({}));
+                throw new Error(er.detail || `更新箱數失敗 (${res.status})`);
+            }
+            const data = await res.json();
+            setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: data.item.Box_Qty } : i)));
+        } catch (err) {
+            console.error("更新箱數失敗", err);
+            showAlert("❌ " + (err.message || err), "error");
+            fetchTaskStatus();   // 失敗就攞返 server 真實值
+        }
     };
 
     const processBarcode = (scannedCode) => {
@@ -415,8 +445,8 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     };
 
     const exportCSV = () => {
-        const headers = "商品編號,商品名稱,條碼,應檢數量,已掃數量,狀態\n";
-        const rows = items.map(i => `${i.Product_No},${i.Name.replace(/,/g, " ")},${i.Barcode},${i.Target_Qty},${i.Scanned_Qty},${i.Status}`).join("\n");
+        const headers = "商品編號,商品名稱,條碼,應檢數量,已掃數量,箱數,狀態\n";
+        const rows = items.map(i => `${i.Product_No},${i.Name.replace(/,/g, " ")},${i.Barcode},${i.Target_Qty},${i.Scanned_Qty},${i.Box_Qty || 0},${i.Status}`).join("\n");
         const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(headers + rows);
         const link = document.createElement("a");
         link.href = csvContent;
@@ -467,6 +497,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     // 計算進度
     const totalTarget = items.reduce((acc, curr) => acc + curr.Target_Qty, 0);
     const totalScanned = items.reduce((acc, curr) => acc + curr.Scanned_Qty, 0);
+    const totalBox = items.reduce((acc, curr) => acc + (curr.Box_Qty || 0), 0);   // 📦 全單合共幾多箱
 
     // 篩選 counts + 過濾後嘅 list
     const notStartedCount = items.filter(i => (i.Scanned_Qty || 0) === 0).length;
@@ -483,6 +514,10 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
 
     const focusedItem = focusedItemId ? items.find(i => i.id === focusedItemId) : null;
     const isFocusedCompleted = focusedItem && focusedItem.Scanned_Qty >= focusedItem.Target_Qty;
+    // 📦 輸入框顯示值:打緊字就用 draft,否則用 server 值
+    const focusedBoxValue = focusedItem
+        ? (boxDraft && boxDraft.id === focusedItem.id ? boxDraft.value : String(focusedItem.Box_Qty ?? 0))
+        : '0';
 
     // ================= 🌟 復原的單純 UI 渲染：任務清單 與 沉浸畫面 =================
     return (
@@ -553,6 +588,9 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                                 <span style={{ fontFamily: 'monospace' }}>{totalTarget}</span>
                                 <span style={{ marginLeft: '10px', fontSize: '14px', color: isAllCompleted ? '#166534' : '#64748b', fontWeight: 'normal' }}>
                                     ({pct}% · SKU {completedSku}/{items.length})
+                                </span>
+                                <span style={{ marginLeft: '10px', fontSize: '14px', fontWeight: 'bold', color: '#9a3412', background: '#ffedd5', border: '1px solid #fdba74', padding: '2px 10px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
+                                    📦 合共 {totalBox} 箱
                                 </span>
                                 {isAllCompleted && <span style={{ marginLeft: '8px' }}>🎉 全部齊貨</span>}
                             </div>
@@ -691,6 +729,44 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                         <div style={{ fontSize: '14px', color: '#64748b', fontWeight: 'bold' }}>總共需要</div>
                     </div>
 
+                    {/* 📦 箱數輸入區 — 員工執完可以記低呢個 SKU 用咗幾多箱 */}
+                    <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px', marginBottom: '10px', background: '#fff7ed', border: '2px solid #fdba74', padding: '8px', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', fontSize: '15px', fontWeight: '900', color: '#9a3412', whiteSpace: 'nowrap', paddingLeft: '4px' }}>
+                            📦 箱數
+                        </div>
+                        <button
+                            onClick={() => updateItemBox(focusedItem.id, (parseInt(focusedBoxValue, 10) || 0) - 1)}
+                            style={{ background: '#fdba74', color: '#7c2d12', border: 'none', width: '46px', borderRadius: '8px', fontSize: '22px', fontWeight: '900', cursor: 'pointer' }}
+                        >
+                            −
+                        </button>
+                        <input
+                            type="number" inputMode="numeric" min="0"
+                            value={focusedBoxValue}
+                            onChange={(e) => setBoxDraft({ id: focusedItem.id, value: e.target.value })}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={(e) => {
+                                if (boxDraft && boxDraft.id === focusedItem.id) updateItemBox(focusedItem.id, e.target.value);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    updateItemBox(focusedItem.id, e.target.value);
+                                    e.target.blur();
+                                    if (inputRef.current) inputRef.current.focus();   // 打完即刻可以繼續掃碼
+                                }
+                            }}
+                            placeholder="0"
+                            style={{ flex: 1, minWidth: '60px', textAlign: 'center', fontSize: '22px', fontWeight: '900', color: '#9a3412', borderRadius: '8px', border: '2px solid #fdba74', outline: 'none', background: 'white', boxSizing: 'border-box' }}
+                        />
+                        <button
+                            onClick={() => updateItemBox(focusedItem.id, (parseInt(focusedBoxValue, 10) || 0) + 1)}
+                            style={{ background: '#ea580c', color: 'white', border: 'none', width: '46px', borderRadius: '8px', fontSize: '22px', fontWeight: '900', cursor: 'pointer' }}
+                        >
+                            ＋
+                        </button>
+                    </div>
+
                     {/* 水平並排的手動修改區 */}
                     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'stretch', gap: '8px' }}>
                         <input 
@@ -750,12 +826,13 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                                         <th style={{ padding: '15px', borderBottom: '1px solid #e2e8f0' }}>條碼</th>
                                         <th style={{ padding: '15px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>應檢</th>
                                         <th style={{ padding: '15px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>已掃</th>
+                                        <th style={{ padding: '15px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>📦 箱數</th>
                                         <th style={{ padding: '15px', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>動作</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredItems.length === 0 && (
-                                        <tr><td colSpan="5" style={{ padding: '30px 15px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '14px' }}>
+                                        <tr><td colSpan="6" style={{ padding: '30px 15px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '14px' }}>
                                             呢個篩選冇 SKU
                                         </td></tr>
                                     )}
@@ -787,6 +864,16 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                                                     <div style={{ fontSize: '20px', fontWeight: '900', color: item.Scanned_Qty === item.Target_Qty ? '#15803d' : '#0f172a' }}>
                                                         {item.Scanned_Qty}
                                                     </div>
+                                                </td>
+
+                                                <td style={{ padding: '15px', textAlign: 'center' }}>
+                                                    {(item.Box_Qty || 0) > 0 ? (
+                                                        <span style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', padding: '4px 12px', borderRadius: '999px', fontSize: '16px', fontWeight: '900', whiteSpace: 'nowrap' }}>
+                                                            {item.Box_Qty} 箱
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: '#cbd5e1', fontWeight: 'bold' }}>—</span>
+                                                    )}
                                                 </td>
 
                                                 <td style={{ padding: '15px', textAlign: 'center' }}>

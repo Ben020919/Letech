@@ -57,6 +57,36 @@ class UpdateQtyReq(BaseModel):
     item_id: str
     scanned_qty: int
 
+
+class UpdateBoxReq(BaseModel):
+    """📦 員工輸入箱數 — 同 Scanned_Qty 完全分開,純粹記錄呢個 SKU 執咗幾多箱。"""
+    item_id: str
+    box_qty: int
+
+
+# 📦 箱數 column 嘅探測 cache:None=未知 / True=有 / False=個 DB 未加呢個 column
+_BOX_COLUMN_AVAILABLE = None
+
+BOX_COLUMN_HINT = (
+    "資料庫仲未有 Box_Qty 欄位 — 請喺 Supabase SQL Editor 行一次:"
+    'ALTER TABLE inspection_items ADD COLUMN "Box_Qty" integer NOT NULL DEFAULT 0;'
+)
+
+
+def _is_missing_box_column(err) -> bool:
+    """分辨「個 DB 未加 Box_Qty」定係其他 error(唔好靜雞雞吞晒所有 exception)。"""
+    msg = str(err).lower()
+    if "box_qty" not in msg:
+        return False
+    return any(k in msg for k in ("column", "schema cache", "42703", "does not exist"))
+
+
+def _items_select_columns() -> str:
+    """Summary / history 用嘅 select — 探測到冇 Box_Qty 就自動退返舊 columns。"""
+    base = "zone, Target_Qty, Scanned_Qty"
+    return base if _BOX_COLUMN_AVAILABLE is False else base + ", Box_Qty"
+
+
 # ================= 1. 取得該區特定任務碼的當前任務 =================
 @router.get("/task/{zone}/{task_code}")
 async def get_task(zone: str, task_code: str):
@@ -236,6 +266,32 @@ async def update_qty(zone: str, req: UpdateQtyReq):
     return {"status": "success", "item": item}
 
 
+# ================= 3b. 員工更新箱數 =================
+@router.post("/update-box/{zone}")
+async def update_box_qty(zone: str, req: UpdateBoxReq):
+    """📦 記錄呢個 SKU 執咗幾多箱 — 唔會影響 Scanned_Qty / Status。"""
+    global _BOX_COLUMN_AVAILABLE
+
+    res = supabase.table("inspection_items").select("*").eq("id", req.item_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="找不到該商品")
+
+    item = res.data[0]
+    new_box = max(0, int(req.box_qty or 0))
+
+    try:
+        supabase.table("inspection_items").update({"Box_Qty": new_box}).eq("id", req.item_id).execute()
+    except Exception as e:
+        if _is_missing_box_column(e):
+            _BOX_COLUMN_AVAILABLE = False
+            raise HTTPException(status_code=400, detail=BOX_COLUMN_HINT)
+        raise HTTPException(status_code=500, detail=f"更新箱數失敗: {e}")
+
+    _BOX_COLUMN_AVAILABLE = True
+    item["Box_Qty"] = new_box
+    return {"status": "success", "item": item}
+
+
 # ================= 4. 結案任務(改成 archive,保留歷史) =================
 @router.post("/clear/{zone}/{task_code}")
 async def clear_task(zone: str, task_code: str):
@@ -252,17 +308,28 @@ async def clear_task(zone: str, task_code: str):
 
 # ================= 5. Dashboard:所有區進行緊嘅任務 summary =================
 def _fetch_items_paginated(zone_keys, chunk_size=1000):
-    """🛡️ 避開 Supabase 預設嘅 1000 row 限制 — 分頁 fetch 直至冇新資料。"""
+    """🛡️ 避開 Supabase 預設嘅 1000 row 限制 — 分頁 fetch 直至冇新資料。
+    📦 順便攞埋 Box_Qty;個 DB 未加呢個 column 就自動退返舊 columns 重試。
+    """
+    global _BOX_COLUMN_AVAILABLE
     all_items = []
     offset = 0
     while True:
-        res = (
-            supabase.table("inspection_items")
-            .select("zone, Target_Qty, Scanned_Qty")
-            .in_("zone", zone_keys)
-            .range(offset, offset + chunk_size - 1)
-            .execute()
-        )
+        try:
+            res = (
+                supabase.table("inspection_items")
+                .select(_items_select_columns())
+                .in_("zone", zone_keys)
+                .range(offset, offset + chunk_size - 1)
+                .execute()
+            )
+        except Exception as e:
+            if _BOX_COLUMN_AVAILABLE is not False and _is_missing_box_column(e):
+                _BOX_COLUMN_AVAILABLE = False
+                continue   # 同一頁用舊 columns 再試一次
+            raise
+        if _BOX_COLUMN_AVAILABLE is None:
+            _BOX_COLUMN_AVAILABLE = True
         chunk = res.data or []
         all_items.extend(chunk)
         if len(chunk) < chunk_size:
@@ -314,6 +381,7 @@ async def get_active_summary():
         items = items_by_zone.get(zone_key, [])
         total_target = sum((i.get("Target_Qty") or 0) for i in items)
         total_scanned = sum((i.get("Scanned_Qty") or 0) for i in items)
+        total_box = sum((i.get("Box_Qty") or 0) for i in items)   # 📦 呢個任務合共幾多箱
         result[zone_name].append({
             "zone_key": zone_key,  # 🌟 直接給前端用做唯一識別 + delete key
             "task_code": task_code,
@@ -321,6 +389,7 @@ async def get_active_summary():
             "items_count": len(items),
             "total_target": total_target,
             "total_scanned": total_scanned,
+            "total_box": total_box,
             "is_completed": total_target > 0 and total_target == total_scanned,
             "created_at": task.get("created_at"),
         })
@@ -387,13 +456,7 @@ async def get_history(zone: str = None, limit: int = 100):
         return {"history": []}
 
     archived_zone_keys = [t["zone"] for t in tasks_res.data]
-    items_res = (
-        supabase.table("inspection_items")
-        .select("zone, Target_Qty, Scanned_Qty")
-        .in_("zone", archived_zone_keys)
-        .execute()
-    )
-    items_by_zone = _aggregate_items_by_zone(items_res.data or [])
+    items_by_zone = _aggregate_items_by_zone(_fetch_items_paginated(archived_zone_keys))
 
     history = []
     for task in tasks_res.data:
@@ -407,6 +470,7 @@ async def get_history(zone: str = None, limit: int = 100):
             "items_count": len(items),
             "total_target": sum((i.get("Target_Qty") or 0) for i in items),
             "total_scanned": sum((i.get("Scanned_Qty") or 0) for i in items),
+            "total_box": sum((i.get("Box_Qty") or 0) for i in items),
             "created_at": task.get("created_at"),
             "archived_at": task.get("archived_at"),
         })

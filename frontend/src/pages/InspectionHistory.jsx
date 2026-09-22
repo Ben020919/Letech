@@ -84,9 +84,9 @@ export default function InspectionHistory() {
     const exportDetailCSV = () => {
         if (!openDetail || !openDetail.items) return;
         const z = ZONE_BY_ID[openDetail.zone];
-        const headers = "商品編號,商品名稱,條碼,應檢數量,已掃數量,狀態\n";
+        const headers = "商品編號,商品名稱,條碼,應檢數量,已掃數量,箱數,狀態\n";
         const rows = openDetail.items.map(i =>
-            `${i.Product_No},${(i.Name || '').replace(/,/g, ' ')},${i.Barcode},${i.Target_Qty},${i.Scanned_Qty},${i.Status}`
+            `${i.Product_No},${(i.Name || '').replace(/,/g, ' ')},${i.Barcode},${i.Target_Qty},${i.Scanned_Qty},${i.Box_Qty || 0},${i.Status}`
         ).join("\n");
         const csv = "data:text/csv;charset=utf-8,﻿" + encodeURIComponent(headers + rows);
         const link = document.createElement("a");
@@ -158,6 +158,7 @@ export default function InspectionHistory() {
                                     <th style={{ padding: '12px' }}>任務碼</th>
                                     <th style={{ padding: '12px' }}>檔案</th>
                                     <th style={{ padding: '12px', textAlign: 'center' }}>SKU</th>
+                                    <th style={{ padding: '12px', textAlign: 'center' }}>📦 箱數</th>
                                     <th style={{ padding: '12px', textAlign: 'center' }}>完成度</th>
                                     <th style={{ padding: '12px' }}>建立時間</th>
                                     <th style={{ padding: '12px' }}>結案時間</th>
@@ -183,6 +184,9 @@ export default function InspectionHistory() {
                                                 {h.filename || '-'}
                                             </td>
                                             <td style={{ padding: '12px', textAlign: 'center', color: '#475569' }}>{h.items_count}</td>
+                                            <td style={{ padding: '12px', textAlign: 'center', fontWeight: 'bold', color: (h.total_box || 0) > 0 ? '#9a3412' : '#cbd5e1' }}>
+                                                {(h.total_box || 0) > 0 ? `${h.total_box} 箱` : '—'}
+                                            </td>
                                             <td style={{ padding: '12px', textAlign: 'center' }}>
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                                     <span style={{ fontWeight: 'bold', color: isComplete ? '#16a34a' : '#0f172a' }}>
@@ -255,6 +259,7 @@ export default function InspectionHistory() {
                                                 <th style={{ padding: '10px' }}>條碼</th>
                                                 <th style={{ padding: '10px', textAlign: 'center' }}>應檢</th>
                                                 <th style={{ padding: '10px', textAlign: 'center' }}>已掃</th>
+                                                <th style={{ padding: '10px', textAlign: 'center' }}>📦 箱數</th>
                                                 <th style={{ padding: '10px', textAlign: 'center' }}>狀態</th>
                                             </tr>
                                         </thead>
@@ -269,6 +274,9 @@ export default function InspectionHistory() {
                                                         <td style={{ padding: '10px', fontFamily: 'monospace', color: '#3b82f6' }}>{it.Barcode}</td>
                                                         <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold' }}>{it.Target_Qty}</td>
                                                         <td style={{ padding: '10px', textAlign: 'center', color: isComplete ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>{it.Scanned_Qty}</td>
+                                                        <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: (it.Box_Qty || 0) > 0 ? '#9a3412' : '#cbd5e1' }}>
+                                                            {(it.Box_Qty || 0) > 0 ? `${it.Box_Qty} 箱` : '—'}
+                                                        </td>
                                                         <td style={{ padding: '10px', textAlign: 'center' }}>
                                                             {isComplete ? (
                                                                 <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 10px', borderRadius: '10px', fontWeight: 'bold', fontSize: '11px' }}>✅ 齊</span>
