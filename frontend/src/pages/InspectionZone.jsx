@@ -58,6 +58,8 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     const [focusedItemId, setFocusedItemId] = useState(null);
     // 📦 箱數輸入緩衝 — {id, value}。打字期間唔畀 2 秒一次嘅 polling 覆蓋住個輸入框
     const [boxDraft, setBoxDraft] = useState(null);
+    // 🔢 已掃數量輸入緩衝 — 同上;打字期間唔好每撳一個掣就 POST 一次
+    const [qtyDraft, setQtyDraft] = useState(null);
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -81,6 +83,9 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     const photoTrackRef = useRef(null);
     // (legacy) photoInputRef 已經唔用,舊 flow 用 <input capture> 但會彈 iOS「使用照片」確認
 
+    // 🛡 本機啱啱改過嘅 item — 喺呢個時限之前唔畀 2 秒 polling 覆蓋返舊值
+    const editGuardRef = useRef({});   // { itemId: 到期時間 }
+
     const inputRef = useRef(null);
     const topRef = useRef(null);
     const itemsRef = useRef([]);
@@ -102,8 +107,11 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
 
     useEffect(() => { itemsRef.current = items; }, [items]);
 
-    // 換咗另一件貨就唔好帶住上一件嘅箱數 draft
-    useEffect(() => { setBoxDraft(null); }, [focusedItemId]);
+    // 換咗另一件貨就唔好帶住上一件嘅 draft
+    useEffect(() => { setBoxDraft(null); setQtyDraft(null); }, [focusedItemId]);
+
+    // 🛡 標記「呢個 item 本機啱啱改過」,ms 毫秒內 polling 唔好覆蓋佢
+    const guardItem = (itemId, ms) => { editGuardRef.current[itemId] = Date.now() + ms; };
 
     const fetchTaskStatus = async () => {
         if (!activeTaskCode) return; 
@@ -111,7 +119,20 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             const res = await fetch(`${API_BASE_URL}/api/inspection/task/${apiZoneStr}/${activeTaskCode}`);
             const data = await res.json();
             if (data.status === "success" && data.task) {
-                setItems(data.task.items);
+                // 🛡 唔好硬覆蓋:本機啱啱改過嘅 item 保留本機值,
+                //    否則一個帶住舊值嘅 polling 回應會令個數跳返轉頭。
+                setItems(prev => {
+                    const localById = new Map(prev.map(i => [i.id, i]));
+                    const now = Date.now();
+                    return data.task.items.map(si => {
+                        const until = editGuardRef.current[si.id];
+                        if (until && now < until) {
+                            const local = localById.get(si.id);
+                            if (local) return local;
+                        }
+                        return si;
+                    });
+                });
             } else {
                 setItems([]); 
                 if (data.status === "no_task") {
@@ -182,55 +203,131 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         }
     };
 
-    const updateItemQty = async (itemId, newQty, isScanner = false) => {
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/inspection/update/${apiZoneStr}`, {
-                method: "POST",
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_id: itemId, scanned_qty: newQty })
-            });
-            
-            if (res.ok) {
+    // ═══════════ 🔁 每件貨嘅寫入排隊器 ═══════════
+    // 之前連撳幾下 ＋ 會同時射幾個 POST 出去,server 亂序處理,
+    // 最後存低嘅隨時唔係最新值(畫面 5、資料庫 3)。
+    // 而家同一件貨嘅同一個欄位一次只准一個請求喺路上,
+    // 連撳只會記低「最新想要嘅值」,等前一個返咗再補發。
+    const writerRef = useRef({});   // { key: { inflight, desired, last, prev, sender } }
+
+    // 攞「最新想要嘅值」(仲未寫入 server 都算),冇就 undefined
+    const pendingOf = (key) => {
+        const w = writerRef.current[key];
+        if (!w) return undefined;
+        return w.desired != null ? w.desired : w.last;
+    };
+
+    const queueWrite = (key, value, prevValue, sender) => {
+        let w = writerRef.current[key];
+        if (!w) w = writerRef.current[key] = { inflight: false, desired: null, last: undefined, prev: prevValue };
+        // 一輪連撳嘅起點先記低「改之前係幾多」,失敗時還原返呢個值
+        if (!w.inflight && w.desired == null) w.prev = prevValue;
+        w.desired = value;
+        w.sender = sender;
+        if (w.inflight) return;
+        (async () => {
+            while (w.desired != null) {
+                const v = w.desired;
+                w.desired = null;
+                w.inflight = true;
+                w.last = v;
+                const ok = await w.sender(v, w.prev);
+                w.inflight = false;
+                if (!ok) { w.desired = null; break; }
+            }
+            w.last = undefined;   // 冇嘢排緊隊,之後跟返 server 值
+        })();
+    };
+
+    // 某件貨「實際應該係幾多」— 有排緊隊嘅值就用佢,確保連撳/連掃唔會少計
+    const effectiveQty = (item) => {
+        const p = pendingOf(`qty:${item.id}`);
+        return p != null ? p : (item.Scanned_Qty || 0);
+    };
+    const effectiveBox = (item) => {
+        const p = pendingOf(`box:${item.id}`);
+        return p != null ? p : (item.Box_Qty || 0);
+    };
+
+    const updateItemQty = (itemId, newQty, isScanner = false) => {
+        const current = itemsRef.current.find(i => i.id === itemId);
+        if (!current) return;
+        const target = current.Target_Qty || 0;
+        const val = Math.min(Math.max(0, parseInt(newQty, 10) || 0), target);
+        const statusFor = (q) => (q >= target ? 'completed' : q > 0 ? 'partial' : 'pending');
+
+        setQtyDraft(null);
+        guardItem(itemId, 5000);   // 🛡 唔畀 in-flight 嘅舊 polling 冚返轉頭
+        setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Scanned_Qty: val, Status: statusFor(val) } : i)));
+
+        queueWrite(`qty:${itemId}`, val, current.Scanned_Qty, async (v, prevVal) => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/inspection/update/${apiZoneStr}`, {
+                    method: "POST",
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId, scanned_qty: v })
+                });
+                if (!res.ok) throw new Error(`更新數量失敗 (${res.status})`);
                 const data = await res.json();
-                setItems(prev => prev.map(i => i.id === itemId ? data.item : i));
-                
+                setItems(prev => prev.map(i => (i.id === itemId ? data.item : i)));
+                guardItem(itemId, 1200);   // 留少少時間畀仲喺路上嘅舊 polling 過咗先
                 if (data.item.Scanned_Qty >= data.item.Target_Qty) {
                     if (!isScanner) playSound('success');
-                } 
+                    // ✅ 執滿咗即刻對焦返掃碼框,可以直接掃下一件(手機會彈返鍵盤)
+                    if (inputRef.current) inputRef.current.focus();
+                }
+                return true;
+            } catch (err) {
+                console.error("更新數量失敗", err);
+                delete editGuardRef.current[itemId];
+                setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Scanned_Qty: prevVal, Status: statusFor(prevVal) } : i)));
+                playSound('error');
+                showAlert("❌ 數量未儲存!請再試一次", "error");
+                fetchTaskStatus();
+                return false;
             }
-        } catch (err) { console.error("更新數量失敗", err); }
+        });
     };
 
     // 📦 更新箱數 — 同掃描數量完全獨立,唔會影響 Scanned_Qty / Status
-    const updateItemBox = async (itemId, rawValue) => {
+    const updateItemBox = (itemId, rawValue) => {
+        const current = itemsRef.current.find(i => i.id === itemId);
+        if (!current) return;
         const val = Math.max(0, parseInt(rawValue, 10) || 0);
+
         setBoxDraft(null);
-        // 存唔到就要還原,唔可以留個「睇落好似入咗數」嘅假象喺度
-        const prevVal = (itemsRef.current.find(i => i.id === itemId) || {}).Box_Qty ?? 0;
-        // 樂觀更新,等員工即刻見到個數
+        guardItem(itemId, 5000);
         setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: val } : i)));
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/inspection/update-box/${apiZoneStr}`, {
-                method: "POST",
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ item_id: itemId, box_qty: val })
-            });
-            if (!res.ok) {
-                const er = await res.json().catch(() => ({}));
-                throw new Error(er.detail || `更新箱數失敗 (${res.status})`);
+
+        queueWrite(`box:${itemId}`, val, current.Box_Qty ?? 0, async (v, prevVal) => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/inspection/update-box/${apiZoneStr}`, {
+                    method: "POST",
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ item_id: itemId, box_qty: v })
+                });
+                if (!res.ok) {
+                    const er = await res.json().catch(() => ({}));
+                    throw new Error(er.detail || `更新箱數失敗 (${res.status})`);
+                }
+                const data = await res.json();
+                setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: data.item.Box_Qty } : i)));
+                guardItem(itemId, 1200);
+                return true;
+            } catch (err) {
+                // ⚠️ 網絡斷咗嘅話 fetchTaskStatus() 一樣會失敗,唔還原就會留低一個
+                // 「畫面有數、其實冇入到庫」嘅假象 — 倉庫 wifi 唔穩時好易搞錯數。
+                console.error("更新箱數失敗", err);
+                delete editGuardRef.current[itemId];
+                setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: prevVal } : i)));
+                playSound('error');
+                showAlert("❌ 箱數未儲存!請再試一次", "error");
+                fetchTaskStatus();
+                return false;
             }
-            const data = await res.json();
-            setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: data.item.Box_Qty } : i)));
-        } catch (err) {
-            // ⚠️ 關鍵:網絡斷咗嘅話 fetchTaskStatus() 一樣會失敗,唔還原就會留低一個
-            // 「畫面有數、其實冇入到庫」嘅假象 — 倉庫 wifi 唔穩時好易搞錯數。
-            console.error("更新箱數失敗", err);
-            setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: prevVal } : i)));
-            playSound('error');
-            showAlert("❌ 箱數未儲存!請再試一次", "error");
-            fetchTaskStatus();   // 連得返就攞返 server 真實值
-        }
+        });
     };
+
 
     const processBarcode = (scannedCode) => {
         if (itemsRef.current.length === 0) return;
@@ -265,9 +362,10 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             
             setFocusedItemId(targetItem.id);
 
-            if (targetItem.Scanned_Qty < targetItem.Target_Qty) {
+            const nowQty = effectiveQty(targetItem);   // 計埋排緊隊嗰個值,連掃唔會少計
+            if (nowQty < targetItem.Target_Qty) {
                 playSound('success');
-                updateItemQty(targetItem.id, targetItem.Scanned_Qty + 1, true); 
+                updateItemQty(targetItem.id, nowQty + 1, true); 
             } else {
                 playSound('error');
                 showAlert("⚠️ 數量已滿！請勿多拿！", "warning");
@@ -520,6 +618,10 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
 
     const focusedItem = focusedItemId ? items.find(i => i.id === focusedItemId) : null;
     const isFocusedCompleted = focusedItem && focusedItem.Scanned_Qty >= focusedItem.Target_Qty;
+    // 🔢 已掃數量輸入框顯示值:打緊字就用 draft,否則用 server 值
+    const focusedQtyValue = focusedItem
+        ? (qtyDraft && qtyDraft.id === focusedItem.id ? qtyDraft.value : String(focusedItem.Scanned_Qty ?? 0))
+        : '0';
     // 📦 輸入框顯示值:打緊字就用 draft,否則用 server 值
     const focusedBoxValue = focusedItem
         ? (boxDraft && boxDraft.id === focusedItem.id ? boxDraft.value : String(focusedItem.Box_Qty ?? 0))
@@ -741,7 +843,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             📦 箱數
                         </div>
                         <button
-                            onClick={() => updateItemBox(focusedItem.id, (parseInt(focusedBoxValue, 10) || 0) - 1)}
+                            onClick={() => updateItemBox(focusedItem.id, effectiveBox(focusedItem) - 1)}
                             style={{ background: '#fdba74', color: '#7c2d12', border: 'none', width: '46px', borderRadius: '8px', fontSize: '22px', fontWeight: '900', cursor: 'pointer' }}
                         >
                             −
@@ -752,7 +854,9 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             onChange={(e) => setBoxDraft({ id: focusedItem.id, value: e.target.value })}
                             onFocus={(e) => e.target.select()}
                             onBlur={(e) => {
-                                if (boxDraft && boxDraft.id === focusedItem.id) updateItemBox(focusedItem.id, e.target.value);
+                                const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                if (v !== (focusedItem.Box_Qty ?? 0)) updateItemBox(focusedItem.id, v);
+                                else setBoxDraft(null);
                             }}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
@@ -766,7 +870,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             style={{ flex: 1, minWidth: '60px', textAlign: 'center', fontSize: '22px', fontWeight: '900', color: '#9a3412', borderRadius: '8px', border: '2px solid #fdba74', outline: 'none', background: 'white', boxSizing: 'border-box' }}
                         />
                         <button
-                            onClick={() => updateItemBox(focusedItem.id, (parseInt(focusedBoxValue, 10) || 0) + 1)}
+                            onClick={() => updateItemBox(focusedItem.id, effectiveBox(focusedItem) + 1)}
                             style={{ background: '#ea580c', color: 'white', border: 'none', width: '46px', borderRadius: '8px', fontSize: '22px', fontWeight: '900', cursor: 'pointer' }}
                         >
                             ＋
@@ -779,12 +883,28 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             type="number" 
                             min="0" 
                             max={focusedItem.Target_Qty}
-                            value={focusedItem.Scanned_Qty}
-                            onChange={(e) => updateItemQty(focusedItem.id, parseInt(e.target.value) || 0, false)}
+                            value={focusedQtyValue}
+                            onChange={(e) => setQtyDraft({ id: focusedItem.id, value: e.target.value })}
+                            onFocus={(e) => e.target.select()}
+                            onBlur={(e) => {
+                                // 唔靠 qtyDraft closure — 打完即刻撳走嘅話個 closure 可能仲係舊值,
+                                // 會靜靜雞唔提交。直接同實際值比對至穩陣。
+                                const v = Math.min(Math.max(0, parseInt(e.target.value, 10) || 0), focusedItem.Target_Qty);
+                                if (v !== focusedItem.Scanned_Qty) updateItemQty(focusedItem.id, v, false);
+                                else setQtyDraft(null);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    updateItemQty(focusedItem.id, e.target.value, false);
+                                    e.target.blur();
+                                    if (inputRef.current) inputRef.current.focus();
+                                }
+                            }}
                             style={{ width: '60px', textAlign: 'center', fontSize: '18px', fontWeight: 'bold', borderRadius: '8px', border: '2px solid #cbd5e1', outline: 'none' }}
                         />
                         <button 
-                            onClick={() => updateItemQty(focusedItem.id, focusedItem.Scanned_Qty + 1, false)}
+                            onClick={() => updateItemQty(focusedItem.id, effectiveQty(focusedItem) + 1, false)}
                             disabled={isFocusedCompleted}
                             style={{ flex: 1, background: isFocusedCompleted ? '#cbd5e1' : '#3b82f6', color: 'white', border: 'none', padding: '10px', borderRadius: '8px', fontSize: '16px', fontWeight: 'bold', cursor: isFocusedCompleted ? 'not-allowed' : 'pointer' }}
                         >
