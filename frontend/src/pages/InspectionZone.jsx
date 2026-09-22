@@ -205,6 +205,8 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
     const updateItemBox = async (itemId, rawValue) => {
         const val = Math.max(0, parseInt(rawValue, 10) || 0);
         setBoxDraft(null);
+        // 存唔到就要還原,唔可以留個「睇落好似入咗數」嘅假象喺度
+        const prevVal = (itemsRef.current.find(i => i.id === itemId) || {}).Box_Qty ?? 0;
         // 樂觀更新,等員工即刻見到個數
         setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: val } : i)));
         try {
@@ -220,9 +222,13 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
             const data = await res.json();
             setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: data.item.Box_Qty } : i)));
         } catch (err) {
+            // ⚠️ 關鍵:網絡斷咗嘅話 fetchTaskStatus() 一樣會失敗,唔還原就會留低一個
+            // 「畫面有數、其實冇入到庫」嘅假象 — 倉庫 wifi 唔穩時好易搞錯數。
             console.error("更新箱數失敗", err);
-            showAlert("❌ " + (err.message || err), "error");
-            fetchTaskStatus();   // 失敗就攞返 server 真實值
+            setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Box_Qty: prevVal } : i)));
+            playSound('error');
+            showAlert("❌ 箱數未儲存!請再試一次", "error");
+            fetchTaskStatus();   // 連得返就攞返 server 真實值
         }
     };
 
