@@ -823,6 +823,65 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             })}
                         </div>
 
+                    {/* 📱 手機版:卡片式排版 — 表格要橫掃先睇到箱數,喺倉庫用手機好難用 */}
+                    {isMobile ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {filteredItems.length === 0 && (
+                                <div style={{ background: 'white', borderRadius: '14px', padding: '30px 15px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '14px' }}>
+                                    呢個篩選冇 SKU
+                                </div>
+                            )}
+                            {filteredItems.map((item) => {
+                                const hasLetterSuffix = /[A-Za-z]+$/.test(String(item.Barcode).trim());
+                                const shouldHighlightYellow = item.is_duplicate || hasLetterSuffix;
+                                const isDone = item.Scanned_Qty >= item.Target_Qty;
+                                return (
+                                    <div
+                                        key={item.id}
+                                        ref={el => rowRefs.current[item.id] = el}
+                                        onClick={() => setFocusedItemId(item.id)}
+                                        style={{
+                                            background: isDone ? '#f0fdf4' : shouldHighlightYellow ? '#fef08a' : 'white',
+                                            border: `2px solid ${isDone ? '#bbf7d0' : shouldHighlightYellow ? '#fde047' : '#e2e8f0'}`,
+                                            borderRadius: '14px', padding: '12px', cursor: 'pointer',
+                                            boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: '900', color: '#0f172a', fontSize: '15px' }}>{item.Product_No}</span>
+                                            {item.is_duplicate && <span style={{ background: '#b45309', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px' }}>總和</span>}
+                                            {hasLetterSuffix && <span style={{ background: '#ca8a04', color: 'white', fontSize: '10px', padding: '2px 6px', borderRadius: '4px' }}>特規條碼</span>}
+                                        </div>
+                                        <div style={{ color: '#475569', fontSize: '13px', lineHeight: '1.35', marginBottom: '6px' }}>{item.Name}</div>
+                                        <div style={{ fontFamily: 'monospace', fontWeight: 'bold', color: '#3b82f6', fontSize: '13px', marginBottom: '10px' }}>{item.Barcode}</div>
+
+                                        <div style={{ display: 'flex', alignItems: 'stretch', gap: '6px', minWidth: 0 }}>
+                                            <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: '#f1f5f9', borderRadius: '8px', padding: '6px', textAlign: 'center' }}>
+                                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>應檢</div>
+                                                <div style={{ fontSize: '18px', fontWeight: '900', color: '#475569' }}>{item.Target_Qty}</div>
+                                            </div>
+                                            <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: isDone ? '#dcfce7' : '#f1f5f9', borderRadius: '8px', padding: '6px', textAlign: 'center' }}>
+                                                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 'bold' }}>已掃</div>
+                                                <div style={{ fontSize: '18px', fontWeight: '900', color: isDone ? '#15803d' : '#0f172a' }}>{item.Scanned_Qty}</div>
+                                            </div>
+                                            <div style={{ flexGrow: 1, flexBasis: 0, minWidth: 0, background: (item.Box_Qty || 0) > 0 ? '#ffedd5' : '#f1f5f9', borderRadius: '8px', padding: '6px', textAlign: 'center' }}>
+                                                <div style={{ fontSize: '11px', color: '#9a3412', fontWeight: 'bold' }}>📦 箱數</div>
+                                                <div style={{ fontSize: '18px', fontWeight: '900', color: (item.Box_Qty || 0) > 0 ? '#9a3412' : '#cbd5e1' }}>
+                                                    {(item.Box_Qty || 0) > 0 ? item.Box_Qty : '—'}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setFocusedItemId(item.id); }}
+                                                style={{ background: '#0f172a', color: 'white', border: 'none', padding: '0 14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', whiteSpace: 'nowrap' }}
+                                            >
+                                                🔍
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
                     <div style={{ background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '700px' }}>
@@ -897,6 +956,7 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                             </table>
                         </div>
                     </div>
+                    )}
                     </>
                 )
             )}
