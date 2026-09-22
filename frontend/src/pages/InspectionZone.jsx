@@ -260,6 +260,13 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
         guardItem(itemId, 5000);   // 🛡 唔畀 in-flight 嘅舊 polling 冚返轉頭
         setItems(prev => prev.map(i => (i.id === itemId ? { ...i, Scanned_Qty: val, Status: statusFor(val) } : i)));
 
+        // 📱 執滿就即刻對焦返掃碼框,可以直接掃下一件。
+        //    ⚠️ 一定要喺呢度(用戶手勢嘅同一個 tick)做 —— iOS Safari 只會喺
+        //    用戶動作當下認 focus(),等 fetch 返咗先 focus 就唔會彈鍵盤。
+        if (target > 0 && val >= target && inputRef.current) {
+            inputRef.current.focus();
+        }
+
         queueWrite(`qty:${itemId}`, val, current.Scanned_Qty, async (v, prevVal) => {
             try {
                 const res = await fetch(`${API_BASE_URL}/api/inspection/update/${apiZoneStr}`, {
@@ -271,10 +278,10 @@ export default function InspectionZone({ zoneName = "Anymall" }) {
                 const data = await res.json();
                 setItems(prev => prev.map(i => (i.id === itemId ? data.item : i)));
                 guardItem(itemId, 1200);   // 留少少時間畀仲喺路上嘅舊 polling 過咗先
-                if (data.item.Scanned_Qty >= data.item.Target_Qty) {
-                    if (!isScanner) playSound('success');
-                    // ✅ 執滿咗即刻對焦返掃碼框,可以直接掃下一件(手機會彈返鍵盤)
-                    if (inputRef.current) inputRef.current.focus();
+                if (data.item.Scanned_Qty >= data.item.Target_Qty && !isScanner) {
+                    playSound('success');
+                    // focus 唔喺呢度做 —— 見上面,遲到嘅 focus 彈唔到 iOS 鍵盤,
+                    // 仲會搶走用戶啱啱撳入去嘅箱數輸入框。
                 }
                 return true;
             } catch (err) {
