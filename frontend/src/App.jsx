@@ -785,6 +785,58 @@ function ThreePLPage({ config }) {
     </div>
   );
 }
+// 🚨 資料新鮮度判斷 — 爬蟲斷咗唔會有人主動話你知,所以要喺首頁大聲提示。
+// 背景:爬蟲喺香港時間 09:30–22:15 每 80–100 秒跑一次,之後自動休眠。
+// 之前試過爬蟲抓到數但傳唔上 Render,首頁靜靜雞顯示住隔日嘅數字成 18 個鐘。
+function getDataFreshness(lastUpdated) {
+  if (!lastUpdated) return null;
+  // last_updated 係爬蟲用香港時間寫入(冇時區標記),所以要當 UTC+8 解析
+  const t = new Date(String(lastUpdated).trim().replace(' ', 'T') + '+08:00');
+  if (isNaN(t.getTime())) return null;
+
+  const ageMin = (Date.now() - t.getTime()) / 60000;
+  const label = ageMin < 1 ? '啱啱'
+    : ageMin < 60 ? `${Math.round(ageMin)} 分鐘前`
+    : `${Math.floor(ageMin / 60)} 小時 ${Math.round(ageMin % 60)} 分鐘前`;
+
+  // 攞當下嘅香港時間(唔靠用戶部機設定嘅時區)
+  let hkMins;
+  try {
+    const hk = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date());
+    const [hh, mm] = hk.split(':').map(Number);
+    hkMins = hh * 60 + mm;
+  } catch (_) {
+    const d = new Date();
+    hkMins = d.getHours() * 60 + d.getMinutes();
+  }
+  const working = hkMins >= 9 * 60 + 30 && hkMins <= 22 * 60 + 15;
+
+  // 爬蟲 09:30 開工,但要跑一兩分鐘先有第一轉數。唔留呢個寬限期嘅話,
+  // 每朝都會閃一次紅色假警報,耐咗同事就會當「平時都係紅」而忽略。
+  if (working && hkMins < 9 * 60 + 42 && ageMin <= 24 * 60) {
+    if (ageMin > 15) {
+      return { level: 'waking', label, msg: '爬蟲啱啱開工(09:30),等緊第一轉數據,通常一兩分鐘內就會有。' };
+    }
+  }
+
+  if (!working) {
+    // 休眠時段停更新係正常 — 除非連上一個工作日都冇跑過
+    if (ageMin > 14 * 60) {
+      return { level: 'error', label, msg: '爬蟲超過 14 個鐘冇更新過,連上一個工作日都冇跑 — 大機會已經停咗。' };
+    }
+    return { level: 'sleep', label, msg: '爬蟲休眠中(每日 22:15–09:30),早上 9:30 會自動恢復。' };
+  }
+  if (ageMin > 15) {
+    return { level: 'error', label, msg: '而家係工作時間,正常每 1–2 分鐘就有新數。停咗咁耐即係爬蟲停咗,或者抓到數但傳唔上嚟。' };
+  }
+  if (ageMin > 5) {
+    return { level: 'warn', label, msg: '比平時慢。如果再過幾分鐘都唔郁,就要去檢查部 Windows 機嘅爬蟲。' };
+  }
+  return { level: 'ok', label, msg: '' };
+}
+
 function HomePage() {
   const [orderData, setOrderData] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -916,6 +968,41 @@ function HomePage() {
         </div>
       </div>
 
+      {/* 🚨 資料過期警示 — 新鮮(ok)就唔顯示,免得阻住 */}
+      {(() => {
+        const f = getDataFreshness(orderData?.last_updated);
+        if (!f || f.level === 'ok') return null;
+        const style = {
+          error: { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b', icon: '🚨', title: '資料已經過期' },
+          warn:  { bg: '#fffbeb', border: '#fcd34d', text: '#92400e', icon: '⚠️', title: '資料更新緩慢' },
+          sleep: { bg: '#f8fafc', border: '#cbd5e1', text: '#475569', icon: '😴', title: '爬蟲休眠中' },
+          waking:{ bg: '#eff6ff', border: '#bfdbfe', text: '#1e40af', icon: '🌅', title: '爬蟲開緊工' },
+        }[f.level];
+        return (
+          <div style={{
+            background: style.bg, border: `2px solid ${style.border}`, color: style.text,
+            borderRadius: '16px', padding: '18px 22px', marginBottom: '25px',
+            display: 'flex', alignItems: 'flex-start', gap: '14px',
+          }}>
+            <div style={{ fontSize: '26px', lineHeight: '1.1' }}>{style.icon}</div>
+            <div style={{ flexGrow: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: '900', fontSize: '17px', marginBottom: '4px' }}>
+                {style.title} — 最後更新喺 {f.label}
+              </div>
+              <div style={{ fontSize: '14.5px', lineHeight: '1.5', opacity: 0.95 }}>{f.msg}</div>
+              {f.level === 'error' && (
+                <div style={{ fontSize: '13.5px', marginTop: '10px', lineHeight: '1.6', opacity: 0.9 }}>
+                  檢查次序:① 部 Windows 機個黑色視窗仲喺唔喺度 →
+                  ② 開 <code style={{ background: 'rgba(0,0,0,0.06)', padding: '1px 5px', borderRadius: '4px' }}>http://localhost:8501</code> 睇爬蟲畫面有冇錯誤 →
+                  ③ 睇 <code style={{ background: 'rgba(0,0,0,0.06)', padding: '1px 5px', borderRadius: '4px' }}>order_data.json</code> 嘅時間,
+                  如果佢係新但呢度係舊,即係抓到數但傳唔上伺服器。
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 判斷資料是否還沒載入 */}
       {(!orderData || !orderData.today || Object.keys(orderData.today).length === 0) ? (
         <div style={{ textAlign: 'center', padding: '80px 20px', background: '#f8fafc', borderRadius: '24px', border: '2px dashed #cbd5e1', color: '#64748b' }}>
@@ -930,7 +1017,16 @@ function HomePage() {
           
           {/* 頁尾最後更新時間 */}
           <div style={{ textAlign: 'right', color: '#64748b', fontSize: '15px', marginTop: '30px', background: '#f8fafc', padding: '15px 25px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'inline-block', float: 'right' }}>
-            <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>🕒 最後更新時間：{orderData.last_updated || '--'}</p>
+            <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>
+              🕒 最後更新時間：{orderData.last_updated || '--'}
+              {(() => {
+                const f = getDataFreshness(orderData.last_updated);
+                if (!f) return null;
+                const c = f.level === 'error' ? '#dc2626' : f.level === 'warn' ? '#b45309'
+                  : (f.level === 'sleep' || f.level === 'waking') ? '#64748b' : '#16a34a';
+                return <span style={{ color: c, fontWeight: '900', marginLeft: '8px' }}>({f.label})</span>;
+              })()}
+            </p>
             <p style={{ margin: 0 }}>{orderData.status_msg || ''}</p>
           </div>
           <div style={{ clear: 'both' }}></div>
