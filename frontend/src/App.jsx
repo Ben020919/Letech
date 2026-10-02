@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, useNavigate, Route, Link, useLocation 
 import InspectionHub from './pages/InspectionHub';
 import InspectionZone from './pages/InspectionZone';
 import InspectionHistory from './pages/InspectionHistory';
+import FoodWheel from './pages/FoodWheel';
 import './App.css';
 
 // 🌟 自動切換測試與正式環境的 API 網址
@@ -79,6 +80,7 @@ function Sidebar() {
     { path: '/label-search', icon: '🖨️', label: '標籤搜尋打印' },
     { path: '/label-repack', icon: '✏️', label: '自助 Repack' },
     { path: '/bin-location', icon: '📍', label: 'Bin Location 倉位' },
+    { path: '/food-wheel', icon: '🎯', label: '今日食乜好' },
   ];
 
   useEffect(() => {
@@ -2348,6 +2350,7 @@ function App() {
             <Route path="/label-search" element={<LabelSearchPage />} />
             <Route path="/label-repack" element={<LabelRepackPage />} />
             <Route path="/bin-location" element={<BinLocationPage />} />
+            <Route path="/food-wheel" element={<FoodWheel />} />
             <Route path="/inspection" element={<InspectionHub />} />
             <Route path="/inspection/history" element={<InspectionHistory />} />
             <Route path="/inspection/anymall" element={<InspectionZone zoneName="Anymall" />} />
