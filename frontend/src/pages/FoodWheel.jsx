@@ -217,7 +217,7 @@ export default function FoodWheel() {
     return (
         <div className="page-content" style={{ maxWidth: '1000px', margin: '0 auto', paddingBottom: '50px' }}>
             <h1 style={{ fontSize: '27px', color: '#0f172a', margin: '0 0 6px', fontWeight: '800', letterSpacing: '-0.6px' }}>
-                🎯 今日食乜好
+                🎯 輪盤
             </h1>
             <p style={{ color: '#64748b', margin: '0 0 25px', fontSize: '15px' }}>
                 諗唔到食乜就轉下佢。下面可以自己加、改、刪選項,會記住喺你部機度。

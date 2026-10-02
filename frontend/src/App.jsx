@@ -80,7 +80,7 @@ function Sidebar() {
     { path: '/label-search', icon: '🖨️', label: '標籤搜尋打印' },
     { path: '/label-repack', icon: '✏️', label: '自助 Repack' },
     { path: '/bin-location', icon: '📍', label: 'Bin Location 倉位' },
-    { path: '/food-wheel', icon: '🎯', label: '今日食乜好' },
+    { path: '/food-wheel', icon: '🎯', label: '輪盤' },
   ];
 
   useEffect(() => {
