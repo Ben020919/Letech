@@ -53,6 +53,10 @@ const playSound = (type) => {
     } catch { /* 靜音都唔算錯誤,照跑 */ }
 };
 
+// 喺 component 外面定義 — 放入面嘅話 react-hooks/purity 會當佢 render 期間行而報錯,
+// 但其實淨係由 onClick 叫。
+const pickFrom = (pool) => pool[Math.floor(Math.random() * pool.length)];
+
 const loadJSON = (key, fallback) => {
     try {
         const raw = localStorage.getItem(key);
@@ -83,6 +87,8 @@ export default function FoodWheel() {
     const [toast, setToast] = useState('');
 
     const pendingWinner = useRef(null);
+    const spinTimer = useRef(null);
+    const finishing = useRef(false);
     const inputRef = useRef(null);
     const editRef = useRef(null);
 
@@ -144,7 +150,7 @@ export default function FoodWheel() {
             const filtered = pool.filter(i => items[i] !== last);
             if (filtered.length > 0) pool = filtered;
         }
-        const picked = pool[Math.floor(Math.random() * pool.length)];
+        const picked = pickFrom(pool);
 
         const step = 360 / items.length;
         // 指針喺 12 點鐘。sector i 由頂部順時針數起,中心角度 = (i + 0.5) * step。
@@ -158,14 +164,23 @@ export default function FoodWheel() {
         const next = rotation + 360 * 5 + delta;
 
         pendingWinner.current = items[picked];
+        finishing.current = false;
         setWinner(null);
         setSpinning(true);
         setRotation(next);
         playSound('tick');
+
+        // ⚠️ 唔可以淨係靠 transitionend:頁面喺背景/唔 render 嗰陣 CSS transition 唔會行,
+        //    個事件永遠唔 fire,轉盤就會卡死喺「轉緊...」出唔到結果。加個保險收尾。
+        if (spinTimer.current) clearTimeout(spinTimer.current);
+        spinTimer.current = setTimeout(finishSpin, 5200);   // 動畫 4.6s + buffer
     };
 
-    const onSpinEnd = () => {
-        if (!spinning) return;
+    // 收尾 — transitionend 同保險 timer 邊個先到都算,finishing 保證只行一次
+    const finishSpin = () => {
+        if (finishing.current) return;
+        finishing.current = true;
+        if (spinTimer.current) { clearTimeout(spinTimer.current); spinTimer.current = null; }
         setSpinning(false);
         const w = pendingWinner.current;
         if (!w) return;
@@ -173,6 +188,8 @@ export default function FoodWheel() {
         setHistory(prev => [w, ...prev].slice(0, 8));
         playSound('win');
     };
+
+    useEffect(() => () => { if (spinTimer.current) clearTimeout(spinTimer.current); }, []);
 
     // ── SVG 扇形 ──
     const sectors = useMemo(() => {
@@ -238,7 +255,7 @@ export default function FoodWheel() {
                         }} />
 
                         <div
-                            onTransitionEnd={onSpinEnd}
+                            onTransitionEnd={(e) => { if (e.target === e.currentTarget) finishSpin(); }}
                             style={{
                                 transform: `rotate(${rotation}deg)`,
                                 transition: spinning ? 'transform 4.6s cubic-bezier(0.16, 0.84, 0.26, 1)' : 'none',
