@@ -843,6 +843,7 @@ function HomePage() {
   const [orderData, setOrderData] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isTriggering, setIsTriggering] = useState(false); // 🌟 新增：遠端觸發狀態
+  const [triggerResult, setTriggerResult] = useState(null); // { ok, msg }
   // 🌟 自動刷新開關(記住喺 localStorage,下次仲會生效)
   const [autoRefreshOn, setAutoRefreshOn] = useState(() => {
     const saved = localStorage.getItem('hktv_auto_refresh');
@@ -883,20 +884,44 @@ function HomePage() {
     });
   };
 
-  // 🌟 新增：發送遠端指令給 Render 伺服器
+  // 🌟 發送遠端指令給 Render 伺服器,然後等實爬蟲真係有回應先報成功。
+  // 以前一 POST 完就彈「已成功發送」,但「伺服器收到」同「爬蟲收到」係兩回事 ——
+  // 部 Windows 機熄咗嘅話,畫面一樣話你成功,同事就會一路等一路以為冇事。
+  // 注意:唔可以用 /check_command 嚟確認,嗰個 endpoint 一讀就會清走個 flag,
+  // 前端讀咗即係偷走爬蟲嘅指令。所以改為盯住 last_updated 有冇真係郁過。
   const handleRemoteTrigger = async () => {
     setIsTriggering(true);
+    setTriggerResult(null);
+    const before = orderData?.last_updated || null;
     try {
       const res = await fetch(`${API_BASE_URL}/api/hktvmall/trigger`, {
         method: 'POST'
       });
-      if (res.ok) {
-        alert("📡 遠端指令已成功發送！\n\n只要您本地的電腦程式 (app.py) 有開著，它將在 10 秒內接收指令並開始抓取。請稍候約 1~2 分鐘，本畫面會自動更新！");
-      } else {
-        alert("❌ 發送指令失敗，請檢查伺服器。");
+      if (!res.ok) {
+        setTriggerResult({ ok: false, msg: '❌ 伺服器收唔到指令,請檢查 Render 服務仲喺唔喺度。' });
+        return;
       }
+      // 爬蟲每 10 秒 check 一次指令,抓完數再 POST 上嚟,通常 1~2 分鐘內搞掂
+      const deadline = Date.now() + 120000;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          const r2 = await fetch(`${API_BASE_URL}/api/hktvmall/`);
+          if (!r2.ok) continue;
+          const d = await r2.json();
+          if (d.last_updated && d.last_updated !== before) {
+            setOrderData(d);
+            setTriggerResult({ ok: true, msg: `✅ 爬蟲收到指令,數據更新咗(${d.last_updated})` });
+            return;
+          }
+        } catch (_) { /* 中途一兩次失敗唔緊要,繼續等 */ }
+      }
+      setTriggerResult({
+        ok: false,
+        msg: '⏰ 等咗 2 分鐘爬蟲都冇回應 — 大機會部 Windows 機嘅爬蟲已經停咗,要去開返個黑色視窗。',
+      });
     } catch (err) {
-      alert("❌ 連線失敗：" + err.message);
+      setTriggerResult({ ok: false, msg: '❌ 連線失敗：' + err.message });
     } finally {
       setIsTriggering(false);
     }
@@ -965,10 +990,28 @@ function HomePage() {
             {autoRefreshOn ? '自動刷新: 開 (10秒)' : '自動刷新: 關'}
           </button>
           <button onClick={handleRemoteTrigger} disabled={isTriggering} style={{ background: isTriggering ? '#94a3b8' : '#ea580c', color: '#ffffff', border: 'none', padding: '11px 18px', borderRadius: '11px', fontSize: '14.5px', fontWeight: '700', cursor: isTriggering ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 6px rgba(234,88,12,0.22)' }}>
-            {isTriggering ? '🚀 發送指令中...' : '🚀 遠端手動更新'}
+            {isTriggering ? '⏳ 等緊爬蟲回應...' : '🚀 遠端手動更新'}
           </button>
         </div>
       </div>
+
+      {/* 遠端觸發結果 — 成功同失敗都要講清楚,唔好齋彈「已發送」當完事 */}
+      {triggerResult && (
+        <div style={{
+          background: triggerResult.ok ? '#f0fdf4' : '#fffbeb',
+          border: `2px solid ${triggerResult.ok ? '#86efac' : '#fcd34d'}`,
+          color: triggerResult.ok ? '#166534' : '#92400e',
+          borderRadius: '14px', padding: '14px 18px', marginBottom: '20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+          fontSize: '15px', fontWeight: '700',
+        }}>
+          <span>{triggerResult.msg}</span>
+          <button onClick={() => setTriggerResult(null)} style={{
+            background: 'transparent', border: 'none', color: 'inherit',
+            fontSize: '18px', cursor: 'pointer', padding: '0 4px', opacity: 0.6,
+          }}>✕</button>
+        </div>
+      )}
 
       {/* 🚨 資料過期警示 — 新鮮(ok)就唔顯示,免得阻住 */}
       {(() => {
