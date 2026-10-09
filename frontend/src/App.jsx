@@ -1764,7 +1764,14 @@ function BinLocationPage() {
       if (!res.ok) { const er = await res.json().catch(() => ({})); throw new Error(er.detail || '刪除失敗'); }
       setDelModal(null); setDelPw('');
       setSelectedIds(new Set());   // 清空選擇
-      await fetchExisting();
+      // 刪咗之後要刷新返當前個畫面 —— 兩個 mode 嘅清單來源唔同。
+      // 另外如果刪嘅就係而家揀緊嘅原位置,要清走,唔好留住個指向冇咗嘅記錄。
+      if (moveSource && delModal.ids.includes(moveSource.id)) setMoveSource(null);
+      if (mode === 'move') {
+        if (moveSearch.trim()) await doMoveSearch();
+      } else {
+        await fetchExisting();
+      }
     } catch (err) {
       setDelErr(err.message);
     } finally {
@@ -2151,13 +2158,21 @@ function BinLocationPage() {
                       const tCfg = LOC_TYPE_MAP[b.loc_type || '貨架'] || LOC_TYPE_MAP['貨架'];
                       const selected = moveSource && moveSource.id === b.id;
                       return (
-                        <button key={b.id} onClick={() => selectMoveSource(item, b)}
-                          style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', background: selected ? '#ede9fe' : '#f8fafc', border: `2px solid ${selected ? '#7c3aed' : '#eef2f6'}`, borderRadius: '10px', padding: '10px 14px', cursor: 'pointer', fontSize: '14px' }}>
-                          <span style={{ background: tCfg.bg, border: `1px solid ${tCfg.border}`, color: tCfg.color, padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '800' }}>{tCfg.emoji} {b.loc_type || '貨架'}</span>
-                          <span style={{ color: tCfg.color, fontWeight: '800', fontFamily: 'monospace', fontSize: '15px' }}>{b.bin}</span>
-                          {b.stock_date && <span style={{ color: '#92400e', fontFamily: 'monospace', fontSize: '12px' }}>📅 {b.stock_date}</span>}
-                          <span style={{ marginLeft: 'auto', color: selected ? '#7c3aed' : '#94a3b8', fontWeight: 'bold', fontSize: '13px' }}>{selected ? '✓ 揀咗' : '→ 揀'}</span>
-                        </button>
+                        <div key={b.id} style={{ display: 'flex', alignItems: 'stretch', gap: '6px' }}>
+                          <button onClick={() => selectMoveSource(item, b)}
+                            style={{ flex: 1, minWidth: 0, textAlign: 'left', display: 'flex', alignItems: 'center', gap: '10px', background: selected ? '#ede9fe' : '#f8fafc', border: `2px solid ${selected ? '#7c3aed' : '#eef2f6'}`, borderRadius: '10px', padding: '10px 14px', cursor: 'pointer', fontSize: '14px' }}>
+                            <span style={{ background: tCfg.bg, border: `1px solid ${tCfg.border}`, color: tCfg.color, padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: '800' }}>{tCfg.emoji} {b.loc_type || '貨架'}</span>
+                            <span style={{ color: tCfg.color, fontWeight: '800', fontFamily: 'monospace', fontSize: '15px' }}>{b.bin}</span>
+                            {b.stock_date && <span style={{ color: '#92400e', fontFamily: 'monospace', fontSize: '12px' }}>📅 {b.stock_date}</span>}
+                            <span style={{ marginLeft: 'auto', color: selected ? '#7c3aed' : '#94a3b8', fontWeight: 'bold', fontSize: '13px' }}>{selected ? '✓ 揀咗' : '→ 揀'}</span>
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(b.id, `${item.name || item.sku || '(無名)'} — ${b.loc_type || '貨架'} ${b.bin}${b.stock_date ? ' ('+b.stock_date+')' : ''}`)}
+                            title="刪除呢個位置記錄(要 Full Time 密碼)"
+                            style={{ flexShrink: 0, width: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'white', border: '2px solid #fecaca', color: '#ef4444', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px' }}>
+                            ✕
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
