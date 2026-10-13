@@ -70,7 +70,7 @@ function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
 
   const menuItems = [
-    { path: '/', icon: '🏠', label: '系統首頁' },
+    { path: '/', icon: '🏠', label: '首頁' },
     { path: '/search', icon: '🔍', label: '智能查詢中心' }, // 👈 整合後的新選單
     { path: '/inspection', icon: '🕵️‍♂️', label: '3PL 貨品檢測' },
     { path: '/yummy', icon: '🍔', label: 'Yummy 3PL' },
@@ -787,296 +787,18 @@ function ThreePLPage({ config }) {
     </div>
   );
 }
-// 🚨 資料新鮮度判斷 — 爬蟲斷咗唔會有人主動話你知,所以要喺首頁大聲提示。
-// 背景:爬蟲喺香港時間 09:30–22:15 每 80–100 秒跑一次,之後自動休眠。
-// 之前試過爬蟲抓到數但傳唔上 Render,首頁靜靜雞顯示住隔日嘅數字成 18 個鐘。
-function getDataFreshness(lastUpdated) {
-  if (!lastUpdated) return null;
-  // last_updated 係爬蟲用香港時間寫入(冇時區標記),所以要當 UTC+8 解析
-  const t = new Date(String(lastUpdated).trim().replace(' ', 'T') + '+08:00');
-  if (isNaN(t.getTime())) return null;
-
-  const ageMin = (Date.now() - t.getTime()) / 60000;
-  const label = ageMin < 1 ? '啱啱'
-    : ageMin < 60 ? `${Math.round(ageMin)} 分鐘前`
-    : `${Math.floor(ageMin / 60)} 小時 ${Math.round(ageMin % 60)} 分鐘前`;
-
-  // 攞當下嘅香港時間(唔靠用戶部機設定嘅時區)
-  let hkMins;
-  try {
-    const hk = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(new Date());
-    const [hh, mm] = hk.split(':').map(Number);
-    hkMins = hh * 60 + mm;
-  } catch (_) {
-    const d = new Date();
-    hkMins = d.getHours() * 60 + d.getMinutes();
-  }
-  const working = hkMins >= 9 * 60 + 30 && hkMins <= 22 * 60 + 15;
-
-  // 爬蟲 09:30 開工,但要跑一兩分鐘先有第一轉數。唔留呢個寬限期嘅話,
-  // 每朝都會閃一次紅色假警報,耐咗同事就會當「平時都係紅」而忽略。
-  if (working && hkMins < 9 * 60 + 42 && ageMin <= 24 * 60) {
-    if (ageMin > 15) {
-      return { level: 'waking', label, msg: '爬蟲啱啱開工(09:30),等緊第一轉數據,通常一兩分鐘內就會有。' };
-    }
-  }
-
-  if (!working) {
-    // 休眠時段停更新係正常 — 除非連上一個工作日都冇跑過
-    if (ageMin > 14 * 60) {
-      return { level: 'error', label, msg: '爬蟲超過 14 個鐘冇更新過,連上一個工作日都冇跑 — 大機會已經停咗。' };
-    }
-    return { level: 'sleep', label, msg: '爬蟲休眠中(每日 22:15–09:30),早上 9:30 會自動恢復。' };
-  }
-  if (ageMin > 15) {
-    return { level: 'error', label, msg: '而家係工作時間,正常每 1–2 分鐘就有新數。停咗咁耐即係爬蟲停咗,或者抓到數但傳唔上嚟。' };
-  }
-  if (ageMin > 5) {
-    return { level: 'warn', label, msg: '比平時慢。如果再過幾分鐘都唔郁,就要去檢查部 Windows 機嘅爬蟲。' };
-  }
-  return { level: 'ok', label, msg: '' };
-}
-
-function HomePage() {
-  const [orderData, setOrderData] = useState(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isTriggering, setIsTriggering] = useState(false); // 🌟 新增：遠端觸發狀態
-  const [triggerResult, setTriggerResult] = useState(null); // { ok, msg }
-  // 🌟 自動刷新開關(記住喺 localStorage,下次仲會生效)
-  const [autoRefreshOn, setAutoRefreshOn] = useState(() => {
-    const saved = localStorage.getItem('hktv_auto_refresh');
-    return saved === null ? true : saved === 'true';   // default: on
-  });
-
-  // 從 Render 後端抓取最新資料
-  const fetchOrderData = async () => {
-    setIsRefreshing(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/hktvmall/`);
-      if (res.ok) {
-        const data = await res.json();
-        setOrderData(data);
-      }
-    } catch (err) {
-      console.error("無法取得訂單資料", err);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchOrderData();   // 第一次 mount 一定 fetch 一次
-    // 只喺 autoRefreshOn=true 先開 interval
-    // useEffect cleanup return 保證離開 HomePage 或 toggle 關咗 auto refresh 就 stop
-    if (!autoRefreshOn) return;
-    const interval = setInterval(fetchOrderData, 10000); // 10 秒 auto refresh
-    return () => clearInterval(interval);
-  }, [autoRefreshOn]);
-
-  // Toggle handler:同步 state + localStorage
-  const toggleAutoRefresh = () => {
-    setAutoRefreshOn(prev => {
-      const next = !prev;
-      localStorage.setItem('hktv_auto_refresh', String(next));
-      return next;
-    });
-  };
-
-  // 🌟 發送遠端指令給 Render 伺服器,然後等實爬蟲真係有回應先報成功。
-  // 以前一 POST 完就彈「已成功發送」,但「伺服器收到」同「爬蟲收到」係兩回事 ——
-  // 部 Windows 機熄咗嘅話,畫面一樣話你成功,同事就會一路等一路以為冇事。
-  // 注意:唔可以用 /check_command 嚟確認,嗰個 endpoint 一讀就會清走個 flag,
-  // 前端讀咗即係偷走爬蟲嘅指令。所以改為盯住 last_updated 有冇真係郁過。
-  const handleRemoteTrigger = async () => {
-    setIsTriggering(true);
-    setTriggerResult(null);
-    const before = orderData?.last_updated || null;
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/hktvmall/trigger`, {
-        method: 'POST'
-      });
-      if (!res.ok) {
-        setTriggerResult({ ok: false, msg: '❌ 伺服器收唔到指令,請檢查 Render 服務仲喺唔喺度。' });
-        return;
-      }
-      // 爬蟲每 10 秒 check 一次指令,抓完數再 POST 上嚟,通常 1~2 分鐘內搞掂
-      const deadline = Date.now() + 120000;
-      while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 5000));
-        try {
-          const r2 = await fetch(`${API_BASE_URL}/api/hktvmall/`);
-          if (!r2.ok) continue;
-          const d = await r2.json();
-          if (d.last_updated && d.last_updated !== before) {
-            setOrderData(d);
-            setTriggerResult({ ok: true, msg: `✅ 爬蟲收到指令,數據更新咗(${d.last_updated})` });
-            return;
-          }
-        } catch (_) { /* 中途一兩次失敗唔緊要,繼續等 */ }
-      }
-      setTriggerResult({
-        ok: false,
-        msg: '⏰ 等咗 2 分鐘爬蟲都冇回應 — 大機會部 Windows 機嘅爬蟲已經停咗,要去開返個黑色視窗。',
-      });
-    } catch (err) {
-      setTriggerResult({ ok: false, msg: '❌ 連線失敗：' + err.message });
-    } finally {
-      setIsTriggering(false);
-    }
-  };
-
-  // 渲染訂單區塊 (今日 / 明日) 的模組化函數
-  const renderOrderSection = (titlePrefix, dayKey, dayData) => {
-    if (!dayData || Object.keys(dayData).length === 0) return null;
-
-    const totalTarget = parseInt(dayData.TOTAL_TARGET || "0", 10);
-    const picked = parseInt(dayData.PICKED || "0", 10);
-    const pickedPct = totalTarget > 0 ? Math.min((picked / totalTarget) * 100, 100) : 0;
-
-    return (
-      <div style={{ background: '#ffffff', padding: '30px', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 30px rgba(0,0,0,0.03)', marginBottom: '30px' }}>
-        <h3 style={{ color: '#0f172a', borderBottom: '2px solid #f1f5f9', paddingBottom: '15px', marginBottom: '25px', fontSize: '22px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span>{titlePrefix}</span>
-          <span style={{ fontSize: '16px', color: '#64748b', fontWeight: 'normal' }}>📅 {dayData.date || '--'}</span>
-        </h3>
-        
-        {/* 四個核心數據方塊 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-          <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-            <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>📝 已建立</div>
-            <div style={{ fontSize: '32px', color: '#0f172a', fontWeight: '900' }}>{dayData.CONFIRMED || '--'}</div>
-          </div>
-          <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-            <div style={{ color: '#64748b', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>⏳ 已確認</div>
-            <div style={{ fontSize: '32px', color: '#0f172a', fontWeight: '900' }}>{dayData.ACKNOWLEDGED || '--'}</div>
-          </div>
-          <div style={{ background: '#eff6ff', padding: '20px', borderRadius: '16px', textAlign: 'center', border: '2px solid #bfdbfe', boxShadow: '0 4px 10px rgba(59, 130, 246, 0.1)' }}>
-            <div style={{ color: '#2563eb', fontSize: '15px', fontWeight: 'bold', marginBottom: '8px' }}>📦 已出貨 / 總目標</div>
-            <div style={{ fontSize: '32px', color: '#1e3a8a', fontWeight: '900' }}>{picked} / {totalTarget}</div>
-          </div>
-        </div>
-
-        {/* 綠色出貨進度條 */}
-        <div style={{ marginBottom: '30px', background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#334155', marginBottom: '12px' }}>
-            <span>📦 出貨進度</span>
-            <span style={{ color: pickedPct === 100 ? '#10b981' : '#334155' }}>{Math.round(pickedPct)}%</span>
-          </div>
-          <div style={{ width: '100%', background: '#cbd5e1', borderRadius: '999px', height: '16px', overflow: 'hidden' }}>
-            <div style={{ width: `${pickedPct}%`, background: '#10b981', height: '100%', transition: 'width 0.8s ease-in-out' }}></div>
-          </div>
-        </div>
-
-      </div>
-    );
-  };
-
+function WelcomePage() {
   return (
-    <div className="page-content" style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '50px' }}>
-      
-      {/* 標題與更新按鈕 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', flexWrap: 'wrap', gap: '15px' }}>
-        <h1 style={{ fontSize: '27px', color: 'var(--c-text)', margin: 0, fontWeight: '800', letterSpacing: '-0.6px' }}>🛍️ HKTVmall 智慧訂單監控儀表板</h1>
-
-        {/* 🌟 修改：新增了遠端觸發按鈕 */}
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* 🌟 Auto refresh toggle — 只影響本頁,離開自動 stop */}
-          <button onClick={toggleAutoRefresh}
-            title={autoRefreshOn ? '按下停止 10 秒自動刷新' : '按下開啟 10 秒自動刷新'}
-            style={{ background: autoRefreshOn ? '#dcfce7' : '#f1f5f9', color: autoRefreshOn ? '#166534' : '#64748b', border: `1px solid ${autoRefreshOn ? '#86efac' : '#cbd5e1'}`, padding: '11px 16px', borderRadius: '11px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '10px', color: autoRefreshOn ? '#16a34a' : '#94a3b8' }}>●</span>
-            {autoRefreshOn ? '自動刷新: 開 (10秒)' : '自動刷新: 關'}
-          </button>
-          <button onClick={handleRemoteTrigger} disabled={isTriggering} style={{ background: isTriggering ? '#94a3b8' : '#ea580c', color: '#ffffff', border: 'none', padding: '11px 18px', borderRadius: '11px', fontSize: '14.5px', fontWeight: '700', cursor: isTriggering ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 6px rgba(234,88,12,0.22)' }}>
-            {isTriggering ? '⏳ 等緊爬蟲回應...' : '🚀 遠端手動更新'}
-          </button>
-        </div>
+    <div className="page-content" style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+      <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+        <div style={{ fontSize: '56px', marginBottom: '18px' }}>📦</div>
+        <h1 style={{ fontSize: '32px', color: 'var(--c-text)', margin: '0 0 12px 0', fontWeight: '800', letterSpacing: '-0.6px' }}>
+          Letech 3PL System
+        </h1>
+        <p style={{ fontSize: '16px', color: '#64748b', margin: 0, lineHeight: '1.6' }}>
+          歡迎使用 — 請喺左邊選單揀功能開始
+        </p>
       </div>
-
-      {/* 遠端觸發結果 — 成功同失敗都要講清楚,唔好齋彈「已發送」當完事 */}
-      {triggerResult && (
-        <div style={{
-          background: triggerResult.ok ? '#f0fdf4' : '#fffbeb',
-          border: `2px solid ${triggerResult.ok ? '#86efac' : '#fcd34d'}`,
-          color: triggerResult.ok ? '#166534' : '#92400e',
-          borderRadius: '14px', padding: '14px 18px', marginBottom: '20px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-          fontSize: '15px', fontWeight: '700',
-        }}>
-          <span>{triggerResult.msg}</span>
-          <button onClick={() => setTriggerResult(null)} style={{
-            background: 'transparent', border: 'none', color: 'inherit',
-            fontSize: '18px', cursor: 'pointer', padding: '0 4px', opacity: 0.6,
-          }}>✕</button>
-        </div>
-      )}
-
-      {/* 🚨 資料過期警示 — 新鮮(ok)就唔顯示,免得阻住 */}
-      {(() => {
-        const f = getDataFreshness(orderData?.last_updated);
-        if (!f || f.level === 'ok') return null;
-        const style = {
-          error: { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b', icon: '🚨', title: '資料已經過期' },
-          warn:  { bg: '#fffbeb', border: '#fcd34d', text: '#92400e', icon: '⚠️', title: '資料更新緩慢' },
-          sleep: { bg: '#f8fafc', border: '#cbd5e1', text: '#475569', icon: '😴', title: '爬蟲休眠中' },
-          waking:{ bg: '#eff6ff', border: '#bfdbfe', text: '#1e40af', icon: '🌅', title: '爬蟲開緊工' },
-        }[f.level];
-        return (
-          <div style={{
-            background: style.bg, border: `2px solid ${style.border}`, color: style.text,
-            borderRadius: '16px', padding: '18px 22px', marginBottom: '25px',
-            display: 'flex', alignItems: 'flex-start', gap: '14px',
-          }}>
-            <div style={{ fontSize: '26px', lineHeight: '1.1' }}>{style.icon}</div>
-            <div style={{ flexGrow: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: '900', fontSize: '17px', marginBottom: '4px' }}>
-                {style.title} — 最後更新喺 {f.label}
-              </div>
-              <div style={{ fontSize: '14.5px', lineHeight: '1.5', opacity: 0.95 }}>{f.msg}</div>
-              {f.level === 'error' && (
-                <div style={{ fontSize: '13.5px', marginTop: '10px', lineHeight: '1.6', opacity: 0.9 }}>
-                  檢查次序:① 部 Windows 機個黑色視窗仲喺唔喺度 →
-                  ② 開 <code style={{ background: 'rgba(0,0,0,0.06)', padding: '1px 5px', borderRadius: '4px' }}>http://localhost:8501</code> 睇爬蟲畫面有冇錯誤 →
-                  ③ 睇 <code style={{ background: 'rgba(0,0,0,0.06)', padding: '1px 5px', borderRadius: '4px' }}>order_data.json</code> 嘅時間,
-                  如果佢係新但呢度係舊,即係抓到數但傳唔上伺服器。
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 判斷資料是否還沒載入 */}
-      {(!orderData || !orderData.today || Object.keys(orderData.today).length === 0) ? (
-        <div style={{ textAlign: 'center', padding: '80px 20px', background: '#f8fafc', borderRadius: '24px', border: '2px dashed #cbd5e1', color: '#64748b' }}>
-          <div style={{ fontSize: '48px', marginBottom: '15px' }}>🤖</div>
-          <h2 style={{ margin: '0 0 10px 0', color: '#0f172a' }}>等待機器人傳送資料中...</h2>
-          <p style={{ fontSize: '16px', margin: 0 }}>請確認您本地電腦上的 `app.py` 爬蟲已經啟動，並成功將資料推送至伺服器。</p>
-        </div>
-      ) : (
-        <>
-          {renderOrderSection("今日訂單", "today", orderData.today)}
-          {renderOrderSection("明日訂單", "tomorrow", orderData.tomorrow)}
-          
-          {/* 頁尾最後更新時間 */}
-          <div style={{ textAlign: 'right', color: '#64748b', fontSize: '15px', marginTop: '30px', background: '#f8fafc', padding: '15px 25px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'inline-block', float: 'right' }}>
-            <p style={{ margin: '0 0 8px 0', fontWeight: 'bold', color: '#0f172a' }}>
-              🕒 最後更新時間：{orderData.last_updated || '--'}
-              {(() => {
-                const f = getDataFreshness(orderData.last_updated);
-                if (!f) return null;
-                const c = f.level === 'error' ? '#dc2626' : f.level === 'warn' ? '#b45309'
-                  : (f.level === 'sleep' || f.level === 'waking') ? '#64748b' : '#16a34a';
-                return <span style={{ color: c, fontWeight: '900', marginLeft: '8px' }}>({f.label})</span>;
-              })()}
-            </p>
-            <p style={{ margin: 0 }}>{orderData.status_msg || ''}</p>
-          </div>
-          <div style={{ clear: 'both' }}></div>
-        </>
-      )}
     </div>
   );
 }
@@ -2399,7 +2121,7 @@ function App() {
         <Sidebar />
         <div className="main-content">
           <Routes>
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<WelcomePage />} />
             <Route path="/search" element={<UnifiedSearchInventoryPage />} />
             <Route path="/yummy" element={<ThreePLPage key="yummy" config={THREE_PL_CONFIGS.yummy} />} />
             <Route path="/anymall" element={<ThreePLPage key="anymall" config={THREE_PL_CONFIGS.anymall} />} />
