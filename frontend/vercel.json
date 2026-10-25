@@ -1,4 +1,11 @@
 {
+  "redirects": [
+    {
+      "source": "/fitness",
+      "destination": "/fitness/",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",

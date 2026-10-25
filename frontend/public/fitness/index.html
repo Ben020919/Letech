@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>健身工具箱</title>
+<meta name="description" content="BMI、熱量、蛋白質、水量計算，拉伸及訓練計劃">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>健身工具箱</h1>
+    <p class="sub">計算 · 飲食 · 拉伸 · 訓練</p>
+  </div>
+  <nav class="tabs wrap" id="tabs" role="tablist">
+    <button role="tab" data-tab="body" class="on">身體數據</button>
+    <button role="tab" data-tab="food">食物計算</button>
+    <button role="tab" data-tab="water">水量</button>
+    <button role="tab" data-tab="stretch">拉伸</button>
+    <button role="tab" data-tab="plan">訓練計劃</button>
+    <button role="tab" data-tab="library">動作庫</button>
+    <button role="tab" data-tab="progress">進度相</button>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <!-- 個人資料（所有計算器共用） -->
+  <section class="card" id="profile">
+    <h2>個人資料</h2>
+    <div class="grid">
+      <label>性別
+        <select id="sex"><option value="m">男</option><option value="f">女</option></select>
+      </label>
+      <label>年齡
+        <input id="age" type="number" min="12" max="100" inputmode="numeric" value="25">
+      </label>
+      <label>身高（cm）
+        <input id="height" type="number" min="100" max="250" inputmode="decimal" value="170">
+      </label>
+      <label>體重（kg）
+        <input id="weight" type="number" min="25" max="300" step="0.1" inputmode="decimal" value="65">
+      </label>
+      <label>活動量
+        <select id="activity">
+          <option value="1.2">幾乎唔運動</option>
+          <option value="1.375">每週運動 1–3 日</option>
+          <option value="1.55" selected>每週運動 3–5 日</option>
+          <option value="1.725">每週運動 6–7 日</option>
+          <option value="1.9">高強度＋體力勞動</option>
+        </select>
+      </label>
+      <label>目標
+        <select id="goal">
+          <option value="muscle">增肌</option>
+          <option value="fatloss">減脂</option>
+          <option value="maintain">維持</option>
+        </select>
+      </label>
+    </div>
+    <p class="note" id="profile-err" hidden></p>
+  </section>
+
+  <!-- 身體數據 -->
+  <section class="panel on" id="tab-body">
+    <div class="card">
+      <h2>BMI</h2>
+      <div class="big" id="bmi-val">–</div>
+      <div class="badge" id="bmi-cat">–</div>
+      <div class="bmi-bar" aria-hidden="true"><span id="bmi-pin"></span></div>
+      <div class="bmi-scale"><span>18.5</span><span>23</span><span>25</span><span>30</span></div>
+      <p class="note" id="bmi-range"></p>
+      <p class="note">分類依香港衛生署成年人（亞洲）標準：過輕 &lt; 18.5、適中 18.5–22.9、過重 23–24.9、肥胖 25–29.9、嚴重肥胖 ≥ 30。BMI 無法分辨肌肉同脂肪，肌肉量高者僅供參考。</p>
+    </div>
+
+    <div class="card">
+      <h2>每日熱量</h2>
+      <div class="stats">
+        <div><span class="k">基礎代謝 BMR</span><b id="bmr">–</b><i>kcal</i></div>
+        <div><span class="k">每日消耗 TDEE</span><b id="tdee">–</b><i>kcal</i></div>
+        <div><span class="k">建議攝取</span><b id="target-kcal">–</b><i>kcal</i></div>
+      </div>
+      <p class="note" id="kcal-note"></p>
+    </div>
+
+    <div class="card">
+      <h2>蛋白質：要食夠幾多？</h2>
+      <div class="stats">
+        <div><span class="k">每日最低</span><b id="p-min">–</b><i>g</i></div>
+        <div><span class="k">建議目標</span><b id="p-target">–</b><i>g</i></div>
+        <div><span class="k">上限參考</span><b id="p-max">–</b><i>g</i></div>
+      </div>
+      <p class="note" id="p-note"></p>
+      <h3>分餐建議</h3>
+      <div class="meals" id="p-meals"></div>
+      <p class="note">每餐約 20–40g 蛋白質對肌肉合成較有效；一般健康成人如腎功能正常，每日 2.2 g/kg 以內屬常見範圍。有腎病或其他疾病者，請先諮詢醫生或註冊營養師。</p>
+    </div>
+  </section>
+
+  <!-- 食物計算 -->
+  <section class="panel" id="tab-food">
+    <div class="card">
+      <h2>今日攝取</h2>
+      <div class="progress"><div id="food-p-bar"></div></div>
+      <div class="row-between"><span>蛋白質 <b id="food-p">0</b> / <b id="food-p-goal">–</b> g</span><span id="food-p-left"></span></div>
+      <div class="progress kcal"><div id="food-k-bar"></div></div>
+      <div class="row-between"><span>熱量 <b id="food-k">0</b> / <b id="food-k-goal">–</b> kcal</span><span id="food-k-left"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>加入食物</h2>
+      <div class="grid">
+        <label class="wide">搜尋
+          <input id="food-search" type="search" placeholder="例：雞胸、豆腐、三文魚">
+        </label>
+        <label class="wide">食物
+          <select id="food-select"></select>
+        </label>
+        <label>份量（g / ml）
+          <input id="food-grams" type="number" min="1" inputmode="decimal">
+        </label>
+        <button class="btn" id="food-add" type="button">加入</button>
+      </div>
+      <p class="note" id="food-preview"></p>
+    </div>
+
+    <div class="card">
+      <div class="row-between"><h2>今日清單</h2><button class="link" id="food-clear" type="button">清空</button></div>
+      <ul class="list" id="food-list"></ul>
+      <p class="note" id="food-empty">未有記錄。</p>
+      <p class="note">食物營養為一般參考值（每 100g 計），實際因烹調方式同品牌而異。</p>
+    </div>
+  </section>
+
+  <!-- 水量 -->
+  <section class="panel" id="tab-water">
+    <div class="card">
+      <h2>每日水量</h2>
+      <div class="water-wrap">
+        <div class="cup"><div class="fill" id="water-fill"></div><span id="water-pct">0%</span></div>
+        <div>
+          <div class="big"><span id="water-now">0</span><small> / <span id="water-goal">–</span> ml</small></div>
+          <p class="note" id="water-note"></p>
+        </div>
+      </div>
+      <div class="btns">
+        <button class="btn" data-water="250" type="button">+250 ml</button>
+        <button class="btn" data-water="500" type="button">+500 ml</button>
+        <button class="btn ghost" data-water="-250" type="button">−250 ml</button>
+        <button class="btn ghost" id="water-reset" type="button">重設今日</button>
+      </div>
+      <label class="inline">今日運動時間（小時）
+        <input id="water-ex" type="number" min="0" max="8" step="0.5" value="1" inputmode="decimal">
+      </label>
+      <p class="note">計法：體重 × 35 ml，另加每小時運動約 500 ml。炎熱或大量出汗時要再加。尿色淡黃即代表水分足夠。</p>
+    </div>
+  </section>
+
+  <!-- 拉伸 -->
+  <section class="panel" id="tab-stretch">
+    <div class="seg">
+      <button data-mode="dynamic" class="on" type="button">訓練前：動態熱身</button>
+      <button data-mode="static" type="button">訓練後：靜態拉伸</button>
+    </div>
+    <p class="note" id="stretch-note"></p>
+    <div class="cards" id="stretch-list"></div>
+  </section>
+
+  <!-- 訓練計劃 -->
+  <section class="panel" id="tab-plan">
+    <div class="card">
+      <h2>訓練計劃推薦</h2>
+      <div class="grid">
+        <label>目標
+          <select id="plan-goal">
+            <option value="split3">三分化（胸三頭／背二頭／腿肩）</option>
+            <option value="ppl">推拉腿（PPL）</option>
+            <option value="muscle">增肌</option>
+            <option value="fatloss">減脂</option>
+            <option value="beginner">完全新手</option>
+          </select>
+        </label>
+        <label>每週訓練日數
+          <select id="plan-days"></select>
+        </label>
+      </div>
+      <p class="note">每日動作由上至下按優先次序排列（編號即做嘅次序）：先做大重量複合動作，再做孤立動作；標示「重點」係針對較弱部位，精力最好嘅時候先做。每日訓練前先做「動態熱身」，完成後做「靜態拉伸」。同一肌群之間至少休息 48 小時。重量以最後 2 下仍能保持動作標準為準。</p>
+    </div>
+    <h3 class="plan-name" id="plan-name"></h3>
+    <p class="note" id="plan-note"></p>
+    <div id="plan-days-list"></div>
+  </section>
+
+  <!-- 動作庫 -->
+  <section class="panel" id="tab-library">
+    <div class="card">
+      <label>搜尋動作／肌群／器械
+        <input id="lib-search" type="search" placeholder="例：胸、啞鈴、深蹲">
+      </label>
+    </div>
+    <div class="cards" id="lib-list"></div>
+  </section>
+
+  <!-- 進度相 -->
+  <section class="panel" id="tab-progress">
+    <div class="card">
+      <h2>新增進度相</h2>
+      <div class="grid">
+        <label class="wide">相片
+          <input id="pg-file" type="file" accept="image/*">
+        </label>
+        <label>日期
+          <input id="pg-date" type="date">
+        </label>
+        <label>體重 kg（可選）
+          <input id="pg-weight" type="number" min="25" max="300" step="0.1" inputmode="decimal">
+        </label>
+        <label class="wide">備註（可選）
+          <input id="pg-note" type="text" maxlength="60" placeholder="例：增肌第 4 週、早上空腹">
+        </label>
+        <button class="btn" id="pg-save" type="button">儲存</button>
+      </div>
+      <p class="note" id="pg-msg"></p>
+      <p class="note">相片只會儲存喺呢部裝置嘅瀏覽器入面，唔會上傳到伺服器，其他人睇唔到。清除瀏覽器資料、轉瀏覽器或轉裝置，記錄就會消失。</p>
+    </div>
+    <div class="card" id="pg-compare-card" hidden>
+      <h2>對比</h2>
+      <div class="compare" id="pg-compare"></div>
+      <p class="note" id="pg-delta"></p>
+    </div>
+    <div class="card">
+      <h2>記錄</h2>
+      <p class="note" id="pg-hint">未有相片。</p>
+      <div class="shots" id="pg-list"></div>
+      <p class="note" id="pg-pickhint" hidden>剔選兩張相就可以對比。</p>
+    </div>
+  </section>
+
+  <p class="foot">此網站內容只供一般健身資訊參考，並非醫療建議。如有傷患、長期病患或懷孕，開始前請先諮詢醫生或持牌教練。</p>
+</main>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
